@@ -34,10 +34,9 @@ fr_col("H{fr_sub(2)}O", width = 1.0)
 # Statistical subscript: x_i
 fr_col("x{fr_sub('i')}", width = 1.0)
 
-# In a footnote (requires a spec):
-\dontrun{
+# In a footnote:
+spec <- tbl_demog |> fr_table()
 spec |> fr_footnotes("{fr_sub('n')} = number of subjects with data")
-}
 
 }
 \seealso{

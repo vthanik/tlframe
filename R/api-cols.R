@@ -116,7 +116,7 @@
 #'   transform and override specific columns as needed.
 #'
 #' @examples
-#' ## ── Basic column relabelling ─────────────────────────────────────────────
+#' ## ── Relabel + set widths + right-align (most common pattern) ─────────────
 #'
 #' tbl_demog |>
 #'   fr_table() |>
@@ -139,6 +139,27 @@
 #'   fr_cols(
 #'     characteristic = fr_col("Characteristic"),
 #'     .width = "auto"
+#'   )
+#'
+#' ## ── Percentage widths: responsive to page size ───────────────────────────
+#'
+#' tbl_demog |>
+#'   fr_table() |>
+#'   fr_cols(
+#'     characteristic = fr_col("Characteristic", width = "30%"),
+#'     zom_50mg       = fr_col("Zomerane 50mg",  width = "17.5%", align = "right"),
+#'     zom_100mg      = fr_col("Zomerane 100mg", width = "17.5%", align = "right"),
+#'     placebo        = fr_col("Placebo",         width = "17.5%", align = "right"),
+#'     total          = fr_col("Total",           width = "17.5%", align = "right")
+#'   )
+#'
+#' ## ── Fit mode: fill the full page width proportionally ────────────────────
+#'
+#' tbl_demog |>
+#'   fr_table() |>
+#'   fr_cols(
+#'     characteristic = fr_col("Characteristic"),
+#'     .width = "fit"
 #'   )
 #'
 #' ## ── Equal-width distribution ─────────────────────────────────────────────

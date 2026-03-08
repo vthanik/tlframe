@@ -69,6 +69,10 @@ use \code{fr_style(region = "header", cols = ...)} or \code{\link[=fr_header]{fr
 }
 
 \examples{
+## ── Standalone: store and reuse ─────────────────────────────────────────
+total_highlight <- fr_col_style(cols = "total", bg = "aliceblue")
+total_highlight  # inspect
+
 ## ── Total column with blue tint ──────────────────────────────────────────
 
 fr_col_style(cols = "total", bg = "#EBF5FB")
@@ -81,6 +85,20 @@ fr_col_style(cols = "characteristic", bold = TRUE)
 
 fr_col_style(cols = c("zom_50mg", "zom_100mg", "placebo", "total"),
              align = "right")
+
+## ── Multiple columns in one call ──────────────────────────────────────────
+
+fr_col_style(cols = c("placebo", "zom_50mg", "zom_100mg"), italic = TRUE)
+
+## ── Pattern-based column selection using fr_select() ─────────────────────
+
+spec <- tbl_demog |> fr_table()
+numeric_cols <- fr_select(spec, pattern = "^zom_|^placebo$|^total$")
+fr_col_style(cols = numeric_cols, align = "center")
+
+## ── Foreground + background combined ─────────────────────────────────────
+
+fr_col_style(cols = "total", fg = "#003366", bg = "#E8F4FD")
 
 ## ── Full pipeline with column styles ─────────────────────────────────────
 

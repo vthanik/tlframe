@@ -108,6 +108,69 @@
 #'   fr_titles("Table 14.1.1 Demographics") |>
 #'   fr_hlines("booktabs")
 #'
+#' ## ── Complete 10-verb pipeline ─────────────────────────────────────────────
+#' # Demonstrates every major pipeline verb in a single specification.
+#'
+#' tbl_demog |>
+#'   fr_table() |>
+#'   fr_titles(
+#'     "Table 14.1.1 Summary of Demographics and Baseline Characteristics",
+#'     "Full Analysis Set"
+#'   ) |>
+#'   fr_footnotes(
+#'     "[a] Percentages based on subjects in each arm.",
+#'     "Source: ADSL"
+#'   ) |>
+#'   fr_cols(
+#'     characteristic = fr_col("Characteristic", width = 2.5),
+#'     placebo        = fr_col("Placebo\n(N=45)", width = 1.5),
+#'     zom_50mg       = fr_col("Zomerane 50mg\n(N=45)", width = 1.5),
+#'     zom_100mg      = fr_col("Zomerane 100mg\n(N=45)", width = 1.5),
+#'     total          = fr_col("Total\n(N=135)", width = 1.5),
+#'     group          = fr_col(visible = FALSE)
+#'   ) |>
+#'   fr_header(bold = TRUE, bg = "#D9E2F3") |>
+#'   fr_spans("Treatment Arm" = c("placebo", "zom_50mg", "zom_100mg")) |>
+#'   fr_rows(group_by = "group", indent_by = "group") |>
+#'   fr_hlines("header") |>
+#'   fr_vlines("inner") |>
+#'   fr_styles(
+#'     fr_row_style(rows = 1, bold = TRUE)
+#'   ) |>
+#'   fr_page(orientation = "landscape", font_size = 9) |>
+#'   fr_pagehead(left = "Study TFRM-2024-001", right = "Page {thepage} of {total_pages}") |>
+#'   fr_pagefoot(left = "{program}", right = "{datetime}") |>
+#'   fr_spacing(titles_after = 1, footnotes_before = 1)
+#'
+#' ## ── fr_table() vs fr_listing() on the same data ──────────────────────────
+#' # fr_table() uses auto-detected defaults; fr_listing() sets listing defaults.
+#'
+#' ae_subset <- adae[1:20, c("USUBJID", "AEDECOD", "AESEV", "ASTDT")]
+#'
+#' # Table view: auto-detected alignment, 9pt, no col_split
+#' spec_tbl <- ae_subset |>
+#'   fr_table() |>
+#'   fr_titles("Table View of AE Records")
+#' spec_tbl$page$font_size    # 9 (default)
+#'
+#' # Listing view: left-aligned, 8pt, col_split = TRUE, wrap = TRUE
+#' spec_lst <- ae_subset |>
+#'   fr_listing() |>
+#'   fr_titles("Listing View of AE Records")
+#' spec_lst$page$font_size    # 8 (listing default)
+#' spec_lst$page$col_split    # TRUE (listing default)
+#'
+#' ## ── Hidden column used for grouping ──────────────────────────────────────
+#' # The "group" column drives indent_by but is not displayed.
+#'
+#' tbl_demog |>
+#'   fr_table() |>
+#'   fr_cols(
+#'     group = fr_col(visible = FALSE)
+#'   ) |>
+#'   fr_rows(indent_by = "group") |>
+#'   fr_titles("Table 14.1.1 Demographics (grouped, hidden key)")
+#'
 #' @seealso [fr_titles()], [fr_footnotes()], [fr_cols()], [fr_header()],
 #'   [fr_spans()], [fr_rows()], [fr_page()], [fr_hlines()], [fr_vlines()],
 #'   [fr_styles()], [fr_config()], [fr_render()]
@@ -120,5 +183,258 @@ fr_table <- function(data) {
   spec <- new_fr_spec(data)
   spec <- apply_config(spec)
   spec <- apply_fr_theme(spec)
+  spec
+}
+
+
+#' Start a tlframe Listing Pipeline
+#'
+#' @description
+#'
+#' Entry point for clinical listings — long-format data displays that show
+#' individual records (e.g., adverse event listings, concomitant medication
+#' listings, lab data listings). Listings differ from summary tables in that
+#' every row is a data record, not a summary statistic.
+#'
+#' `fr_listing()` creates an `fr_spec` with listing-appropriate defaults:
+#' landscape orientation, smaller font (8pt), left-aligned columns,
+#' header-only rules, and column splitting enabled.
+#'
+#' @param data A data frame. Each row maps to one listing row.
+#'
+#' @return An `fr_spec` object with `type = "listing"` and listing defaults.
+#'
+#' @section Listing defaults (vs `fr_table()`):
+#' | Setting | `fr_table()` | `fr_listing()` |
+#' |---------|-------------|----------------|
+#' | Orientation | landscape | landscape |
+#' | Font size | 9pt | 8pt |
+#' | Default align | auto-detect | left |
+#' | hlines | none | header |
+#' | col_split | FALSE | TRUE |
+#' | wrap | FALSE | TRUE |
+#'
+#' @section Listing-specific features:
+#' * **`sort_by`**: Pass to [fr_rows()] to sort data before rendering
+#' * **`repeat_cols`**: Pass to [fr_rows()] to suppress repeated values
+#' * **`wrap`**: Auto-enabled for long text columns
+#'
+#' @examples
+#' ## ── Minimal listing ──────────────────────────────────────────────────────
+#'
+#' adae |> fr_listing()
+#'
+#' ## ── Full listing pipeline ─────────────────────────────────────────────────
+#'
+#' adae |>
+#'   fr_listing() |>
+#'   fr_cols(
+#'     USUBJID = fr_col("Subject ID", width = 1.2),
+#'     AEDECOD = fr_col("Preferred Term"),
+#'     AESEV   = fr_col("Severity", width = 1.0)
+#'   ) |>
+#'   fr_rows(sort_by = c("USUBJID", "ASTDT"),
+#'           repeat_cols = "USUBJID") |>
+#'   fr_titles("Listing 16.2.7 Adverse Events") |>
+#'   fr_footnotes("Source: ADAE")
+#'
+#' ## ── Listing with wrap = TRUE for long text ───────────────────────────────
+#' # wrap is TRUE by default in fr_listing(), but can also be set via fr_rows().
+#'
+#' adcm |>
+#'   fr_listing() |>
+#'   fr_cols(
+#'     USUBJID = fr_col("Subject", width = 1.2),
+#'     CMDECOD = fr_col("Medication", width = 2.0),
+#'     CMCAT   = fr_col("Category", width = 1.5),
+#'     CMSTDT  = fr_col("Start Date", width = 1.0),
+#'     CMENDT  = fr_col("End Date", width = 1.0)
+#'   ) |>
+#'   fr_rows(wrap = TRUE) |>
+#'   fr_titles("Listing 16.2.4 Concomitant Medications") |>
+#'   fr_footnotes("Source: ADCM")
+#'
+#' ## ── Listing with page_by pagination ──────────────────────────────────────
+#' # Each treatment arm starts on a new page.
+#'
+#' adae |>
+#'   fr_listing() |>
+#'   fr_cols(
+#'     USUBJID  = fr_col("Subject ID", width = 1.2),
+#'     AEBODSYS = fr_col("System Organ Class", width = 2.0),
+#'     AEDECOD  = fr_col("Preferred Term", width = 1.5),
+#'     AESEV    = fr_col("Severity", width = 0.8),
+#'     TRTA     = fr_col(visible = FALSE)
+#'   ) |>
+#'   fr_rows(page_by = "TRTA") |>
+#'   fr_titles("Listing 16.2.7.1 Adverse Events by Treatment Arm")
+#'
+#' ## ── sort_by + repeat_cols together ────────────────────────────────────────
+#' # Sort by subject and start day, suppress repeated subject IDs.
+#'
+#' adae |>
+#'   fr_listing() |>
+#'   fr_cols(
+#'     USUBJID = fr_col("Subject ID", width = 1.3),
+#'     AEDECOD = fr_col("Preferred Term", width = 2.0),
+#'     AESEV   = fr_col("Severity", width = 0.8),
+#'     ASTDY   = fr_col("Study Day", width = 0.8, align = "right"),
+#'     ADURN   = fr_col("Duration (days)", width = 1.0, align = "right")
+#'   ) |>
+#'   fr_rows(
+#'     sort_by = c("USUBJID", "ASTDY"),
+#'     repeat_cols = "USUBJID"
+#'   ) |>
+#'   fr_titles("Listing 16.2.7.2 Adverse Events Sorted by Subject and Study Day") |>
+#'   fr_footnotes("Repeated subject IDs are suppressed for readability.")
+#'
+#' @seealso [fr_table()] for summary tables, [fr_rows()] for `sort_by` and
+#'   `repeat_cols`, [fr_render()] to produce output.
+#'
+#' @export
+fr_listing <- function(data) {
+  if (!is.data.frame(data)) {
+    cli_abort("{.arg data} must be a data frame.", call = caller_env())
+  }
+
+  spec <- new_fr_spec(data, type = "listing")
+  spec <- apply_config(spec)
+  spec <- apply_fr_theme(spec)
+
+  # Listing defaults (overridable by subsequent verb calls)
+  spec$page$font_size <- 8
+  spec$page$col_split <- TRUE
+  spec$body$wrap <- TRUE
+
+  # Default to left alignment for all columns
+  for (nm in names(spec$data)) {
+    if (is.null(spec$columns[[nm]])) {
+      col_def <- fr_col(label = nm, align = "left")
+      col_def$id <- nm
+      spec$columns[[nm]] <- col_def
+    }
+  }
+
+  # Default header rule
+  spec <- fr_hlines(spec, "header")
+
+  spec
+}
+
+
+#' Start a tlframe Figure Pipeline
+#'
+#' @description
+#'
+#' Entry point for figures — wraps a plot object (ggplot2 or base R) with
+#' the same titling, footnoting, and page chrome as tables. The plot is
+#' embedded in the rendered output with consistent regulatory formatting.
+#'
+#' @param plot A plot object. Supported types:
+#'   * `ggplot` object (from ggplot2)
+#'   * `recordedplot` object (from `recordPlot()`)
+#' @param width Numeric. Plot width in inches within the page. Default `NULL`
+#'   uses the full printable width.
+#' @param height Numeric. Plot height in inches within the page. Default `NULL`
+#'   uses the remaining height after titles and footnotes.
+#'
+#' @return An `fr_spec` object with `type = "figure"`.
+#'
+#' @section Supported verbs:
+#' Figures support: [fr_titles()], [fr_footnotes()], [fr_page()],
+#' [fr_pagehead()], [fr_pagefoot()], [fr_spacing()], [fr_render()].
+#'
+#' Column/header/row/style/span/rule verbs are no-ops on figure specs.
+#'
+#' @section Render strategy:
+#' * **PDF**: Plot saved as temporary PDF, included via `\\includegraphics`
+#'   in LaTeX with titles/footnotes as DeclareTblrTemplate.
+#' * **RTF**: Plot saved as temporary PNG, embedded via `\\pict` RTF
+#'   picture group with titles as paragraphs.
+#'
+#' @examples
+#' # fr_figure() requires a ggplot or recordedplot object
+#' if (requireNamespace("ggplot2", quietly = TRUE)) {
+#'   p <- ggplot2::ggplot(adtte, ggplot2::aes(x = AVAL, y = TRTA)) +
+#'     ggplot2::geom_point()
+#'
+#'   spec <- p |>
+#'     fr_figure() |>
+#'     fr_titles("Figure 14.2.1 Time-to-Event") |>
+#'     fr_footnotes("Source: ADTTE") |>
+#'     fr_page(orientation = "landscape")
+#'   spec
+#' }
+#'
+#' ## ── Explicit width and height ─────────────────────────────────────────────
+#' if (requireNamespace("ggplot2", quietly = TRUE)) {
+#'   p <- ggplot2::ggplot(adsl, ggplot2::aes(x = AGE, fill = TRT01A)) +
+#'     ggplot2::geom_histogram(binwidth = 5, position = "dodge") +
+#'     ggplot2::labs(x = "Age (years)", y = "Count", fill = "Treatment")
+#'
+#'   spec <- p |>
+#'     fr_figure(width = 7, height = 4.5) |>
+#'     fr_titles(
+#'       "Figure 14.1.2 Distribution of Age by Treatment Arm",
+#'       "Full Analysis Set"
+#'     ) |>
+#'     fr_footnotes("Source: ADSL") |>
+#'     fr_page(orientation = "landscape")
+#'   spec
+#' }
+#'
+#' ## ── Base R plot with recordPlot() ─────────────────────────────────────────
+#' # Capture a base R plot as a recordedplot object.
+#' # Use a temporary PDF device to avoid creating Rplots.pdf.
+#' tmp_pdf <- tempfile(fileext = ".pdf")
+#' pdf(tmp_pdf)
+#' old_par <- par(mar = c(5, 4, 2, 1))
+#' plot(adsl$AGE, adsl$BMIBL,
+#'      xlab = "Age (years)", ylab = "BMI (kg/m2)",
+#'      pch = 19, col = "#4472C4", cex = 0.7,
+#'      main = "")
+#' p_base <- recordPlot()
+#' par(old_par)
+#' dev.off()
+#' unlink(tmp_pdf)
+#'
+#' spec <- p_base |>
+#'   fr_figure(width = 6, height = 4) |>
+#'   fr_titles("Figure 14.1.3 Age vs BMI at Baseline") |>
+#'   fr_footnotes("Source: ADSL")
+#' spec
+#'
+#' @seealso [fr_table()] for summary tables, [fr_listing()] for listings.
+#'
+#' @export
+fr_figure <- function(plot, width = NULL, height = NULL) {
+  call <- caller_env()
+
+  # Validate plot object
+  is_ggplot <- inherits(plot, "ggplot")
+  is_recorded <- inherits(plot, "recordedplot")
+
+  if (!is_ggplot && !is_recorded) {
+    cli_abort(
+      c("{.arg plot} must be a {.cls ggplot} or {.cls recordedplot} object.",
+        "i" = "Use {.fn ggplot2::ggplot} or {.fn recordPlot} to create plots."),
+      call = call
+    )
+  }
+
+  if (!is.null(width))  check_positive_num(width, arg = "width", call = call)
+  if (!is.null(height)) check_positive_num(height, arg = "height", call = call)
+
+  # Create spec with empty data frame
+  spec <- new_fr_spec(
+    data = vctrs::new_data_frame(),
+    type = "figure",
+    plot = plot
+  )
+  spec$figure_width <- width
+  spec$figure_height <- height
+  spec <- apply_config(spec)
+  spec <- apply_fr_theme(spec)
+
   spec
 }

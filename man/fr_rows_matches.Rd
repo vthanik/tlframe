@@ -78,6 +78,25 @@ tbl_ae_soc |>
     fr_row_style(rows = fr_rows_matches("row_type", "pt"), fg = "#333333")
   )
 
+## ── Alternation pattern: match "Total" or "Subtotal" ────────────────────
+
+fr_rows_matches("characteristic", pattern = "Total|Subtotal")
+
+## ── Character class pattern: rows starting with uppercase letter ───────
+
+fr_rows_matches("characteristic", pattern = "^[A-Z]")
+
+## ── Combined with fr_style in a pipeline ──────────────────────────────────
+
+tbl_disp |>
+  fr_table() |>
+  fr_styles(
+    fr_row_style(
+      rows = fr_rows_matches("category", pattern = "Completed|Discontinued"),
+      bold = TRUE, bg = "#F0F0F0"
+    )
+  )
+
 }
 \seealso{
 \code{\link[=fr_row_style]{fr_row_style()}} for row styling, \code{\link[=fr_style]{fr_style()}} for cell styling,

@@ -96,9 +96,10 @@
 #' @param bold Logical or `NULL`. Whether header cells are bold. Default
 #'   `NULL` inherits the built-in default (FALSE). Set `TRUE` explicitly
 #'   if you want bold headers.
-#' @param bg Background colour for header cells (hex or named). `NULL`
-#'   inherits.
-#' @param fg Foreground (text) colour for header cells. `NULL` inherits.
+#' @param bg Background colour for header cells: hex string (`"#003366"`) or
+#'   CSS named colour (`"steelblue"`, `"lightgray"`, etc.). `NULL` inherits.
+#' @param fg Foreground (text) colour for header cells: hex string or CSS
+#'   named colour. `NULL` inherits.
 #' @param font_size Font size in points for header cells. `NULL` inherits
 #'   from page font size.
 #' @param repeat_on_page Logical. Whether to repeat the column header on
@@ -208,7 +209,6 @@
 #'
 #' # group_label is useful when counting logic varies by parameter.
 #' # Here, Temperature uses a stricter filter (non-missing + in-range).
-#' \dontrun{
 #' tbl_vs |>
 #'   fr_table() |>
 #'   fr_rows(page_by = "param") |>
@@ -227,13 +227,18 @@
 #'     n_data = advs,
 #'     format = "{name}\n(N={n})"
 #'   )
-#' }
 #'
-#' ## ── Header background colour ─────────────────────────────────────────────
+#' ## ── Header background colour (hex or CSS named colour) ──────────────────
 #'
+#' # Hex colour
 #' tbl_demog |>
 #'   fr_table() |>
 #'   fr_header(bg = "#E0E0E0", bold = TRUE)
+#'
+#' # CSS named colour (148 available: lavender, aliceblue, gainsboro, etc.)
+#' tbl_demog |>
+#'   fr_table() |>
+#'   fr_header(bg = "lavender", fg = "midnightblue", bold = TRUE)
 #'
 #' ## ── Order-independent: fr_header first, then fr_cols ─────────────────────
 #'

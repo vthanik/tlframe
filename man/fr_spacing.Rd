@@ -127,6 +127,37 @@ tbl_demog |>
   fr_pagefoot(left = "{program}", right = "{datetime}") |>
   fr_spacing(pagefoot_before = 1L)
 
+## ── All five spacing parameters in one call ──────────────────────────────
+
+tbl_ae_soc |>
+  fr_table() |>
+  fr_titles("Table 14.3.1 Adverse Events by SOC") |>
+  fr_footnotes("[a] MedDRA v26.1.") |>
+  fr_rows(page_by = "soc") |>
+  fr_pagehead(left = "TFRM-2024-001") |>
+  fr_pagefoot(left = "{program}") |>
+  fr_spacing(
+    titles_after     = 1L,
+    footnotes_before = 1L,
+    pagehead_after   = 1L,
+    pagefoot_before  = 1L,
+    page_by_after    = 1L
+  )
+
+## ── Tight layout: zero spacing everywhere ────────────────────────────────
+
+tbl_demog |>
+  fr_table() |>
+  fr_titles("Table 14.1.1 Demographics") |>
+  fr_footnotes("[a] N = number of subjects.") |>
+  fr_spacing(
+    titles_after     = 0L,
+    footnotes_before = 0L,
+    pagehead_after   = 0L,
+    pagefoot_before  = 0L,
+    page_by_after    = 0L
+  )
+
 }
 \seealso{
 \code{\link[=fr_titles]{fr_titles()}}, \code{\link[=fr_footnotes]{fr_footnotes()}}, \code{\link[=fr_pagehead]{fr_pagehead()}}, \code{\link[=fr_pagefoot]{fr_pagefoot()}},

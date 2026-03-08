@@ -79,9 +79,12 @@ tbl_demog |> fr_table() |> fr_grid("booktabs/box")
 
 tbl_demog |> fr_table() |> fr_grid("hsides/all")
 
-## ── Custom width applied uniformly ────────────────────────────────────
+## ── Custom width and colour applied uniformly ─────────────────────────
 
 tbl_demog |> fr_table() |> fr_grid("header/box", width = "medium")
+
+# CSS named colour for both h and v rules
+tbl_demog |> fr_table() |> fr_grid("header/box", color = "navy")
 
 ## ── Full pipeline ─────────────────────────────────────────────────────
 

@@ -107,19 +107,32 @@ This mirrors the behaviour of \code{.Rprofile}, \verb{_quarto.yml}, and
 }
 
 \examples{
-\dontrun{
-# Auto-discover _tlframe.yml from project root
-fr_config()
-
-# Explicit path
-fr_config("path/to/_tlframe.yml")
+# Load the built-in package defaults config
+default_cfg <- system.file("defaults/_tlframe.yml", package = "tlframe")
+fr_config(default_cfg)
 
 # Inspect what was loaded
 fr_config_get()
 
-# Reset and start fresh
+# Create a temporary custom config and load it
+yml <- file.path(tempdir(), "_tlframe.yml")
+writeLines(c(
+  "page:",
+  "  orientation: landscape",
+  "  font_size: 8",
+  "  font_family: 'Courier New'",
+  "header:",
+  "  bold: true",
+  "tokens:",
+  "  company: 'Pharma Corp'"
+), yml)
+fr_config(yml)
+fr_config_get()$page$font_size    # 8
+fr_config_get()$tokens$company    # "Pharma Corp"
+
+# Clean up
 fr_config_reset()
-}
+unlink(yml)
 
 }
 \seealso{

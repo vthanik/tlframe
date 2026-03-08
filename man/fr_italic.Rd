@@ -35,11 +35,10 @@ LaTeX output, it maps to \verb{\\textit\{\}}.
 # Italic P-value annotation
 fr_italic("P")
 
-# In footnotes (requires a spec):
-\dontrun{
+# In footnotes:
+spec <- tbl_demog |> fr_table()
 spec |> fr_footnotes("[a] {fr_italic('P')}-value from Fisher's exact test.")
 spec |> fr_footnotes("Comparison {fr_italic('vs.')} placebo.")
-}
 
 }
 \seealso{

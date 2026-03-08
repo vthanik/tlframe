@@ -110,6 +110,30 @@
 #'   fr_table() |>
 #'   fr_page(orientation = "portrait")   # overrides the landscape theme default
 #'
+#' ## ── Theme with spacing configuration ──────────────────────────────────────
+#'
+#' fr_theme_reset()
+#' fr_theme(
+#'   font_size = 9,
+#'   spacing   = list(titles_after = 2L, footnotes_before = 2L,
+#'                    pagehead_after = 1L)
+#' )
+#' fr_theme_get()$spacing   # check the spacing settings
+#'
+#' ## ── Theme with footnote_separator ────────────────────────────────────────
+#'
+#' fr_theme_reset()
+#' fr_theme(footnote_separator = FALSE, hlines = "header")
+#' fr_theme_get()$footnote_separator   # FALSE
+#'
+#' ## ── Theme auto-applied: inspect spec after fr_table() ────────────────────
+#'
+#' fr_theme_reset()
+#' fr_theme(font_size = 8, orientation = "portrait", hlines = "header")
+#' spec <- tbl_demog |> fr_table()
+#' spec$page$font_size      # 8 (inherited from theme)
+#' spec$page$orientation    # "portrait" (inherited from theme)
+#'
 #' ## ── Reset all theme settings ──────────────────────────────────────────────
 #'
 #' fr_theme_reset()
@@ -204,6 +228,12 @@ fr_theme_set <- fr_theme
 #' theme <- fr_theme_get()
 #' theme$font_size   # 9
 #'
+#' ## ── Empty state after reset ───────────────────────────────────────────────
+#'
+#' fr_theme_reset()
+#' fr_theme_get()     # list() — no theme settings active
+#' length(fr_theme_get()) == 0L   # TRUE
+#'
 #' @seealso [fr_theme()] to set, [fr_theme_reset()] to clear,
 #'   [fr_config_get()] for YAML config inspection.
 #'
@@ -227,9 +257,23 @@ fr_theme_get <- function() {
 #' @return Invisibly `NULL`.
 #'
 #' @examples
-#' fr_theme(font_size = 9, hlines = "header")
-#' fr_theme_reset()   # back to built-in defaults
-#' fr_theme_get()     # returns list()
+#' ## ── Before / after effect ─────────────────────────────────────────────────
+#'
+#' fr_theme(font_size = 9, hlines = "header", orientation = "landscape")
+#' fr_theme_get()$font_size        # 9
+#' fr_theme_get()$hlines           # "header"
+#'
+#' fr_theme_reset()                # clear everything
+#' fr_theme_get()                  # list() — empty
+#' length(fr_theme_get()) == 0L    # TRUE
+#'
+#' ## ── Reset does not affect YAML config ─────────────────────────────────────
+#'
+#' # fr_theme_reset() only clears the session theme.
+#' # To also clear YAML config, call fr_config_reset() separately.
+#' fr_theme(font_size = 8)
+#' fr_theme_reset()
+#' fr_theme_get()   # list()
 #'
 #' @seealso [fr_theme()] to set, [fr_theme_get()] to inspect,
 #'   [fr_config_reset()] to also clear YAML config.

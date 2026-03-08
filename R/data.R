@@ -489,30 +489,3 @@
 "tbl_vs"
 
 
-#' Vital Signs Summary by Treatment Arm (8-arm dose-ranging)
-#'
-#' A wide-format TFL-ready summary of vital signs across 7 treatment arms
-#' plus total column. Designed for testing `col_split` (column panel
-#' splitting across pages: 1 stub + 5 treatment columns on page 1,
-#' 1 stub + 3 treatment columns on page 2).
-#'
-#' @format A data frame with columns:
-#' \describe{
-#'   \item{param}{Vital sign parameter name (e.g. "Systolic Blood Pressure (mmHg)")}
-#'   \item{timepoint}{Visit timepoint (e.g. "Baseline", "Week 4 Value")}
-#'   \item{statistic}{Summary statistic label (e.g. "  Mean (SD)", "  Median")}
-#'   \item{placebo}{Placebo arm values}
-#'   \item{zom_10mg}{Zomerane 10mg arm values}
-#'   \item{zom_25mg}{Zomerane 25mg arm values}
-#'   \item{zom_50mg}{Zomerane 50mg arm values}
-#'   \item{zom_100mg}{Zomerane 100mg arm values}
-#'   \item{zom_200mg}{Zomerane 200mg arm values}
-#'   \item{zom_400mg}{Zomerane 400mg arm values}
-#'   \item{total}{Total across all arms}
-#' }
-#'
-#' @source Synthetic data generated in `data-raw/create_vitals_dataset.R`.
-#'
-#' @examples
-#' head(tbl_vitals, 10)
-"tbl_vitals"

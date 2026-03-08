@@ -137,6 +137,30 @@ tbl_ae_soc |>
   fr_table() |>
   fr_page(orientation = "portrait")   # overrides the landscape theme default
 
+## ── Theme with spacing configuration ──────────────────────────────────────
+
+fr_theme_reset()
+fr_theme(
+  font_size = 9,
+  spacing   = list(titles_after = 2L, footnotes_before = 2L,
+                   pagehead_after = 1L)
+)
+fr_theme_get()$spacing   # check the spacing settings
+
+## ── Theme with footnote_separator ────────────────────────────────────────
+
+fr_theme_reset()
+fr_theme(footnote_separator = FALSE, hlines = "header")
+fr_theme_get()$footnote_separator   # FALSE
+
+## ── Theme auto-applied: inspect spec after fr_table() ────────────────────
+
+fr_theme_reset()
+fr_theme(font_size = 8, orientation = "portrait", hlines = "header")
+spec <- tbl_demog |> fr_table()
+spec$page$font_size      # 8 (inherited from theme)
+spec$page$orientation    # "portrait" (inherited from theme)
+
 ## ── Reset all theme settings ──────────────────────────────────────────────
 
 fr_theme_reset()

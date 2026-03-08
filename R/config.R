@@ -136,19 +136,32 @@ find_config <- function(dir = getwd()) {
 #' ```
 #'
 #' @examples
-#' \dontrun{
-#' # Auto-discover _tlframe.yml from project root
-#' fr_config()
-#'
-#' # Explicit path
-#' fr_config("path/to/_tlframe.yml")
+#' # Load the built-in package defaults config
+#' default_cfg <- system.file("defaults/_tlframe.yml", package = "tlframe")
+#' fr_config(default_cfg)
 #'
 #' # Inspect what was loaded
 #' fr_config_get()
 #'
-#' # Reset and start fresh
+#' # Create a temporary custom config and load it
+#' yml <- file.path(tempdir(), "_tlframe.yml")
+#' writeLines(c(
+#'   "page:",
+#'   "  orientation: landscape",
+#'   "  font_size: 8",
+#'   "  font_family: 'Courier New'",
+#'   "header:",
+#'   "  bold: true",
+#'   "tokens:",
+#'   "  company: 'Pharma Corp'"
+#' ), yml)
+#' fr_config(yml)
+#' fr_config_get()$page$font_size    # 8
+#' fr_config_get()$tokens$company    # "Pharma Corp"
+#'
+#' # Clean up
 #' fr_config_reset()
-#' }
+#' unlink(yml)
 #'
 #' @seealso [fr_config_get()] to inspect, [fr_config_reset()] to clear,
 #'   [fr_theme()] for session-level overrides, [fr_page()] for per-table
@@ -189,17 +202,35 @@ fr_config <- function(file = NULL) {
 #'   is loaded and no `_tlframe.yml` is found.
 #'
 #' @examples
-#' \dontrun{
-#' # Load config and inspect
-#' fr_config("_tlframe.yml")
-#' cfg <- fr_config_get()
-#' cfg$page$font_size     # 9
-#' cfg$header$align       # "center"
-#' cfg$tokens$company     # "Pharma Corp"
+#' # Start clean — no config loaded
+#' fr_config_reset()
 #'
-#' # Check if a specific setting exists
-#' cfg$page$orientation   # "landscape"
-#' }
+#' # Load config and inspect top-level keys
+#' default_cfg <- system.file("defaults/_tlframe.yml", package = "tlframe")
+#' fr_config(default_cfg)
+#' cfg <- fr_config_get()
+#' names(cfg)                    # page, header, pagehead, etc.
+#'
+#' # Access nested keys
+#' cfg$page$font_size            # font size from config
+#' cfg$page$orientation          # page orientation
+#' cfg$header$bold               # header bold setting
+#'
+#' # After reset, fr_config_get() auto-discovers defaults
+#' fr_config_reset()
+#'
+#' # Load a custom config with specific tokens
+#' yml <- file.path(tempdir(), "_tlframe.yml")
+#' writeLines(c(
+#'   "tokens:",
+#'   "  study_id: 'DEMO-001'"
+#' ), yml)
+#' fr_config(yml)
+#' fr_config_get()$tokens$study_id   # "DEMO-001"
+#'
+#' # Clean up
+#' fr_config_reset()
+#' unlink(yml)
 #'
 #' @seealso [fr_config()] to load, [fr_config_reset()] to clear,
 #'   [fr_theme_get()] for session-level theme inspection.
@@ -222,11 +253,18 @@ fr_config_get <- function() {
 #' @return Invisibly `NULL`.
 #'
 #' @examples
-#' \dontrun{
-#' fr_config("_tlframe.yml")
-#' fr_config_reset()      # config cleared
-#' fr_config_get()        # triggers re-discovery
-#' }
+#' # Load a config
+#' default_cfg <- system.file("defaults/_tlframe.yml", package = "tlframe")
+#' fr_config(default_cfg)
+#' fr_config_get()$page$orientation   # has a value
+#'
+#' # Reset clears everything
+#' fr_config_reset()
+#'
+#' # After reset and re-load, config is back to defaults
+#' fr_config(default_cfg)
+#' fr_config_get()$page$orientation
+#' fr_config_reset()                  # clean up
 #'
 #' @seealso [fr_config()] to load, [fr_config_get()] to inspect.
 #'

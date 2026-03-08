@@ -45,10 +45,9 @@ fr_col("Mean {fr_unicode(0x00B1)} SD", width = 1.5)
 # Degree symbol
 fr_col("Temperature ({fr_unicode(0x00B0)}C)", width = 1.5)
 
-# In a footnote (requires a spec):
-\dontrun{
+# In a footnote:
+spec <- tbl_demog |> fr_table()
 spec |> fr_footnotes("[a] P {fr_unicode(0x2264)} 0.05 considered significant.")
-}
 
 }
 \seealso{

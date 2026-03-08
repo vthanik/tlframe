@@ -74,6 +74,10 @@ content-based row targeting (e.g. bold every "Total" row).
 }
 
 \examples{
+## ── Standalone: store and reuse ─────────────────────────────────────────
+bold_first <- fr_row_style(rows = 1L, bold = TRUE)
+bold_first  # inspect
+
 ## ── Bold the first body row (e.g. total row) ─────────────────────────────
 
 fr_row_style(rows = 1L, bold = TRUE)

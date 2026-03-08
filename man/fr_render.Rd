@@ -56,13 +56,15 @@ in every panel. Each panel is rendered as a separate section.
 }
 
 \examples{
-\dontrun{
-# Minimal render
+# Render to a temporary RTF file
+out <- file.path(tempdir(), "demog.rtf")
 tbl_demog |>
   fr_table() |>
-  fr_render("demog.rtf")
+  fr_render(out)
+unlink(out)
 
-# Full pipeline
+# Full pipeline with titles, footnotes, and page chrome
+out <- file.path(tempdir(), "demog_full.rtf")
 tbl_demog |>
   fr_table() |>
   fr_titles("Table 14.1.1", "Summary of Demographics") |>
@@ -72,7 +74,50 @@ tbl_demog |>
   fr_page(orientation = "landscape") |>
   fr_pagehead(left = "{program}", right = "{datetime}") |>
   fr_pagefoot(center = "Page {thepage} of {total_pages}") |>
-  fr_render("demog.rtf")
+  fr_render(out)
+unlink(out)
+
+# Multiple format rendering in sequence (RTF then LaTeX source)
+rtf_out <- file.path(tempdir(), "ae_soc.rtf")
+tex_out <- file.path(tempdir(), "ae_soc.tex")
+spec <- tbl_ae_soc |>
+  fr_table() |>
+  fr_titles("Table 14.3.1", "Adverse Events by SOC") |>
+  fr_hlines("header") |>
+  fr_page(orientation = "landscape")
+fr_render(spec, rtf_out)
+fr_render(spec, tex_out)
+unlink(c(rtf_out, tex_out))
+
+# Listing rendering — individual AE records
+out <- file.path(tempdir(), "ae_listing.rtf")
+adae |>
+  fr_listing() |>
+  fr_cols(
+    USUBJID = fr_col("Subject ID", width = 1.2),
+    AEDECOD = fr_col("Preferred Term"),
+    AESEV   = fr_col("Severity", width = 1.0)
+  ) |>
+  fr_rows(sort_by = c("USUBJID", "ASTDT"),
+          repeat_cols = "USUBJID") |>
+  fr_titles("Listing 16.2.7", "Adverse Events") |>
+  fr_footnotes("Source: ADAE") |>
+  fr_render(out)
+unlink(out)
+
+# Figure rendering (requires ggplot2)
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  p <- ggplot2::ggplot(adsl, ggplot2::aes(x = AGE)) +
+    ggplot2::geom_histogram(binwidth = 5) +
+    ggplot2::labs(title = NULL, x = "Age (years)", y = "Count")
+  out <- file.path(tempdir(), "age_dist.rtf")
+  p |>
+    fr_figure() |>
+    fr_titles("Figure 14.1.1", "Distribution of Age") |>
+    fr_footnotes("Source: ADSL") |>
+    fr_page(orientation = "landscape") |>
+    fr_render(out)
+  unlink(out)
 }
 
 }

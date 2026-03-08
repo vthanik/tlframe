@@ -118,6 +118,22 @@ fr_col("Parameter", width = 2.5, align = "left")
 
 fr_col("Parameter", width = "25\%")
 
+## ── Centered header over right-aligned body ──────────────────────────────
+
+fr_col("Zomerane 50mg", width = 1.5, align = "right", header_align = "center")
+
+## ── Percentage width in a pipeline ───────────────────────────────────────
+
+tbl_demog |>
+  fr_table() |>
+  fr_cols(
+    characteristic = fr_col("Characteristic", width = "30\%"),
+    zom_50mg       = fr_col("Zomerane 50mg",  width = "17.5\%", align = "right"),
+    zom_100mg      = fr_col("Zomerane 100mg", width = "17.5\%", align = "right"),
+    placebo        = fr_col("Placebo",         width = "17.5\%", align = "right"),
+    total          = fr_col("Total",           width = "17.5\%", align = "right")
+  )
+
 ## ── Auto-width: let the engine measure content ───────────────────────────
 
 fr_col("Parameter", width = "auto")

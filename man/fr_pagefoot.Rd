@@ -104,6 +104,20 @@ tbl_demog |>
   fr_table() |>
   fr_pagefoot(right = "Page {thepage} of {total_pages}")
 
+## ── Full page chrome: pagehead + pagefoot together ────────────────────────
+
+tbl_demog |>
+  fr_table() |>
+  fr_page(tokens = list(study = "TFRM-2024-001", cutoff = "31DEC2024")) |>
+  fr_pagehead(
+    left  = "Study: {study}",
+    right = "Cutoff: {cutoff}"
+  ) |>
+  fr_pagefoot(
+    left  = "{program}",
+    right = "{datetime}"
+  )
+
 }
 \seealso{
 \code{\link[=fr_pagehead]{fr_pagehead()}} for the running header, \code{\link[=fr_page]{fr_page()}} for custom

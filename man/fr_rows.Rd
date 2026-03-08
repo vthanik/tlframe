@@ -11,7 +11,10 @@ fr_rows(
   indent_by = NULL,
   blank_after = NULL,
   page_by_bold = FALSE,
-  page_by_align = "left"
+  page_by_align = "left",
+  sort_by = NULL,
+  repeat_cols = NULL,
+  wrap = FALSE
 )
 }
 \arguments{
@@ -41,6 +44,20 @@ the column headers.}
 
 \item{page_by_align}{Horizontal alignment for the page-by label. One of
 \code{"left"} (default), \code{"center"}, \code{"right"}, or \code{"decimal"}.}
+
+\item{sort_by}{Character vector of column name(s). Sorts the data by these
+columns before rendering. For listings, this controls the display order
+(e.g., \code{sort_by = c("USUBJID", "ASTDT")}). Sorting is applied in
+\code{finalize_spec()}.}
+
+\item{repeat_cols}{Character vector of column name(s). Suppresses repeated
+consecutive values in these columns — only the first occurrence in each
+run is displayed. Standard for listings where subject ID appears once per
+block. Suppression is applied in \code{finalize_spec()}.}
+
+\item{wrap}{Logical. When \code{TRUE}, enables text wrapping in body cells.
+Default \code{FALSE}. For listings with long text fields (e.g., verbatim terms,
+medical history), wrapping prevents cell content from overflowing.}
 }
 \value{
 A modified \code{fr_spec}. Row config stored in \code{spec$body}.
@@ -148,6 +165,37 @@ tbl_ae_soc |>
     page_by   = "soc",
     group_by  = "soc",
     indent_by = "pt"
+  )
+
+## ── sort_by: order a listing by subject and start date ────────────────
+
+adae[1:20, c("USUBJID", "AEBODSYS", "AEDECOD", "ASTDT", "AESEV")] |>
+  fr_table() |>
+  fr_rows(sort_by = c("USUBJID", "ASTDT"))
+
+## ── repeat_cols: suppress repeated subject IDs in a listing ───────────
+
+adae[1:20, c("USUBJID", "AEBODSYS", "AEDECOD", "AESEV")] |>
+  fr_table() |>
+  fr_rows(
+    sort_by     = c("USUBJID", "AEBODSYS"),
+    repeat_cols = "USUBJID"
+  )
+
+## ── wrap = TRUE: enable text wrapping for long verbatim terms ─────────
+
+adae[1:10, c("USUBJID", "AEBODSYS", "AEDECOD", "AEOUT")] |>
+  fr_table() |>
+  fr_rows(wrap = TRUE)
+
+## ── Combined: sort_by + repeat_cols on adverse event listing ──────────
+
+adae[1:30, c("USUBJID", "AEBODSYS", "AEDECOD", "AESEV", "ASTDT")] |>
+  fr_table() |>
+  fr_rows(
+    sort_by     = c("USUBJID", "AEBODSYS", "AEDECOD"),
+    repeat_cols = c("USUBJID", "AEBODSYS"),
+    wrap        = TRUE
   )
 
 }

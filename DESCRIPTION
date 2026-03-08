@@ -8,7 +8,9 @@ Description: Produces regulatory-grade clinical trial tables, listings, and
     pharmaceutical industry workflows with support for paginated output,
     spanning headers, decimal alignment, programmatic page headers/footers,
     and company-specific rule presets. Built on disciplined S3 classes with
-    a clean, composable pipeline API. Zero tidyverse runtime dependencies.
+    a clean, composable pipeline API. No 'dplyr', 'tidyr', or 'purrr'
+    dependency — only lightweight infrastructure packages ('rlang', 'cli',
+    'vctrs').
 License: MIT + file LICENSE
 URL: https://github.com/scolumn/tlframe
 BugReports: https://github.com/scolumn/tlframe/issues

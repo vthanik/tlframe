@@ -31,18 +31,15 @@ adverse events or to indicate a secondary footnote series when the
 # Standalone dagger symbol
 fr_dagger()
 
-# In a footnote (requires a spec):
-\dontrun{
+# In a footnote:
+spec <- tbl_demog |> fr_table()
 spec |> fr_footnotes("{fr_dagger()} Treatment-related adverse event.")
-}
 
-# Combined dagger and double dagger (requires a spec):
-\dontrun{
+# Combined dagger and double dagger:
 spec |> fr_footnotes(
   "{fr_dagger()} Treatment-related adverse event.",
   "{fr_ddagger()} Serious adverse event."
 )
-}
 
 }
 \seealso{

@@ -107,9 +107,10 @@ build_token_map <- function(page_num, total_pages, spec) {
   )
 
   # Overridable tokens — user can set via fr_page(tokens = ...)
+  src_path <- get_source_path()
+  if (is.na(src_path)) src_path <- ""
   overridable <- list(
-    program  = user_tokens[["program"]] %||%
-                get_source_path() %||% "",
+    program  = user_tokens[["program"]] %||% src_path,
     datetime = user_tokens[["datetime"]] %||%
                 get_timestamp()
   )

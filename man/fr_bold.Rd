@@ -37,10 +37,9 @@ surrounding font family.
 # Bold a label keyword
 fr_col("{fr_bold('Total')} Subjects", width = 1.5)
 
-# Bold just the table number in a title (requires a spec):
-\dontrun{
+# Bold just the table number in a title:
+spec <- tbl_demog |> fr_table()
 spec |> fr_titles("{fr_bold('Table 14.1.1')} Summary of Demographics")
-}
 
 }
 \seealso{

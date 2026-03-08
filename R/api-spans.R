@@ -88,14 +88,18 @@
 #'   )
 #'
 #' ## ── Two-level spanning header ─────────────────────────────────────────────
-#' \dontrun{
-#' data |>
+#'
+#' # Build a small example with dose-level columns
+#' dose_data <- data.frame(
+#'   param = "Weight", low_n = "43", low_pct = "31.9%",
+#'   high_n = "47", high_pct = "34.8%"
+#' )
+#' dose_data |>
 #'   fr_table() |>
 #'   fr_spans("10 mg"    = c("low_n",  "low_pct"),  .level = 1L) |>
 #'   fr_spans("25 mg"    = c("high_n", "high_pct"), .level = 1L) |>
 #'   fr_spans("Zomerane" = c("low_n",  "low_pct",
 #'                            "high_n", "high_pct"), .level = 2L)
-#' }
 #'
 #' ## ── Markup in span label ─────────────────────────────────────────────────
 #'
@@ -103,6 +107,33 @@
 #'   fr_table() |>
 #'   fr_spans(
 #'     "{fr_bold('Zomerane')}" = c("zom_50mg", "zom_100mg")
+#'   )
+#'
+#' ## ── Span without bottom border (.hline = FALSE) ────────────────────────
+#'
+#' tbl_demog |>
+#'   fr_table() |>
+#'   fr_spans(
+#'     "Zomerane" = c("zom_50mg", "zom_100mg"),
+#'     .hline = FALSE
+#'   )
+#'
+#' ## ── Single-column span (acts as a group label above one column) ────────
+#'
+#' tbl_demog |>
+#'   fr_table() |>
+#'   fr_spans(
+#'     "Zomerane" = c("zom_50mg", "zom_100mg"),
+#'     "Reference" = "placebo"
+#'   )
+#'
+#' ## ── Span + fr_header bold interaction ──────────────────────────────────
+#'
+#' tbl_demog |>
+#'   fr_table() |>
+#'   fr_header(bold = TRUE) |>
+#'   fr_spans(
+#'     "Zomerane" = c("zom_50mg", "zom_100mg")
 #'   )
 #'
 #' @seealso [fr_cols()] for individual column labels, [fr_col()] for the

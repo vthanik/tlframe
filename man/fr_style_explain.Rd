@@ -70,6 +70,34 @@ result <- fr_style_explain(spec, row = 1L, col = "total")
 result$final$bold   # TRUE (from row style)
 result$final$bg     # "#EBF5FB" (from col style)
 
+## ── Multiple overlapping styles: see precedence in action ─────────────────
+
+spec2 <- tbl_demog |>
+  fr_table() |>
+  fr_styles(
+    fr_col_style(cols = "total", bg = "#EBF5FB"),
+    fr_row_style(rows = 1L, bg = "#FFF3CD", bold = TRUE),
+    fr_style(region = "body", rows = 1L, cols = "total",
+             fg = "#CC0000", italic = TRUE)
+  )
+
+# Cell (1, "total") has three overlapping layers — cell wins for fg/italic,
+# row wins for bg/bold (narrower scope), col style is overridden:
+fr_style_explain(spec2, row = 1L, col = "total")
+
+## ── Inspect a header cell ─────────────────────────────────────────────────
+
+spec3 <- tbl_demog |>
+  fr_table() |>
+  fr_styles(
+    fr_style(region = "header", bold = TRUE, bg = "#E0E0E0"),
+    fr_style(region = "header", cols = "total", bg = "#D0E4FF")
+  )
+
+# Note: fr_style_explain inspects body cells. For header-region styles,
+# review spec3$cell_styles directly:
+str(spec3$cell_styles)
+
 }
 \seealso{
 \code{\link[=fr_styles]{fr_styles()}} to apply styles, \code{\link[=fr_style]{fr_style()}} for cell-level

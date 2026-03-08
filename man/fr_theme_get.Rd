@@ -44,6 +44,12 @@ fr_theme_get()
 theme <- fr_theme_get()
 theme$font_size   # 9
 
+## ── Empty state after reset ───────────────────────────────────────────────
+
+fr_theme_reset()
+fr_theme_get()     # list() — no theme settings active
+length(fr_theme_get()) == 0L   # TRUE
+
 }
 \seealso{
 \code{\link[=fr_theme]{fr_theme()}} to set, \code{\link[=fr_theme_reset]{fr_theme_reset()}} to clear,

@@ -124,13 +124,57 @@
 #'     indent_by = "pt"
 #'   )
 #'
+#' ## ── sort_by: order a listing by subject and start date ────────────────
+#'
+#' adae[1:20, c("USUBJID", "AEBODSYS", "AEDECOD", "ASTDT", "AESEV")] |>
+#'   fr_table() |>
+#'   fr_rows(sort_by = c("USUBJID", "ASTDT"))
+#'
+#' ## ── repeat_cols: suppress repeated subject IDs in a listing ───────────
+#'
+#' adae[1:20, c("USUBJID", "AEBODSYS", "AEDECOD", "AESEV")] |>
+#'   fr_table() |>
+#'   fr_rows(
+#'     sort_by     = c("USUBJID", "AEBODSYS"),
+#'     repeat_cols = "USUBJID"
+#'   )
+#'
+#' ## ── wrap = TRUE: enable text wrapping for long verbatim terms ─────────
+#'
+#' adae[1:10, c("USUBJID", "AEBODSYS", "AEDECOD", "AEOUT")] |>
+#'   fr_table() |>
+#'   fr_rows(wrap = TRUE)
+#'
+#' ## ── Combined: sort_by + repeat_cols on adverse event listing ──────────
+#'
+#' adae[1:30, c("USUBJID", "AEBODSYS", "AEDECOD", "AESEV", "ASTDT")] |>
+#'   fr_table() |>
+#'   fr_rows(
+#'     sort_by     = c("USUBJID", "AEBODSYS", "AEDECOD"),
+#'     repeat_cols = c("USUBJID", "AEBODSYS"),
+#'     wrap        = TRUE
+#'   )
+#'
 #' @seealso [fr_page()] to set `orphan_min` / `widow_min`,
 #'   [fr_cols()] to hide structural columns from display.
+#'
+#' @param sort_by Character vector of column name(s). Sorts the data by these
+#'   columns before rendering. For listings, this controls the display order
+#'   (e.g., `sort_by = c("USUBJID", "ASTDT")`). Sorting is applied in
+#'   `finalize_spec()`.
+#' @param repeat_cols Character vector of column name(s). Suppresses repeated
+#'   consecutive values in these columns — only the first occurrence in each
+#'   run is displayed. Standard for listings where subject ID appears once per
+#'   block. Suppression is applied in `finalize_spec()`.
+#' @param wrap Logical. When `TRUE`, enables text wrapping in body cells.
+#'   Default `FALSE`. For listings with long text fields (e.g., verbatim terms,
+#'   medical history), wrapping prevents cell content from overflowing.
 #'
 #' @export
 fr_rows <- function(spec, page_by = NULL,
                     group_by = NULL, indent_by = NULL, blank_after = NULL,
-                    page_by_bold = FALSE, page_by_align = "left") {
+                    page_by_bold = FALSE, page_by_align = "left",
+                    sort_by = NULL, repeat_cols = NULL, wrap = FALSE) {
   call <- caller_env()
   check_fr_spec(spec, call = call)
 
@@ -149,6 +193,7 @@ fr_rows <- function(spec, page_by = NULL,
   }
 
   check_scalar_lgl(page_by_bold, arg = "page_by_bold", call = call)
+  check_scalar_lgl(wrap, arg = "wrap", call = call)
   page_by_align <- match_arg_fr(page_by_align, fr_env$valid_aligns, call = call)
 
   spec$body <- new_fr_body(
@@ -157,7 +202,10 @@ fr_rows <- function(spec, page_by = NULL,
     indent_by     = validate_cols(indent_by,     "indent_by"),
     blank_after   = validate_cols(blank_after,   "blank_after"),
     page_by_bold  = page_by_bold,
-    page_by_align = page_by_align
+    page_by_align = page_by_align,
+    sort_by       = validate_cols(sort_by,       "sort_by"),
+    repeat_cols   = validate_cols(repeat_cols,   "repeat_cols"),
+    wrap          = wrap
   )
   spec
 }

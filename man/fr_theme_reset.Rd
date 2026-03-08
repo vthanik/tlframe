@@ -18,9 +18,23 @@ Call this between test runs, at the top of scripts, or when switching
 between studies in the same R session.
 }
 \examples{
-fr_theme(font_size = 9, hlines = "header")
-fr_theme_reset()   # back to built-in defaults
-fr_theme_get()     # returns list()
+## ── Before / after effect ─────────────────────────────────────────────────
+
+fr_theme(font_size = 9, hlines = "header", orientation = "landscape")
+fr_theme_get()$font_size        # 9
+fr_theme_get()$hlines           # "header"
+
+fr_theme_reset()                # clear everything
+fr_theme_get()                  # list() — empty
+length(fr_theme_get()) == 0L    # TRUE
+
+## ── Reset does not affect YAML config ─────────────────────────────────────
+
+# fr_theme_reset() only clears the session theme.
+# To also clear YAML config, call fr_config_reset() separately.
+fr_theme(font_size = 8)
+fr_theme_reset()
+fr_theme_get()   # list()
 
 }
 \seealso{

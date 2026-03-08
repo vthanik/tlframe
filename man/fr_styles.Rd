@@ -50,6 +50,18 @@ engine applies them in a single pass over the cell grid.
 }
 
 \examples{
+## ── Create reusable style objects, then apply ─────────────────────────────
+header_style <- fr_style(region = "header", bold = TRUE, bg = "lavender")
+total_col    <- fr_col_style(cols = "total", bg = "aliceblue")
+bold_totals  <- fr_row_style(
+  rows = fr_rows_matches("characteristic", "Total"),
+  bold = TRUE
+)
+
+tbl_demog |>
+  fr_table() |>
+  fr_styles(header_style, total_col, bold_totals)
+
 ## ── Bold header + highlighted Total column ────────────────────────────────
 
 tbl_demog |>

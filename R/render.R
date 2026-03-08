@@ -51,13 +51,15 @@
 #' in every panel. Each panel is rendered as a separate section.
 #'
 #' @examples
-#' \dontrun{
-#' # Minimal render
+#' # Render to a temporary RTF file
+#' out <- file.path(tempdir(), "demog.rtf")
 #' tbl_demog |>
 #'   fr_table() |>
-#'   fr_render("demog.rtf")
+#'   fr_render(out)
+#' unlink(out)
 #'
-#' # Full pipeline
+#' # Full pipeline with titles, footnotes, and page chrome
+#' out <- file.path(tempdir(), "demog_full.rtf")
 #' tbl_demog |>
 #'   fr_table() |>
 #'   fr_titles("Table 14.1.1", "Summary of Demographics") |>
@@ -67,7 +69,50 @@
 #'   fr_page(orientation = "landscape") |>
 #'   fr_pagehead(left = "{program}", right = "{datetime}") |>
 #'   fr_pagefoot(center = "Page {thepage} of {total_pages}") |>
-#'   fr_render("demog.rtf")
+#'   fr_render(out)
+#' unlink(out)
+#'
+#' # Multiple format rendering in sequence (RTF then LaTeX source)
+#' rtf_out <- file.path(tempdir(), "ae_soc.rtf")
+#' tex_out <- file.path(tempdir(), "ae_soc.tex")
+#' spec <- tbl_ae_soc |>
+#'   fr_table() |>
+#'   fr_titles("Table 14.3.1", "Adverse Events by SOC") |>
+#'   fr_hlines("header") |>
+#'   fr_page(orientation = "landscape")
+#' fr_render(spec, rtf_out)
+#' fr_render(spec, tex_out)
+#' unlink(c(rtf_out, tex_out))
+#'
+#' # Listing rendering — individual AE records
+#' out <- file.path(tempdir(), "ae_listing.rtf")
+#' adae |>
+#'   fr_listing() |>
+#'   fr_cols(
+#'     USUBJID = fr_col("Subject ID", width = 1.2),
+#'     AEDECOD = fr_col("Preferred Term"),
+#'     AESEV   = fr_col("Severity", width = 1.0)
+#'   ) |>
+#'   fr_rows(sort_by = c("USUBJID", "ASTDT"),
+#'           repeat_cols = "USUBJID") |>
+#'   fr_titles("Listing 16.2.7", "Adverse Events") |>
+#'   fr_footnotes("Source: ADAE") |>
+#'   fr_render(out)
+#' unlink(out)
+#'
+#' # Figure rendering (requires ggplot2)
+#' if (requireNamespace("ggplot2", quietly = TRUE)) {
+#'   p <- ggplot2::ggplot(adsl, ggplot2::aes(x = AGE)) +
+#'     ggplot2::geom_histogram(binwidth = 5) +
+#'     ggplot2::labs(title = NULL, x = "Age (years)", y = "Count")
+#'   out <- file.path(tempdir(), "age_dist.rtf")
+#'   p |>
+#'     fr_figure() |>
+#'     fr_titles("Figure 14.1.1", "Distribution of Age") |>
+#'     fr_footnotes("Source: ADSL") |>
+#'     fr_page(orientation = "landscape") |>
+#'     fr_render(out)
+#'   unlink(out)
 #' }
 #'
 #' @seealso [fr_table()] to start a pipeline, [fr_page()] for page layout,
@@ -80,6 +125,22 @@ fr_render <- function(spec, path, format = NULL, ...) {
   check_scalar_chr(path, arg = "path", call = call)
 
   format <- format %||% detect_format(path, call = call)
+
+  # Figure dispatch — separate render path
+
+  if (identical(spec$type, "figure")) {
+    if (format == "pdf") {
+      render_figure_pdf(spec, path)
+    } else if (format %in% c("rtf")) {
+      render_figure_rtf(spec, path)
+    } else {
+      cli_abort(
+        "Figure rendering is only supported for {.val pdf} and {.val rtf} output.",
+        call = call
+      )
+    }
+    return(invisible(path))
+  }
 
   spec <- finalize_spec(spec)
   page_groups <- prepare_pages(spec)
@@ -113,16 +174,36 @@ detect_format <- function(path, call = caller_env()) {
       call = call
     )
   }
-  format_map <- c(rtf = "rtf", doc = "rtf", tex = "latex", pdf = "pdf")
-  fmt <- unname(format_map[ext])
-  if (is.na(fmt)) {
+  format_map <- build_extension_map()
+  result <- unname(format_map[ext])
+  if (is.na(result)) {
     cli_abort(
       c("Unsupported file extension {.val {ext}}.",
-        "i" = "Supported formats: {.val {names(format_map)}}."),
+        "i" = "Supported extensions: {.val {names(format_map)}}."),
       call = call
     )
   }
-  fmt
+  result
+}
+
+#' Build extension-to-format map from backend registry (cached)
+#' @noRd
+build_extension_map <- function() {
+  # Return cached map if registry hasn't changed
+  reg <- fr_env$backends
+  if (!is.null(fr_env$extension_map_cache) &&
+      identical(names(reg), fr_env$extension_map_cache_keys)) {
+    return(fr_env$extension_map_cache)
+  }
+  format_map <- character(0)
+  for (fmt in names(reg)) {
+    for (e in reg[[fmt]]$extensions) {
+      format_map[e] <- fmt
+    }
+  }
+  fr_env$extension_map_cache <- format_map
+  fr_env$extension_map_cache_keys <- names(reg)
+  format_map
 }
 
 
@@ -130,23 +211,132 @@ detect_format <- function(path, call = caller_env()) {
 # Internal: Backend Registry
 # ══════════════════════════════════════════════════════════════════════════════
 
-#' Get backend render function
+#' Get backend render function from registry
 #' @noRd
 get_backend <- function(format, call = caller_env()) {
-  backends <- list(
-    rtf   = list(render = render_rtf),
-    latex = list(render = render_latex),
-    pdf   = list(render = render_pdf)
-  )
-  backend <- backends[[format]]
+  reg <- fr_env$backends
+  backend <- reg[[format]]
   if (is.null(backend)) {
+    available <- names(reg)
     cli_abort(
       c("No backend available for format {.val {format}}.",
-        "i" = "Available backends: {.val {names(backends)}}."),
+        "i" = "Available backends: {.val {available}}."),
       call = call
     )
   }
   backend
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Backend Registration API
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' Register a Custom Render Backend
+#'
+#' @description
+#'
+#' Registers a new output format backend so that [fr_render()] can produce
+#' output in that format. Third-party packages can use this to add HTML,
+#' DOCX, or other formats without modifying tlframe source.
+#'
+#' @param format Character scalar. Format identifier (e.g., `"html"`).
+#' @param extensions Character vector. File extensions that map to this
+#'   format (e.g., `c("html", "htm")`).
+#' @param render_fn Function. The render function with signature
+#'   `function(spec, page_groups, col_panels, path)`.
+#' @param description Character scalar. Human-readable description.
+#'
+#' @return Invisibly returns `NULL`.
+#'
+#' @examples
+#' # Register a stub HTML backend
+#' fr_register_backend(
+#'   format = "html",
+#'   extensions = c("html", "htm"),
+#'   render_fn = function(spec, page_groups, col_panels, path) {
+#'     writeLines("<html><body>stub table</body></html>", path)
+#'   },
+#'   description = "Stub HTML tables"
+#' )
+#'
+#' # Verify it appears in the backend list
+#' fr_backends()
+#'
+#' # Use the custom backend
+#' out <- file.path(tempdir(), "demo.html")
+#' tbl_demog |> fr_table() |> fr_render(out)
+#' readLines(out)
+#' unlink(out)
+#'
+#' @seealso [fr_backends()] to list registered backends, [fr_render()].
+#' @export
+fr_register_backend <- function(format, extensions, render_fn,
+                                 description = "") {
+  call <- caller_env()
+  check_scalar_chr(format, arg = "format", call = call)
+  if (!is.character(extensions) || length(extensions) == 0L) {
+    cli_abort("{.arg extensions} must be a non-empty character vector.", call = call)
+  }
+  if (!is.function(render_fn)) {
+    cli_abort("{.arg render_fn} must be a function.", call = call)
+  }
+  check_scalar_chr(description, arg = "description", call = call)
+
+  fr_env$backends[[format]] <- list(
+    render      = render_fn,
+    extensions  = extensions,
+    description = description
+  )
+  # Invalidate cached extension map
+  fr_env$extension_map_cache <- NULL
+  fr_env$extension_map_cache_keys <- NULL
+  invisible(NULL)
+}
+
+
+#' List Registered Render Backends
+#'
+#' @description
+#'
+#' Returns a data frame listing all registered render backends, including
+#' built-in (RTF, LaTeX, PDF) and any custom backends added via
+#' [fr_register_backend()].
+#'
+#' @return A data frame with columns `format`, `extensions`, and `description`.
+#'
+#' @examples
+#' # List built-in backends
+#' fr_backends()
+#'
+#' # After registering a custom backend, it appears in the list
+#' fr_register_backend(
+#'   format = "csv",
+#'   extensions = "csv",
+#'   render_fn = function(spec, page_groups, col_panels, path) {
+#'     utils::write.csv(spec$data, path, row.names = FALSE)
+#'   },
+#'   description = "CSV export (data only)"
+#' )
+#' fr_backends()
+#'
+#' @seealso [fr_register_backend()], [fr_render()]
+#' @export
+fr_backends <- function() {
+  reg <- fr_env$backends
+  if (length(reg) == 0L) {
+    return(vctrs::new_data_frame(list(
+      format = character(0),
+      extensions = character(0),
+      description = character(0)
+    )))
+  }
+  vctrs::new_data_frame(list(
+    format = names(reg),
+    extensions = vapply(reg, function(b) paste(b$extensions, collapse = ", "),
+                         character(1)),
+    description = vapply(reg, function(b) b$description %||% "", character(1))
+  ))
 }
 
 
@@ -270,9 +460,33 @@ finalize_labels <- function(spec) {
 }
 
 
-#' Finalize row structure: blank rows and indent
+#' Finalize row structure: sort, repeat-suppress, blank rows, indent
 #' @noRd
 finalize_rows <- function(spec) {
+  # Sort data if sort_by is specified (listings)
+  sort_by <- spec$body$sort_by
+  if (length(sort_by) > 0L) {
+    order_args <- lapply(sort_by, function(col) spec$data[[col]])
+    order_idx <- inject(order(!!!order_args))
+    spec$data <- spec$data[order_idx, , drop = FALSE]
+    rownames(spec$data) <- NULL
+  }
+
+  # Suppress repeated values in repeat_cols (listings)
+  repeat_cols <- spec$body$repeat_cols
+  if (length(repeat_cols) > 0L) {
+    for (col in repeat_cols) {
+      if (!col %in% names(spec$data)) next
+      vals <- spec$data[[col]]
+      if (length(vals) > 1L) {
+        is_repeat <- c(FALSE, vals[-1L] == vals[-length(vals)])
+        # Also handle NAs
+        is_repeat[is.na(is_repeat)] <- FALSE
+        spec$data[[col]][is_repeat] <- ""
+      }
+    }
+  }
+
   # Insert blank rows at group boundaries. group_by auto-implies blank_after
   # for visual separation between groups.
   blank_cols <- union(spec$body$group_by, spec$body$blank_after)
@@ -797,8 +1011,7 @@ insert_gap_column <- function(df, after_pos, col_name) {
 
   # Build new data frame with gap column inserted after position
   before <- df[, seq_len(after_pos), drop = FALSE]
-  gap_df <- data.frame(x = gap_data, stringsAsFactors = FALSE)
-  names(gap_df) <- col_name
+  gap_df <- vctrs::new_data_frame(set_names(list(gap_data), col_name))
 
   if (after_pos < n_cols) {
     after <- df[, (after_pos + 1L):n_cols, drop = FALSE]

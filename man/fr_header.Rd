@@ -97,10 +97,11 @@ column(s) if per-group counts are needed.}
 \code{NULL} inherits the built-in default (FALSE). Set \code{TRUE} explicitly
 if you want bold headers.}
 
-\item{bg}{Background colour for header cells (hex or named). \code{NULL}
-inherits.}
+\item{bg}{Background colour for header cells: hex string (\code{"#003366"}) or
+CSS named colour (\code{"steelblue"}, \code{"lightgray"}, etc.). \code{NULL} inherits.}
 
-\item{fg}{Foreground (text) colour for header cells. \code{NULL} inherits.}
+\item{fg}{Foreground (text) colour for header cells: hex string or CSS
+named colour. \code{NULL} inherits.}
 
 \item{font_size}{Font size in points for header cells. \code{NULL} inherits
 from page font size.}
@@ -241,7 +242,6 @@ tbl_vs |>
 
 # group_label is useful when counting logic varies by parameter.
 # Here, Temperature uses a stricter filter (non-missing + in-range).
-\dontrun{
 tbl_vs |>
   fr_table() |>
   fr_rows(page_by = "param") |>
@@ -260,13 +260,18 @@ tbl_vs |>
     n_data = advs,
     format = "{name}\n(N={n})"
   )
-}
 
-## ── Header background colour ─────────────────────────────────────────────
+## ── Header background colour (hex or CSS named colour) ──────────────────
 
+# Hex colour
 tbl_demog |>
   fr_table() |>
   fr_header(bg = "#E0E0E0", bold = TRUE)
+
+# CSS named colour (148 available: lavender, aliceblue, gainsboro, etc.)
+tbl_demog |>
+  fr_table() |>
+  fr_header(bg = "lavender", fg = "midnightblue", bold = TRUE)
 
 ## ── Order-independent: fr_header first, then fr_cols ─────────────────────
 

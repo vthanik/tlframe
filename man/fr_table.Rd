@@ -99,6 +99,69 @@ spec_b <- base_spec |>
   fr_titles("Table 14.1.1 Demographics") |>
   fr_hlines("booktabs")
 
+## ── Complete 10-verb pipeline ─────────────────────────────────────────────
+# Demonstrates every major pipeline verb in a single specification.
+
+tbl_demog |>
+  fr_table() |>
+  fr_titles(
+    "Table 14.1.1 Summary of Demographics and Baseline Characteristics",
+    "Full Analysis Set"
+  ) |>
+  fr_footnotes(
+    "[a] Percentages based on subjects in each arm.",
+    "Source: ADSL"
+  ) |>
+  fr_cols(
+    characteristic = fr_col("Characteristic", width = 2.5),
+    placebo        = fr_col("Placebo\n(N=45)", width = 1.5),
+    zom_50mg       = fr_col("Zomerane 50mg\n(N=45)", width = 1.5),
+    zom_100mg      = fr_col("Zomerane 100mg\n(N=45)", width = 1.5),
+    total          = fr_col("Total\n(N=135)", width = 1.5),
+    group          = fr_col(visible = FALSE)
+  ) |>
+  fr_header(bold = TRUE, bg = "#D9E2F3") |>
+  fr_spans("Treatment Arm" = c("placebo", "zom_50mg", "zom_100mg")) |>
+  fr_rows(group_by = "group", indent_by = "group") |>
+  fr_hlines("header") |>
+  fr_vlines("inner") |>
+  fr_styles(
+    fr_row_style(rows = 1, bold = TRUE)
+  ) |>
+  fr_page(orientation = "landscape", font_size = 9) |>
+  fr_pagehead(left = "Study TFRM-2024-001", right = "Page {thepage} of {total_pages}") |>
+  fr_pagefoot(left = "{program}", right = "{datetime}") |>
+  fr_spacing(titles_after = 1, footnotes_before = 1)
+
+## ── fr_table() vs fr_listing() on the same data ──────────────────────────
+# fr_table() uses auto-detected defaults; fr_listing() sets listing defaults.
+
+ae_subset <- adae[1:20, c("USUBJID", "AEDECOD", "AESEV", "ASTDT")]
+
+# Table view: auto-detected alignment, 9pt, no col_split
+spec_tbl <- ae_subset |>
+  fr_table() |>
+  fr_titles("Table View of AE Records")
+spec_tbl$page$font_size    # 9 (default)
+
+# Listing view: left-aligned, 8pt, col_split = TRUE, wrap = TRUE
+spec_lst <- ae_subset |>
+  fr_listing() |>
+  fr_titles("Listing View of AE Records")
+spec_lst$page$font_size    # 8 (listing default)
+spec_lst$page$col_split    # TRUE (listing default)
+
+## ── Hidden column used for grouping ──────────────────────────────────────
+# The "group" column drives indent_by but is not displayed.
+
+tbl_demog |>
+  fr_table() |>
+  fr_cols(
+    group = fr_col(visible = FALSE)
+  ) |>
+  fr_rows(indent_by = "group") |>
+  fr_titles("Table 14.1.1 Demographics (grouped, hidden key)")
+
 }
 \seealso{
 \code{\link[=fr_titles]{fr_titles()}}, \code{\link[=fr_footnotes]{fr_footnotes()}}, \code{\link[=fr_cols]{fr_cols()}}, \code{\link[=fr_header]{fr_header()}},

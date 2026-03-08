@@ -15,11 +15,18 @@ Clears the loaded YAML config. After calling \code{fr_config_reset()},
 Call \code{\link[=fr_config]{fr_config()}} again to reload.
 }
 \examples{
-\dontrun{
-fr_config("_tlframe.yml")
-fr_config_reset()      # config cleared
-fr_config_get()        # triggers re-discovery
-}
+# Load a config
+default_cfg <- system.file("defaults/_tlframe.yml", package = "tlframe")
+fr_config(default_cfg)
+fr_config_get()$page$orientation   # has a value
+
+# Reset clears everything
+fr_config_reset()
+
+# After reset and re-load, config is back to defaults
+fr_config(default_cfg)
+fr_config_get()$page$orientation
+fr_config_reset()                  # clean up
 
 }
 \seealso{

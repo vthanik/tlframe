@@ -76,6 +76,25 @@
 #'     fr_row_style(rows = fr_rows_matches("row_type", "pt"), fg = "#333333")
 #'   )
 #'
+#' ## ── Alternation pattern: match "Total" or "Subtotal" ────────────────────
+#'
+#' fr_rows_matches("characteristic", pattern = "Total|Subtotal")
+#'
+#' ## ── Character class pattern: rows starting with uppercase letter ───────
+#'
+#' fr_rows_matches("characteristic", pattern = "^[A-Z]")
+#'
+#' ## ── Combined with fr_style in a pipeline ──────────────────────────────────
+#'
+#' tbl_disp |>
+#'   fr_table() |>
+#'   fr_styles(
+#'     fr_row_style(
+#'       rows = fr_rows_matches("category", pattern = "Completed|Discontinued"),
+#'       bold = TRUE, bg = "#F0F0F0"
+#'     )
+#'   )
+#'
 #' @seealso [fr_row_style()] for row styling, [fr_style()] for cell styling,
 #'   [fr_styles()] to apply styles to a spec.
 #'
@@ -138,8 +157,11 @@ fr_rows_matches <- function(col, value = NULL, pattern = NULL,
 #'   region. Multiple indices are supported: `rows = c(1L, 3L, 5L)`.
 #' @param cols Character vector of column names, or `NULL` (all columns).
 #' @param bold,italic,underline Logical or `NULL` to inherit.
-#' @param fg Foreground (text) colour: hex string or named colour, or `NULL`.
-#' @param bg Background (fill) colour: hex string or named colour, or `NULL`.
+#' @param fg Foreground (text) colour: hex string (`"#003366"`) or any of the
+#'   148 CSS named colours (`"navy"`, `"steelblue"`, `"tomato"`, etc.).
+#'   `NULL` to inherit.
+#' @param bg Background (fill) colour: hex string or CSS named colour.
+#'   `NULL` to inherit.
 #' @param font_size Font size in points, or `NULL` to inherit.
 #' @param align Horizontal alignment override: `"left"`, `"center"`, `"right"`,
 #'   `"decimal"`, or `NULL`. Controls how text flows within the cell
@@ -181,6 +203,25 @@ fr_rows_matches <- function(col, value = NULL, pattern = NULL,
 #' (text right-aligned, sitting at the bottom of a tall row).
 #'
 #' @examples
+#' ## ── Style objects are standalone — create, inspect, reuse ──────────────
+#'
+#' # Create style objects independently
+#' header_bold <- fr_style(region = "header", bold = TRUE)
+#' total_bg    <- fr_style(cols = "total", bg = "aliceblue")
+#'
+#' # Inspect the object
+#' str(header_bold)
+#'
+#' # Apply to any spec via fr_styles()
+#' tbl_demog |>
+#'   fr_table() |>
+#'   fr_styles(header_bold, total_bg)
+#'
+#' # Reuse the same styles across different tables
+#' tbl_disp |>
+#'   fr_table() |>
+#'   fr_styles(header_bold, total_bg)
+#'
 #' ## ── Bold the entire column header ────────────────────────────────────────
 #'
 #' fr_style(region = "header", bold = TRUE)
@@ -189,9 +230,9 @@ fr_rows_matches <- function(col, value = NULL, pattern = NULL,
 #'
 #' fr_style(region = "body", rows = c(1L, 3L), fg = "#CC0000")
 #'
-#' ## ── Blue background on a specific column ──────────────────────────────────
-#'
-#' fr_style(cols = "total", bg = "#E8F4FD")
+#' ## ── CSS named colour (148 colours available) ────────────────────────────
+#' fr_style(cols = "total", bg = "aliceblue")
+#' fr_style(region = "body", rows = 3L, fg = "crimson", bold = TRUE)
 #'
 #' ## ── Highlight the Total column header ────────────────────────────────────
 #'
@@ -293,6 +334,10 @@ fr_style <- function(region = "body", rows = NULL, cols = NULL,
 #'   content-based row targeting (e.g. bold every "Total" row).
 #'
 #' @examples
+#' ## ── Standalone: store and reuse ─────────────────────────────────────────
+#' bold_first <- fr_row_style(rows = 1L, bold = TRUE)
+#' bold_first  # inspect
+#'
 #' ## ── Bold the first body row (e.g. total row) ─────────────────────────────
 #'
 #' fr_row_style(rows = 1L, bold = TRUE)
@@ -394,6 +439,10 @@ fr_row_style <- function(rows = NULL, bold = NULL, italic = NULL,
 #'   use `fr_style(region = "header", cols = ...)` or [fr_header()].
 #'
 #' @examples
+#' ## ── Standalone: store and reuse ─────────────────────────────────────────
+#' total_highlight <- fr_col_style(cols = "total", bg = "aliceblue")
+#' total_highlight  # inspect
+#'
 #' ## ── Total column with blue tint ──────────────────────────────────────────
 #'
 #' fr_col_style(cols = "total", bg = "#EBF5FB")
@@ -406,6 +455,20 @@ fr_row_style <- function(rows = NULL, bold = NULL, italic = NULL,
 #'
 #' fr_col_style(cols = c("zom_50mg", "zom_100mg", "placebo", "total"),
 #'              align = "right")
+#'
+#' ## ── Multiple columns in one call ──────────────────────────────────────────
+#'
+#' fr_col_style(cols = c("placebo", "zom_50mg", "zom_100mg"), italic = TRUE)
+#'
+#' ## ── Pattern-based column selection using fr_select() ─────────────────────
+#'
+#' spec <- tbl_demog |> fr_table()
+#' numeric_cols <- fr_select(spec, pattern = "^zom_|^placebo$|^total$")
+#' fr_col_style(cols = numeric_cols, align = "center")
+#'
+#' ## ── Foreground + background combined ─────────────────────────────────────
+#'
+#' fr_col_style(cols = "total", fg = "#003366", bg = "#E8F4FD")
 #'
 #' ## ── Full pipeline with column styles ─────────────────────────────────────
 #'
@@ -484,6 +547,18 @@ fr_col_style <- function(cols = NULL, bold = NULL, italic = NULL,
 #'   engine applies them in a single pass over the cell grid.
 #'
 #' @examples
+#' ## ── Create reusable style objects, then apply ─────────────────────────────
+#' header_style <- fr_style(region = "header", bold = TRUE, bg = "lavender")
+#' total_col    <- fr_col_style(cols = "total", bg = "aliceblue")
+#' bold_totals  <- fr_row_style(
+#'   rows = fr_rows_matches("characteristic", "Total"),
+#'   bold = TRUE
+#' )
+#'
+#' tbl_demog |>
+#'   fr_table() |>
+#'   fr_styles(header_style, total_col, bold_totals)
+#'
 #' ## ── Bold header + highlighted Total column ────────────────────────────────
 #'
 #' tbl_demog |>
@@ -562,16 +637,201 @@ fr_styles <- function(spec, ...) {
     }
   }
 
-  # Eagerly resolve any fr_rows_matches() selectors using the current data
-  dots <- lapply(dots, function(style) {
-    if (inherits(style$rows, "fr_rows_selector")) {
-      style$rows <- resolve_rows_selector(style$rows, spec$data, call = call)
+  # Eagerly resolve conditional styles and row selectors
+  resolved <- list()
+  for (style in dots) {
+    if (inherits(style, "fr_conditional_style")) {
+      resolved <- c(resolved, resolve_conditional_style(style, spec$data, call))
+    } else {
+      if (inherits(style$rows, "fr_rows_selector")) {
+        style$rows <- resolve_rows_selector(style$rows, spec$data, call = call)
+      }
+      resolved <- c(resolved, list(style))
     }
-    style
-  })
+  }
 
-  spec$cell_styles <- c(spec$cell_styles, dots)
+  spec$cell_styles <- c(spec$cell_styles, resolved)
   spec
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# fr_style_if — Conditional styling based on data values
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' Create a Conditional Style Override
+#'
+#' @description
+#'
+#' Creates a data-driven style that is evaluated against cell values at
+#' application time (inside [fr_styles()]). Rows matching the condition receive
+#' the specified style properties. This avoids hard-coding row indices when
+#' styling based on content.
+#'
+#' @param condition A one-sided formula or function that returns a logical
+#'   vector. The formula uses `.x` as the pronoun for the column values
+#'   (converted via [rlang::as_function()]):
+#'   * `~ .x == "Total"` — match exact text
+#'   * `~ as.numeric(.x) < 0.05` — numeric comparison
+#'   * `~ grepl("^N=", .x)` — pattern matching
+#'
+#'   When `cols = NULL`, `.x` receives `seq_len(nrow(data))` (row indices),
+#'   useful for zebra striping: `~ (.x %% 2) == 0`.
+#' @param cols Character vector of column name(s) to evaluate the condition
+#'   against. The condition is applied to the values of each column
+#'   independently. `NULL` for row-index-based conditions (e.g., zebra
+#'   striping).
+#' @param apply_to Character scalar. Controls scope of matched rows:
+#'   * `"cell"` (default): style only the cells where the condition is TRUE.
+#'   * `"row"`: style **all** columns in rows where the condition is TRUE.
+#' @param bold,italic,underline Logical or `NULL` to leave unchanged.
+#' @param fg Foreground (text) colour: hex string or CSS named colour, or
+#'   `NULL`.
+#' @param bg Background (fill) colour: hex string or CSS named colour, or
+#'   `NULL`.
+#' @param font_size Font size in points, or `NULL`.
+#' @param align Horizontal alignment (`"left"`, `"center"`, `"right"`,
+#'   `"decimal"`), or `NULL`.
+#'
+#' @return An `fr_conditional_style` object for use in [fr_styles()].
+#'
+#' @examples
+#' ## ── Bold "Total" rows ─────────────────────────────────────────────────────
+#'
+#' tbl_demog |>
+#'   fr_table() |>
+#'   fr_styles(
+#'     fr_style_if(
+#'       cols = "characteristic",
+#'       condition = ~ .x == "Total",
+#'       apply_to = "row",
+#'       bold = TRUE
+#'     )
+#'   )
+#'
+#' ## ── Zebra striping ────────────────────────────────────────────────────────
+#'
+#' tbl_demog |>
+#'   fr_table() |>
+#'   fr_styles(
+#'     fr_style_if(
+#'       condition = ~ (.x %% 2) == 0,
+#'       bg = "#F5F5F5",
+#'       apply_to = "row"
+#'     )
+#'   )
+#'
+#' ## ── Numeric condition: highlight small p-values ──────────────────────────
+#'
+#' # Create a table with a p-value column
+#' pval_data <- data.frame(
+#'   characteristic = c("Age", "Sex", "Weight"),
+#'   treatment = c("50 (23.5)", "30 (14.1)", "45 (21.1)"),
+#'   placebo   = c("55 (25.8)", "28 (13.1)", "52 (24.4)"),
+#'   pvalue    = c("0.042", "0.310", "0.003"),
+#'   stringsAsFactors = FALSE
+#' )
+#'
+#' pval_data |>
+#'   fr_table() |>
+#'   fr_styles(
+#'     fr_style_if(
+#'       cols = "pvalue",
+#'       condition = ~ as.numeric(.x) < 0.05,
+#'       apply_to = "row",
+#'       bold = TRUE, fg = "#CC0000"
+#'     )
+#'   )
+#'
+#' ## ── Pattern matching with grepl ────────────────────────────────────────────
+#'
+#' tbl_ae_soc |>
+#'   fr_table() |>
+#'   fr_styles(
+#'     fr_style_if(
+#'       cols = "soc",
+#'       condition = ~ grepl("SKIN|GASTROINTESTINAL", .x, ignore.case = TRUE),
+#'       apply_to = "row",
+#'       bg = "#FFF3CD"
+#'     )
+#'   )
+#'
+#' ## ── apply_to = "cell": colour only the matching cell ───────────────────────
+#'
+#' tbl_disp |>
+#'   fr_table() |>
+#'   fr_styles(
+#'     fr_style_if(
+#'       cols = c("placebo", "zom_50mg", "zom_100mg"),
+#'       condition = ~ grepl("0", .x),
+#'       apply_to = "cell",
+#'       fg = "#999999", italic = TRUE
+#'     )
+#'   )
+#'
+#' ## ── Function form (not formula) for the condition ──────────────────────────
+#'
+#' is_total <- function(x) x == "Total"
+#'
+#' tbl_demog |>
+#'   fr_table() |>
+#'   fr_styles(
+#'     fr_style_if(
+#'       cols = "characteristic",
+#'       condition = is_total,
+#'       apply_to = "row",
+#'       bold = TRUE, bg = "#E8E8E8"
+#'     )
+#'   )
+#'
+#' ## ── Multiple cols: evaluate condition on several columns ───────────────────
+#'
+#' tbl_demog |>
+#'   fr_table() |>
+#'   fr_styles(
+#'     fr_style_if(
+#'       cols = c("placebo", "zom_50mg", "zom_100mg", "total"),
+#'       condition = ~ grepl("^0", .x),
+#'       apply_to = "cell",
+#'       fg = "#999999"
+#'     )
+#'   )
+#'
+#' @seealso [fr_styles()], [fr_style()], [fr_rows_matches()]
+#' @export
+fr_style_if <- function(condition,
+                         cols = NULL,
+                         apply_to = "cell",
+                         bold = NULL, italic = NULL, underline = NULL,
+                         fg = NULL, bg = NULL, font_size = NULL,
+                         align = NULL) {
+  call <- caller_env()
+
+  if (!is.function(condition) && !inherits(condition, "formula")) {
+    cli_abort(
+      "{.arg condition} must be a formula (e.g., {.code ~ .x == \"Total\"}) or function.",
+      call = call
+    )
+  }
+  apply_to <- match_arg_fr(apply_to, c("cell", "row"), call = call)
+
+  if (!is.null(align)) align <- match_arg_fr(align, fr_env$valid_aligns, call = call)
+
+  structure(
+    list(
+      condition = condition,
+      cols      = cols,
+      apply_to  = apply_to,
+      bold      = bold,
+      italic    = italic,
+      underline = underline,
+      fg        = if (!is.null(fg)) resolve_color(fg, call = call) else NULL,
+      bg        = if (!is.null(bg)) resolve_color(bg, call = call) else NULL,
+      font_size = font_size,
+      align     = align
+    ),
+    class = c("fr_conditional_style", "fr_cell_style")
+  )
 }
 
 
@@ -634,6 +894,34 @@ fr_styles <- function(spec, ...) {
 #' result <- fr_style_explain(spec, row = 1L, col = "total")
 #' result$final$bold   # TRUE (from row style)
 #' result$final$bg     # "#EBF5FB" (from col style)
+#'
+#' ## ── Multiple overlapping styles: see precedence in action ─────────────────
+#'
+#' spec2 <- tbl_demog |>
+#'   fr_table() |>
+#'   fr_styles(
+#'     fr_col_style(cols = "total", bg = "#EBF5FB"),
+#'     fr_row_style(rows = 1L, bg = "#FFF3CD", bold = TRUE),
+#'     fr_style(region = "body", rows = 1L, cols = "total",
+#'              fg = "#CC0000", italic = TRUE)
+#'   )
+#'
+#' # Cell (1, "total") has three overlapping layers — cell wins for fg/italic,
+#' # row wins for bg/bold (narrower scope), col style is overridden:
+#' fr_style_explain(spec2, row = 1L, col = "total")
+#'
+#' ## ── Inspect a header cell ─────────────────────────────────────────────────
+#'
+#' spec3 <- tbl_demog |>
+#'   fr_table() |>
+#'   fr_styles(
+#'     fr_style(region = "header", bold = TRUE, bg = "#E0E0E0"),
+#'     fr_style(region = "header", cols = "total", bg = "#D0E4FF")
+#'   )
+#'
+#' # Note: fr_style_explain inspects body cells. For header-region styles,
+#' # review spec3$cell_styles directly:
+#' str(spec3$cell_styles)
 #'
 #' @seealso [fr_styles()] to apply styles, [fr_style()] for cell-level
 #'   overrides, [fr_row_style()] and [fr_col_style()] for broader styles.
@@ -732,4 +1020,113 @@ fr_style_explain <- function(spec, row, col) {
   cli::cli_text("Final: bold={final$bold}, italic={final$italic}, fg={final$fg}, bg={final$bg}, align={final$align}, valign={final$valign}, indent={final$indent}")
 
   invisible(list(final = final, layers = layers))
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Internal: resolve conditional style to concrete cell styles
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' Resolve a conditional style to concrete fr_cell_style objects
+#'
+#' Evaluates the condition against the data and converts matching rows/cells
+#' into standard fr_cell_style objects with integer row indices.
+#'
+#' @param cond_style An fr_conditional_style object.
+#' @param data Data frame from spec$data.
+#' @param call Caller environment for error messages.
+#' @return List of fr_cell_style objects.
+#' @noRd
+resolve_conditional_style <- function(cond_style, data, call = caller_env()) {
+  nr <- nrow(data)
+  condition <- cond_style$condition
+  cols <- cond_style$cols
+
+  # Convert formula to function
+  if (inherits(condition, "formula")) {
+    condition <- rlang::as_function(condition)
+  }
+
+  # Determine matching rows
+  if (is.null(cols)) {
+    # Row-index based condition (e.g., zebra striping)
+    values <- seq_len(nr)
+    mask <- tryCatch(
+      as.logical(condition(values)),
+      error = function(e) {
+        cli_abort(
+          c("Error evaluating {.fn fr_style_if} condition: {conditionMessage(e)}"),
+          call = call
+        )
+      }
+    )
+    matched_rows <- which(mask)
+    if (length(matched_rows) == 0L) return(list())
+
+    # Build a single style with all matched rows
+    style_args <- list(
+      type = if (cond_style$apply_to == "row") "row" else "cell",
+      region = "body",
+      rows = as.integer(matched_rows),
+      cols = NULL,
+      bold = cond_style$bold,
+      italic = cond_style$italic,
+      underline = cond_style$underline,
+      fg = cond_style$fg,
+      bg = cond_style$bg,
+      font_size = cond_style$font_size,
+      align = cond_style$align
+    )
+    return(list(inject(new_fr_cell_style(!!!style_args))))
+
+  } else {
+    # Column-based condition
+    results <- list()
+    for (col in cols) {
+      if (!col %in% names(data)) {
+        cli_abort(
+          "{.fn fr_style_if}: column {.val {col}} not found in data.",
+          call = call
+        )
+      }
+      values <- data[[col]]
+      mask <- tryCatch(
+        as.logical(condition(values)),
+        error = function(e) {
+          cli_abort(
+            c("Error evaluating {.fn fr_style_if} condition on column {.val {col}}: {conditionMessage(e)}"),
+            call = call
+          )
+        }
+      )
+      mask[is.na(mask)] <- FALSE
+      matched_rows <- which(mask)
+      if (length(matched_rows) == 0L) next
+
+      if (cond_style$apply_to == "row") {
+        # Apply to all columns in matched rows
+        style <- new_fr_cell_style(
+          type = "row", region = "body",
+          rows = as.integer(matched_rows), cols = NULL,
+          bold = cond_style$bold, italic = cond_style$italic,
+          underline = cond_style$underline,
+          fg = cond_style$fg, bg = cond_style$bg,
+          font_size = cond_style$font_size, align = cond_style$align
+        )
+        results <- c(results, list(style))
+      } else {
+        # Apply only to the specific column cells
+        style <- new_fr_cell_style(
+          type = "cell", region = "body",
+          rows = as.integer(matched_rows), cols = col,
+          bold = cond_style$bold, italic = cond_style$italic,
+          underline = cond_style$underline,
+          fg = cond_style$fg, bg = cond_style$bg,
+          font_size = cond_style$font_size, align = cond_style$align
+        )
+        results <- c(results, list(style))
+      }
+    }
+    return(results)
+  }
 }

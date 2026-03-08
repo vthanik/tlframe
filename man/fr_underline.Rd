@@ -35,10 +35,9 @@ future LaTeX output, it maps to \verb{\\underline\{\}}.
 # Confidentiality marker
 fr_underline("CONFIDENTIAL")
 
-# In a title (requires a spec):
-\dontrun{
+# In a title:
+spec <- tbl_demog |> fr_table()
 spec |> fr_titles("{fr_underline('CONFIDENTIAL')} - Do Not Distribute")
-}
 
 }
 \seealso{

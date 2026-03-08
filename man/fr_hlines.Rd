@@ -115,10 +115,13 @@ tbl_demog |> fr_table() |> fr_hlines("hsides", width = "thick")
 # Exact width in points
 tbl_demog |> fr_table() |> fr_hlines("header", width = 0.75)
 
-## ── Custom colour ─────────────────────────────────────────────────────────
+## ── Custom colour (hex or CSS named colour) ────────────────────────────────
 
-# Navy blue rules
+# Hex colour
 tbl_demog |> fr_table() |> fr_hlines("booktabs", color = "#003366")
+
+# CSS named colour
+tbl_demog |> fr_table() |> fr_hlines("header", color = "steelblue")
 
 ## ── Custom linestyle ──────────────────────────────────────────────────────
 

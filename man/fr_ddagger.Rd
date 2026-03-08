@@ -21,13 +21,12 @@ or acts as a secondary marker after the single dagger. See
 # Standalone double dagger symbol
 fr_ddagger()
 
-# In footnotes (requires a spec):
-\dontrun{
+# In footnotes:
+spec <- tbl_demog |> fr_table()
 spec |> fr_footnotes(
   "{fr_dagger()} Treatment-related adverse event.",
   "{fr_ddagger()} Serious adverse event."
 )
-}
 
 }
 \seealso{

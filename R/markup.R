@@ -127,11 +127,10 @@ print.fr_markup <- function(x, ...) {
 #' # Standalone usage (inspect the sentinel)
 #' format(fr_super(1))
 #'
-#' # In a pipeline (requires a spec):
-#' \dontrun{
+#' # In a pipeline:
+#' spec <- tbl_demog |> fr_table()
 #' n <- 1
 #' spec |> fr_footnotes("{fr_super(n)} Pearson chi-square test")
-#' }
 #'
 #' @seealso [fr_sub()] for subscript, [fr_bold()] and [fr_italic()] for
 #'   font style, [fr_dagger()] for the † symbol.
@@ -167,10 +166,9 @@ fr_super <- function(x) new_fr_markup("SUPER", x)
 #' # Statistical subscript: x_i
 #' fr_col("x{fr_sub('i')}", width = 1.0)
 #'
-#' # In a footnote (requires a spec):
-#' \dontrun{
+#' # In a footnote:
+#' spec <- tbl_demog |> fr_table()
 #' spec |> fr_footnotes("{fr_sub('n')} = number of subjects with data")
-#' }
 #'
 #' @seealso [fr_super()] for superscript, [fr_unicode()] for arbitrary
 #'   Unicode characters.
@@ -207,10 +205,9 @@ fr_sub <- function(x) new_fr_markup("SUB", x)
 #' # Bold a label keyword
 #' fr_col("{fr_bold('Total')} Subjects", width = 1.5)
 #'
-#' # Bold just the table number in a title (requires a spec):
-#' \dontrun{
+#' # Bold just the table number in a title:
+#' spec <- tbl_demog |> fr_table()
 #' spec |> fr_titles("{fr_bold('Table 14.1.1')} Summary of Demographics")
-#' }
 #'
 #' @seealso [fr_italic()] for italic, [fr_underline()] for underline,
 #'   [fr_row_style()] for bolding entire rows, [fr_header()] for bolding
@@ -246,11 +243,10 @@ fr_bold <- function(x) new_fr_markup("BOLD", x)
 #' # Italic P-value annotation
 #' fr_italic("P")
 #'
-#' # In footnotes (requires a spec):
-#' \dontrun{
+#' # In footnotes:
+#' spec <- tbl_demog |> fr_table()
 #' spec |> fr_footnotes("[a] {fr_italic('P')}-value from Fisher's exact test.")
 #' spec |> fr_footnotes("Comparison {fr_italic('vs.')} placebo.")
-#' }
 #'
 #' @seealso [fr_bold()] for bold, [fr_underline()] for underline.
 #'
@@ -284,10 +280,9 @@ fr_italic <- function(x) new_fr_markup("ITALIC", x)
 #' # Confidentiality marker
 #' fr_underline("CONFIDENTIAL")
 #'
-#' # In a title (requires a spec):
-#' \dontrun{
+#' # In a title:
+#' spec <- tbl_demog |> fr_table()
 #' spec |> fr_titles("{fr_underline('CONFIDENTIAL')} - Do Not Distribute")
-#' }
 #'
 #' @seealso [fr_bold()] for bold, [fr_italic()] for italic.
 #'
@@ -333,10 +328,9 @@ fr_underline <- function(x) new_fr_markup("UNDERLINE", x)
 #' # Degree symbol
 #' fr_col("Temperature ({fr_unicode(0x00B0)}C)", width = 1.5)
 #'
-#' # In a footnote (requires a spec):
-#' \dontrun{
+#' # In a footnote:
+#' spec <- tbl_demog |> fr_table()
 #' spec |> fr_footnotes("[a] P {fr_unicode(0x2264)} 0.05 considered significant.")
-#' }
 #'
 #' @seealso [fr_dagger()] and [fr_ddagger()] for common symbol shortcuts,
 #'   [fr_super()] for superscript notation.
@@ -376,18 +370,15 @@ fr_unicode <- function(codepoint) {
 #' # Standalone dagger symbol
 #' fr_dagger()
 #'
-#' # In a footnote (requires a spec):
-#' \dontrun{
+#' # In a footnote:
+#' spec <- tbl_demog |> fr_table()
 #' spec |> fr_footnotes("{fr_dagger()} Treatment-related adverse event.")
-#' }
 #'
-#' # Combined dagger and double dagger (requires a spec):
-#' \dontrun{
+#' # Combined dagger and double dagger:
 #' spec |> fr_footnotes(
 #'   "{fr_dagger()} Treatment-related adverse event.",
 #'   "{fr_ddagger()} Serious adverse event."
 #' )
-#' }
 #'
 #' @seealso [fr_ddagger()] for the double dagger,
 #'   [fr_unicode()] for arbitrary Unicode characters,
@@ -414,13 +405,12 @@ fr_dagger <- function() fr_unicode(0x2020L)
 #' # Standalone double dagger symbol
 #' fr_ddagger()
 #'
-#' # In footnotes (requires a spec):
-#' \dontrun{
+#' # In footnotes:
+#' spec <- tbl_demog |> fr_table()
 #' spec |> fr_footnotes(
 #'   "{fr_dagger()} Treatment-related adverse event.",
 #'   "{fr_ddagger()} Serious adverse event."
 #' )
-#' }
 #'
 #' @seealso [fr_dagger()] for the single dagger and symbol conventions,
 #'   [fr_unicode()] for arbitrary Unicode characters.

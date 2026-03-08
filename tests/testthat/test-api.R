@@ -845,3 +845,190 @@ test_that("fr_style_explain errors on invalid row/col", {
   expect_error(fr_style_explain(spec, row = 999L, col = 1L))
   expect_error(fr_style_explain(spec, row = 1L, col = "nonexistent"))
 })
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# fr_titles — additional coverage
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("fr_titles list form with 'content' key", {
+  spec <- fr_table(df_simple) |>
+    fr_titles(list(content = "Table 1"))
+  expect_equal(spec$meta$titles[[1]]$content, "Table 1")
+})
+
+test_that("fr_titles list form with unnamed first element", {
+  spec <- fr_table(df_simple) |>
+    fr_titles(list("Table 1", bold = TRUE))
+  expect_equal(spec$meta$titles[[1]]$content, "Table 1")
+  expect_true(spec$meta$titles[[1]]$bold)
+})
+
+test_that("fr_titles list form per-line align override", {
+  spec <- fr_table(df_simple) |>
+    fr_titles(
+      list("Left Title", align = "left"),
+      list("Right Title", align = "right")
+    )
+  expect_equal(spec$meta$titles[[1]]$align, "left")
+  expect_equal(spec$meta$titles[[2]]$align, "right")
+})
+
+test_that("fr_titles list form per-line font_size override", {
+  spec <- fr_table(df_simple) |>
+    fr_titles(
+      list("Big Title", font_size = 12),
+      list("Small Title", font_size = 8)
+    )
+  expect_equal(spec$meta$titles[[1]]$font_size, 12)
+  expect_equal(spec$meta$titles[[2]]$font_size, 8)
+})
+
+test_that("fr_titles .bold = TRUE applies to all string entries", {
+  spec <- fr_table(df_simple) |>
+    fr_titles("T1", "T2", .bold = TRUE)
+  expect_true(spec$meta$titles[[1]]$bold)
+  expect_true(spec$meta$titles[[2]]$bold)
+})
+
+test_that("fr_titles .font_size applies to all string entries", {
+  spec <- fr_table(df_simple) |>
+    fr_titles("T1", "T2", .font_size = 11)
+  expect_equal(spec$meta$titles[[1]]$font_size, 11)
+  expect_equal(spec$meta$titles[[2]]$font_size, 11)
+})
+
+test_that("fr_titles list form bold overrides .bold default", {
+  spec <- fr_table(df_simple) |>
+    fr_titles(
+      list("Bold", bold = TRUE),
+      "Not Bold",
+      .bold = FALSE
+    )
+  expect_true(spec$meta$titles[[1]]$bold)
+  expect_false(spec$meta$titles[[2]]$bold)
+})
+
+test_that("fr_titles .align = 'right' applies to all entries", {
+  spec <- fr_table(df_simple) |>
+    fr_titles("T1", "T2", .align = "right")
+  expect_equal(spec$meta$titles[[1]]$align, "right")
+  expect_equal(spec$meta$titles[[2]]$align, "right")
+})
+
+test_that("fr_titles errors on non-character, non-list entry", {
+  expect_error(
+    fr_table(df_simple) |> fr_titles(42),
+    class = "rlang_error"
+  )
+})
+
+test_that("fr_titles clearing resets to empty list", {
+  spec <- fr_table(df_simple) |>
+    fr_titles("Title A", "Title B") |>
+    fr_titles()
+  expect_equal(spec$meta$titles, list())
+  expect_length(spec$meta$titles, 0L)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# fr_footnotes — additional coverage
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("fr_footnotes list form with 'content' key", {
+  spec <- fr_table(df_simple) |>
+    fr_footnotes(list(content = "Source: ADSL."))
+  expect_equal(spec$meta$footnotes[[1]]$content, "Source: ADSL.")
+})
+
+test_that("fr_footnotes list form with unnamed first element", {
+  spec <- fr_table(df_simple) |>
+    fr_footnotes(list("Source note.", placement = "last"))
+  expect_equal(spec$meta$footnotes[[1]]$content, "Source note.")
+  expect_equal(spec$meta$footnotes[[1]]$placement, "last")
+})
+
+test_that("fr_footnotes list form per-line align override", {
+  spec <- fr_table(df_simple) |>
+    fr_footnotes(
+      list("[a] Note.", align = "center"),
+      list("Source.", align = "right")
+    )
+  expect_equal(spec$meta$footnotes[[1]]$align, "center")
+  expect_equal(spec$meta$footnotes[[2]]$align, "right")
+})
+
+test_that("fr_footnotes list form per-line font_size override", {
+  spec <- fr_table(df_simple) |>
+    fr_footnotes(
+      list("[a] Note.", font_size = 8),
+      list("Source.", font_size = 7)
+    )
+  expect_equal(spec$meta$footnotes[[1]]$font_size, 8)
+  expect_equal(spec$meta$footnotes[[2]]$font_size, 7)
+})
+
+test_that("fr_footnotes .align = 'center' applies to string entries", {
+  spec <- fr_table(df_simple) |>
+    fr_footnotes("Note 1", "Note 2", .align = "center")
+  expect_equal(spec$meta$footnotes[[1]]$align, "center")
+  expect_equal(spec$meta$footnotes[[2]]$align, "center")
+})
+
+test_that("fr_footnotes .placement = 'last' applies to all entries", {
+  spec <- fr_table(df_simple) |>
+    fr_footnotes("Note 1", "Note 2", .placement = "last")
+  expect_equal(spec$meta$footnotes[[1]]$placement, "last")
+  expect_equal(spec$meta$footnotes[[2]]$placement, "last")
+})
+
+test_that("fr_footnotes .font_size applies to all string entries", {
+  spec <- fr_table(df_simple) |>
+    fr_footnotes("N1", "N2", .font_size = 7)
+  expect_equal(spec$meta$footnotes[[1]]$font_size, 7)
+  expect_equal(spec$meta$footnotes[[2]]$font_size, 7)
+})
+
+test_that("fr_footnotes .separator = TRUE is stored", {
+  spec <- fr_table(df_simple) |>
+    fr_footnotes("Note", .separator = TRUE)
+  expect_true(spec$meta$footnote_separator)
+})
+
+test_that("fr_footnotes clearing resets to empty list and preserves separator", {
+  spec <- fr_table(df_simple) |>
+    fr_footnotes("Old note", .separator = TRUE) |>
+    fr_footnotes(.separator = FALSE)
+  expect_equal(spec$meta$footnotes, list())
+  expect_false(spec$meta$footnote_separator)
+})
+
+test_that("fr_footnotes errors on non-character, non-list entry", {
+  expect_error(
+    fr_table(df_simple) |> fr_footnotes(42),
+    class = "rlang_error"
+  )
+})
+
+test_that("fr_footnotes errors on non-fr_spec input", {
+  expect_error(fr_footnotes(list(), "N"), class = "rlang_error")
+})
+
+test_that("fr_footnotes errors on invalid .separator", {
+  expect_error(
+    fr_table(df_simple) |> fr_footnotes("N", .separator = "yes"),
+    class = "rlang_error"
+  )
+})
+
+test_that("fr_footnotes list placement overrides .placement default", {
+  spec <- fr_table(df_simple) |>
+    fr_footnotes(
+      "[a] Repeated note.",
+      list("Source.", placement = "last"),
+      .placement = "every"
+    )
+  expect_equal(spec$meta$footnotes[[1]]$placement, "every")
+  expect_equal(spec$meta$footnotes[[2]]$placement, "last")
+})

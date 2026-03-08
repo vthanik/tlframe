@@ -26,18 +26,10 @@ render_rtf <- function(spec, page_groups, col_panels, path) {
   con <- file(path, open = "wb")
   on.exit(close(con))
 
-  # Warn about RTF limitation with "last" footnote placement
+  # Separate "last" footnotes — they render as body rows, not in {\footer}
   footnotes <- spec$meta$footnotes %||% list()
-  has_last <- any(vapply(footnotes, function(fn) fn$placement == "last", logical(1)))
-  if (has_last) {
-    cli_warn(c(
-      "RTF does not support {.code placement = \"last\"} footnotes.",
-      "i" = "The RTF footer group repeats on every page;
-             there is no mechanism for last-page-only content.",
-      "i" = "All footnotes will appear on every page in RTF output.",
-      "i" = "Use {.code .pdf} output for correct last-page footnote placement."
-    ))
-  }
+  last_footnotes <- Filter(function(fn) fn$placement == "last", footnotes)
+  every_footnotes <- Filter(function(fn) fn$placement != "last", footnotes)
 
   colors <- collect_colors(spec)
   color_info <- build_rtf_colortbl(colors)
@@ -113,13 +105,10 @@ render_rtf <- function(spec, page_groups, col_panels, path) {
         suppress_bottom <- if (is_single_page) {
           length(spec$meta$footnotes %||% list()) > 0L
         } else {
-          footer_has_fn <- if (is_last) {
-            length(spec$meta$footnotes %||% list()) > 0L
-          } else {
-            any(vapply(spec$meta$footnotes %||% list(),
+          has_every_fn <- any(vapply(spec$meta$footnotes %||% list(),
                        function(fn) fn$placement == "every", logical(1)))
-          }
-          footer_has_fn || !is.null(spec$pagefoot)
+          has_last_body_fn <- is_last && length(last_footnotes) > 0L
+          has_every_fn || has_last_body_fn || !is.null(spec$pagefoot)
         }
         if (suppress_bottom) {
           nr <- nrow(group$data)
@@ -157,10 +146,15 @@ render_rtf <- function(spec, page_groups, col_panels, path) {
       rtf_write(con, rtf_body_rows(spec, group$data, vis_columns,
                                    cell_grid, borders, color_info))
 
-      # Body footnotes (single-page mode: footnotes as regular table rows)
+      # Body footnotes: single-page mode OR "last" placement footnotes
       if (is_single_page) {
         rtf_write(con, rtf_body_footnotes(spec, vis_columns, is_last,
                                            borders, color_info))
+      } else if (is_last && length(last_footnotes) > 0L) {
+        # "last" footnotes as body rows — appear once at end of data
+        rtf_write(con, rtf_body_footnotes_last(
+          spec, vis_columns, last_footnotes, borders, color_info
+        ))
       }
 
     }
@@ -230,13 +224,10 @@ rtf_section_def <- function(spec, is_last = FALSE, body_footnotes = FALSE) {
 
   # \footery = bottom margin. Word auto-expands the footer area upward
   # if content exceeds it, shrinking body area to fit.
-  # Needed when {\footer} group has content: pagefoot, "every" footnotes,
-  # or (in the final section) "last" footnotes.
-  # When body_footnotes = TRUE, footnotes are in body rows, not footer
+  # Only "every" footnotes go in {\footer}; "last" are body rows.
+  # When body_footnotes = TRUE, all footnotes are in body rows, not footer.
   has_footer_fn <- if (body_footnotes) {
     FALSE
-  } else if (is_last) {
-    length(spec$meta$footnotes %||% list()) > 0L
   } else {
     any(vapply(spec$meta$footnotes %||% list(),
                function(fn) fn$placement == "every", logical(1)))
@@ -299,10 +290,9 @@ find_bottom_rule <- function(spec) {
 #'   4. 1/4 baselineskip gap
 #'   5. Pagefoot paragraph (L/C/R tab-stop layout, full printable width)
 #'
-#' In non-final sections, only `placement = "every"` footnotes are included.
-#' In the final section (`is_last = TRUE`), both "every" and "last" footnotes
-#' are included — this ensures "last" footnotes appear on every page of the
-#' final section and never get orphaned as non-repeating body rows.
+#' Only `placement = "every"` footnotes are included (they repeat on every
+#' page). `placement = "last"` footnotes are rendered as body rows via
+#' [rtf_body_footnotes_last()] so they appear only once at the end.
 #'
 #' @param spec Finalized fr_spec object.
 #' @param token_map Token map for page chrome resolution.
@@ -317,10 +307,9 @@ rtf_footer_group <- function(spec, token_map, is_last, vis_columns,
 
   # When skip_footnotes = TRUE (single-page mode), footnotes are rendered
   # as body rows — the footer only contains pagefoot (if any).
+  # "last" placement footnotes are NEVER in {\footer} — they're body rows.
   entries <- if (skip_footnotes) {
     list()
-  } else if (is_last) {
-    footnotes
   } else {
     Filter(function(fn) fn$placement == "every", footnotes)
   }
@@ -1024,10 +1013,44 @@ rtf_body_footnotes <- function(spec, columns, is_last, borders, color_info) {
     Filter(function(fn) fn$placement == "every", footnotes)
   }
 
+  rtf_footnote_rows(spec, columns, entries, color_info)
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# RTF Cell Border Helpers
+#' Render "last" placement footnotes as body table rows
+#'
+#' For multi-page output, "last" footnotes are rendered as non-repeating
+#' body rows at the end of the final section's data. They appear only once.
+#'
+#' @param spec Finalized fr_spec object.
+#' @param columns Named list of fr_col objects (visible columns).
+#' @param last_entries List of footnote entries with placement = "last".
+#' @param borders Border structures from resolve_borders().
+#' @param color_info Color info from build_rtf_colortbl().
+#' @return Character string of RTF table rows.
+#' @noRd
+rtf_body_footnotes_last <- function(spec, columns, last_entries,
+                                     borders, color_info) {
+  rtf_footnote_rows(spec, columns, last_entries, color_info)
+}
+
+#' Shared helper: render footnote entries as RTF body table rows
+#'
+#' Generates merged-cell table rows for footnote content, with an optional
+#' bottom rule row and spacing rows above the footnotes.
+#'
+#' @param spec Finalized fr_spec object.
+#' @param columns Named list of fr_col objects (visible columns).
+#' @param entries List of footnote entries to render.
+#' @param color_info Color info from build_rtf_colortbl().
+#' @return Character string of RTF table rows.
+#' @noRd
+rtf_footnote_rows <- function(spec, columns, entries, color_info) {
   if (length(entries) == 0L) return("")
 
-  col_names <- names(columns)
-  ncol <- length(col_names)
+  ncol <- length(columns)
 
   # Cumulative column widths for merged cell defs
   cum_widths <- cumsum(vapply(columns, function(c) inches_to_twips(c$width),
@@ -1059,7 +1082,6 @@ rtf_body_footnotes <- function(spec, columns, is_last, borders, color_info) {
   li <- 0L
 
   # 1) Bottom rule row — immediately after last body row
-
   if (has_rule) {
     rule_cell_defs <- paste0(rule_border, "\\clmgf\\cellx", cum_widths[1L])
     if (ncol > 1L) {
@@ -1117,8 +1139,6 @@ rtf_body_footnotes <- function(spec, columns, is_last, borders, color_info) {
 }
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# RTF Cell Border Helpers
 # ══════════════════════════════════════════════════════════════════════════════
 
 #' Build RTF border control words for a single cell

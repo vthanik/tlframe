@@ -1,7 +1,21 @@
+# RStudio
 .Rproj.user
+.Rhistory
+.RData
+.Rdata
+*.Rproj
 
+# Quarto
 /.quarto/
 **/*.quarto_ipynb
 
 # Generated verification output
 verify_compare/
+
+# Research materials (local only)
+reference/
+screenshots/
+
+# Build artifacts
+*.tar.gz
+*.Rcheck/

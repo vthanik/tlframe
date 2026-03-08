@@ -128,6 +128,30 @@ tbl_demog |>
     right  = "Page {thepage} of {total_pages}"
   )
 
+## ── Smaller header font size ──────────────────────────────────────────────
+
+tbl_demog |>
+  fr_table() |>
+  fr_pagehead(
+    left      = "TFRM-2024-001",
+    right     = "Page {thepage} of {total_pages}",
+    font_size = 7
+  )
+
+## ── Combined pagehead + pagefoot in one pipeline ──────────────────────────
+
+tbl_demog |>
+  fr_table() |>
+  fr_page(tokens = list(study = "TFRM-2024-001", cutoff = "31DEC2024")) |>
+  fr_pagehead(
+    left  = "Study: {study}",
+    right = "Cutoff: {cutoff}"
+  ) |>
+  fr_pagefoot(
+    left  = "{program}",
+    right = "{datetime}"
+  )
+
 }
 \seealso{
 \code{\link[=fr_pagefoot]{fr_pagefoot()}} for the footer, \code{\link[=fr_page]{fr_page()}} for custom token

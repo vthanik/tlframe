@@ -105,13 +105,16 @@ tbl_demog |>
   fr_vlines("void") |>
   fr_vlines(cols = 1L)
 
-## ── Custom width and style ────────────────────────────────────────────────
+## ── Custom width, style, and colour ────────────────────────────────────────
 
 # Thick outer box
 tbl_demog |> fr_table() |> fr_vlines("box", width = "thick")
 
 # Dashed inner separators
 tbl_demog |> fr_table() |> fr_vlines("all", linestyle = "dashed")
+
+# CSS named colour
+tbl_demog |> fr_table() |> fr_vlines("box", color = "slategray")
 
 ## ── Combined with fr_hlines ───────────────────────────────────────────────
 

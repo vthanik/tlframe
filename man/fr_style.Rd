@@ -39,9 +39,12 @@ region. Multiple indices are supported: \code{rows = c(1L, 3L, 5L)}.}
 
 \item{bold, italic, underline}{Logical or \code{NULL} to inherit.}
 
-\item{fg}{Foreground (text) colour: hex string or named colour, or \code{NULL}.}
+\item{fg}{Foreground (text) colour: hex string (\code{"#003366"}) or any of the
+148 CSS named colours (\code{"navy"}, \code{"steelblue"}, \code{"tomato"}, etc.).
+\code{NULL} to inherit.}
 
-\item{bg}{Background (fill) colour: hex string or named colour, or \code{NULL}.}
+\item{bg}{Background (fill) colour: hex string or CSS named colour.
+\code{NULL} to inherit.}
 
 \item{font_size}{Font size in points, or \code{NULL} to inherit.}
 
@@ -102,6 +105,25 @@ They combine freely: a cell can be \verb{align = "right", valign = "bottom"}
 }
 
 \examples{
+## ── Style objects are standalone — create, inspect, reuse ──────────────
+
+# Create style objects independently
+header_bold <- fr_style(region = "header", bold = TRUE)
+total_bg    <- fr_style(cols = "total", bg = "aliceblue")
+
+# Inspect the object
+str(header_bold)
+
+# Apply to any spec via fr_styles()
+tbl_demog |>
+  fr_table() |>
+  fr_styles(header_bold, total_bg)
+
+# Reuse the same styles across different tables
+tbl_disp |>
+  fr_table() |>
+  fr_styles(header_bold, total_bg)
+
 ## ── Bold the entire column header ────────────────────────────────────────
 
 fr_style(region = "header", bold = TRUE)
@@ -110,9 +132,9 @@ fr_style(region = "header", bold = TRUE)
 
 fr_style(region = "body", rows = c(1L, 3L), fg = "#CC0000")
 
-## ── Blue background on a specific column ──────────────────────────────────
-
-fr_style(cols = "total", bg = "#E8F4FD")
+## ── CSS named colour (148 colours available) ────────────────────────────
+fr_style(cols = "total", bg = "aliceblue")
+fr_style(region = "body", rows = 3L, fg = "crimson", bold = TRUE)
 
 ## ── Highlight the Total column header ────────────────────────────────────
 

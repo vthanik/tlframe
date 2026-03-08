@@ -306,6 +306,22 @@ is_fr_pct <- function(x) inherits(x, "fr_pct")
 #'
 #' fr_col("Parameter", width = "25%")
 #'
+#' ## ── Centered header over right-aligned body ──────────────────────────────
+#'
+#' fr_col("Zomerane 50mg", width = 1.5, align = "right", header_align = "center")
+#'
+#' ## ── Percentage width in a pipeline ───────────────────────────────────────
+#'
+#' tbl_demog |>
+#'   fr_table() |>
+#'   fr_cols(
+#'     characteristic = fr_col("Characteristic", width = "30%"),
+#'     zom_50mg       = fr_col("Zomerane 50mg",  width = "17.5%", align = "right"),
+#'     zom_100mg      = fr_col("Zomerane 100mg", width = "17.5%", align = "right"),
+#'     placebo        = fr_col("Placebo",         width = "17.5%", align = "right"),
+#'     total          = fr_col("Total",           width = "17.5%", align = "right")
+#'   )
+#'
 #' ## ── Auto-width: let the engine measure content ───────────────────────────
 #'
 #' fr_col("Parameter", width = "auto")
@@ -446,7 +462,10 @@ new_fr_body <- function(page_by = character(0),
                          indent_by = character(0),
                          blank_after = character(0),
                          page_by_bold = FALSE,
-                         page_by_align = "left") {
+                         page_by_align = "left",
+                         sort_by = character(0),
+                         repeat_cols = character(0),
+                         wrap = FALSE) {
   structure(
     list(
       page_by        = vec_cast(page_by, character()),
@@ -454,7 +473,10 @@ new_fr_body <- function(page_by = character(0),
       indent_by      = vec_cast(indent_by, character()),
       blank_after    = vec_cast(blank_after, character()),
       page_by_bold   = page_by_bold,
-      page_by_align  = page_by_align
+      page_by_align  = page_by_align,
+      sort_by        = vec_cast(sort_by, character()),
+      repeat_cols    = vec_cast(repeat_cols, character()),
+      wrap           = wrap
     ),
     class = "fr_body"
   )
@@ -844,6 +866,8 @@ new_fr_spec <- function(data,
                                         pagehead_after = 0L,
                                         pagefoot_before = 0L,
                                         page_by_after = 1L),
+                         type = "table",
+                         plot = NULL,
                          call = caller_env()) {
 
   if (!is.data.frame(data)) {
@@ -862,7 +886,9 @@ new_fr_spec <- function(data,
       page        = page,
       pagehead    = pagehead,
       pagefoot    = pagefoot,
-      spacing     = spacing
+      spacing     = spacing,
+      type        = type,
+      plot        = plot
     ),
     class = "fr_spec"
   )
@@ -870,21 +896,150 @@ new_fr_spec <- function(data,
 
 
 #' @export
-print.fr_spec <- function(x, ...) {
-  nr <- nrow(x$data)
-  nc <- length(x$columns)
-  orient <- x$page$orientation %||% "landscape"
-  n_titles <- length(x$meta$titles %||% list())
-  n_fn <- length(x$meta$footnotes %||% list())
-  cat(sprintf("<fr_spec> %d rows x %d columns [%s]", nr, nc, orient))
-  if (n_titles > 0L || n_fn > 0L) {
-    parts <- character(0)
-    if (n_titles > 0L) parts <- c(parts, sprintf("%d title(s)", n_titles))
-    if (n_fn > 0L)     parts <- c(parts, sprintf("%d footnote(s)", n_fn))
-    cat(" | ", paste(parts, collapse = ", "))
+print.fr_spec <- function(x, ..., compact = FALSE) {
+  if (isTRUE(compact)) {
+    nr <- nrow(x$data)
+    nc <- length(x$columns)
+    orient <- x$page$orientation %||% "landscape"
+    n_titles <- length(x$meta$titles %||% list())
+    n_fn <- length(x$meta$footnotes %||% list())
+    cat(sprintf("<fr_spec> %d rows x %d columns [%s]", nr, nc, orient))
+    if (n_titles > 0L || n_fn > 0L) {
+      parts <- character(0)
+      if (n_titles > 0L) parts <- c(parts, sprintf("%d title(s)", n_titles))
+      if (n_fn > 0L)     parts <- c(parts, sprintf("%d footnote(s)", n_fn))
+      cat(" | ", paste(parts, collapse = ", "))
+    }
+    cat("\n")
+    return(invisible(x))
   }
-  cat("\n")
+
+  # Rich tree view
+  type_label <- x$type %||% "Table"
+  type_label <- paste0(toupper(substr(type_label, 1, 1)),
+                        substring(type_label, 2))
+  cli::cli_h3("fr_spec: {type_label}")
+
+  # Data summary
+  nr <- nrow(x$data)
+  nc_data <- ncol(x$data)
+  nc_spec <- length(x$columns)
+  cli::cli_text("Data: {nr} row{?s} x {nc_data} column{?s}")
+
+  # Page config
+  orient <- x$page$orientation %||% "landscape"
+  paper  <- x$page$paper %||% "letter"
+  fs     <- x$page$font_size %||% 9
+  font   <- x$page$font_family %||% "Courier New"
+  cli::cli_text("Page: {orient} {paper}, {fs}pt {font}")
+
+  # Titles
+  titles <- x$meta$titles %||% list()
+  if (length(titles) > 0L) {
+    cli::cli_text("Titles ({length(titles)}):")
+    for (i in seq_along(titles)) {
+      t <- titles[[i]]
+      txt <- label_to_plain(t$content)
+      if (nchar(txt) > 60L) txt <- paste0(substr(txt, 1, 57), "...")
+      cli::cli_text("  {i}. [{t$align}] {.val {txt}}")
+    }
+  }
+
+  # Columns
+  if (nc_spec > 0L) {
+    vis_cols <- Filter(function(c) !isFALSE(c$visible), x$columns)
+    cli::cli_text("Columns ({length(vis_cols)} visible of {nc_spec}):")
+    show_n <- min(length(vis_cols), 8L)
+    nms <- names(vis_cols)
+    for (i in seq_len(show_n)) {
+      col <- vis_cols[[i]]
+      lbl <- label_to_plain(col$label %||% nms[i])
+      if (nchar(lbl) > 20L) lbl <- paste0(substr(lbl, 1, 17), "...")
+      w <- if (is_fr_pct(col$width)) sprintf("%.0f%%", unclass(col$width) * 100)
+           else if (is.numeric(col$width)) sprintf("%.2fin", col$width)
+           else "auto"
+      a <- col$align %||% "left"
+      cli::cli_text("  {nms[i]}  {.val {lbl}}  {w}  {a}")
+    }
+    if (length(vis_cols) > show_n) {
+      cli::cli_text("  ... and {length(vis_cols) - show_n} more")
+    }
+  }
+
+  # Header
+  h <- x$header
+  if (!is.null(h)) {
+    parts <- character(0)
+    if (isTRUE(h$bold)) parts <- c(parts, "bold")
+    if (!is.null(h$valign)) parts <- c(parts, paste0("valign=", h$valign))
+    if (!is.null(h$align)) parts <- c(parts, paste0("align=", h$align))
+    if (!is.null(h$n)) parts <- c(parts, "N-counts")
+    if (length(parts) > 0L) {
+      cli::cli_text("Header: {paste(parts, collapse = ', ')}")
+    }
+  }
+
+  # Rows config
+  b <- x$body
+  if (!is.null(b)) {
+    parts <- character(0)
+    if (length(b$page_by) > 0L) parts <- c(parts, paste0("page_by=", paste(b$page_by, collapse = ",")))
+    if (length(b$group_by) > 0L) parts <- c(parts, paste0("group_by=", paste(b$group_by, collapse = ",")))
+    if (length(b$sort_by) > 0L) parts <- c(parts, paste0("sort_by=", paste(b$sort_by, collapse = ",")))
+    if (length(b$indent_by) > 0L) parts <- c(parts, paste0("indent_by=", paste(b$indent_by, collapse = ",")))
+    if (isTRUE(b$repeat_cols)) parts <- c(parts, "repeat_cols")
+    if (isTRUE(b$wrap)) parts <- c(parts, "wrap")
+    if (length(parts) > 0L) {
+      cli::cli_text("Rows: {paste(parts, collapse = ', ')}")
+    }
+  }
+
+  # Rules
+  if (length(x$rules) > 0L) {
+    n_h <- sum(vapply(x$rules, function(r) inherits(r, "fr_rule_hline"), logical(1)))
+    n_v <- sum(vapply(x$rules, function(r) inherits(r, "fr_rule_vline"), logical(1)))
+    parts <- character(0)
+    if (n_h > 0L) parts <- c(parts, paste0(n_h, " hline(s)"))
+    if (n_v > 0L) parts <- c(parts, paste0(n_v, " vline(s)"))
+    cli::cli_text("Rules: {paste(parts, collapse = ', ')}")
+  }
+
+  # Spans
+  spans <- x$header$spans %||% list()
+  if (length(spans) > 0L) {
+    cli::cli_text("Spans: {length(spans)}")
+  }
+
+  # Styles
+  if (length(x$cell_styles) > 0L) {
+    cli::cli_text("Styles: {length(x$cell_styles)} override{?s}")
+  }
+
+  # Footnotes
+  footnotes <- x$meta$footnotes %||% list()
+  if (length(footnotes) > 0L) {
+    cli::cli_text("Footnotes ({length(footnotes)}):")
+    for (i in seq_along(footnotes)) {
+      fn <- footnotes[[i]]
+      txt <- label_to_plain(fn$content)
+      if (nchar(txt) > 60L) txt <- paste0(substr(txt, 1, 57), "...")
+      place <- if (fn$placement == "last") " [last]" else ""
+      cli::cli_text("  {i}. [{fn$align}{place}] {.val {txt}}")
+    }
+  }
+
+  # Plot (figure)
+  if (!is.null(x$plot)) {
+    cli::cli_text("Plot: {class(x$plot)[1L]}")
+  }
+
   invisible(x)
+}
+
+
+#' @export
+summary.fr_spec <- function(object, ...) {
+  print(object, ...)
 }
 
 

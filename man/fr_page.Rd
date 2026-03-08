@@ -152,6 +152,21 @@ tbl_ae_soc |>
   fr_table() |>
   fr_page(orphan_min = 2L, widow_min = 2L)
 
+## ── Column split with stub columns ─────────────────────────────────────
+
+tbl_vs |>
+  fr_table() |>
+  fr_page(
+    col_split  = TRUE,
+    stub_cols  = c("param", "statistic")
+  )
+
+## ── Legal paper size (8.5 x 14 in) ─────────────────────────────────────
+
+tbl_ae_soc |>
+  fr_table() |>
+  fr_page(paper = "legal", orientation = "landscape", margins = 1)
+
 }
 \seealso{
 \code{\link[=fr_pagehead]{fr_pagehead()}}, \code{\link[=fr_pagefoot]{fr_pagefoot()}} for running headers/footers,

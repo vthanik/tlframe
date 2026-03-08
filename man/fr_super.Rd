@@ -35,11 +35,10 @@ fr_col("BMI kg/m{fr_super(2)}", width = 1.5)
 # Standalone usage (inspect the sentinel)
 format(fr_super(1))
 
-# In a pipeline (requires a spec):
-\dontrun{
+# In a pipeline:
+spec <- tbl_demog |> fr_table()
 n <- 1
 spec |> fr_footnotes("{fr_super(n)} Pearson chi-square test")
-}
 
 }
 \seealso{

@@ -97,10 +97,13 @@
 #' # Exact width in points
 #' tbl_demog |> fr_table() |> fr_hlines("header", width = 0.75)
 #'
-#' ## ── Custom colour ─────────────────────────────────────────────────────────
+#' ## ── Custom colour (hex or CSS named colour) ────────────────────────────────
 #'
-#' # Navy blue rules
+#' # Hex colour
 #' tbl_demog |> fr_table() |> fr_hlines("booktabs", color = "#003366")
+#'
+#' # CSS named colour
+#' tbl_demog |> fr_table() |> fr_hlines("header", color = "steelblue")
 #'
 #' ## ── Custom linestyle ──────────────────────────────────────────────────────
 #'
@@ -258,13 +261,16 @@ fr_hlines <- function(spec, preset = "header",
 #'   fr_vlines("void") |>
 #'   fr_vlines(cols = 1L)
 #'
-#' ## ── Custom width and style ────────────────────────────────────────────────
+#' ## ── Custom width, style, and colour ────────────────────────────────────────
 #'
 #' # Thick outer box
 #' tbl_demog |> fr_table() |> fr_vlines("box", width = "thick")
 #'
 #' # Dashed inner separators
 #' tbl_demog |> fr_table() |> fr_vlines("all", linestyle = "dashed")
+#'
+#' # CSS named colour
+#' tbl_demog |> fr_table() |> fr_vlines("box", color = "slategray")
 #'
 #' ## ── Combined with fr_hlines ───────────────────────────────────────────────
 #'
@@ -398,9 +404,12 @@ fr_vlines <- function(spec, preset = "box", cols = NULL,
 #'
 #' tbl_demog |> fr_table() |> fr_grid("hsides/all")
 #'
-#' ## ── Custom width applied uniformly ────────────────────────────────────
+#' ## ── Custom width and colour applied uniformly ─────────────────────────
 #'
 #' tbl_demog |> fr_table() |> fr_grid("header/box", width = "medium")
+#'
+#' # CSS named colour for both h and v rules
+#' tbl_demog |> fr_table() |> fr_grid("header/box", color = "navy")
 #'
 #' ## ── Full pipeline ─────────────────────────────────────────────────────
 #'

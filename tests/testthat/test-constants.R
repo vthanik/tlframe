@@ -368,8 +368,17 @@ test_that("resolve_color handles named colors", {
   expect_match(result, "^#")
 })
 
-test_that("resolve_color errors on invalid color", {
+test_that("resolve_color resolves CSS named colors", {
+  expect_equal(resolve_color("steelblue"), "#4682B4")
+  expect_equal(resolve_color("tomato"), "#FF6347")
+  expect_equal(resolve_color("cornflowerblue"), "#6495ED")
+  expect_equal(resolve_color("lightgray"), "#D3D3D3")
+  expect_equal(resolve_color("SteelBlue"), "#4682B4")  # case-insensitive
+})
+
+test_that("resolve_color errors on invalid color with suggestions", {
   expect_error(resolve_color("notacolor"))
+  expect_error(resolve_color("steelblu"), "Did you mean")
 })
 
 
@@ -615,4 +624,382 @@ test_that("resolve_color normalizes hex to uppercase", {
   expect_equal(resolve_color("#aabbcc"), "#AABBCC")
   expect_equal(resolve_color("#FF0000"), "#FF0000")
   expect_equal(resolve_color("#abcdef"), "#ABCDEF")
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Additional coverage tests
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── resolve_afm_name: all family + style combinations ─────────────────────
+
+test_that("resolve_afm_name covers all bold/italic combos for modern", {
+  expect_equal(resolve_afm_name("modern"),                              "Courier")
+  expect_equal(resolve_afm_name("modern", bold = TRUE),                 "Courier-Bold")
+  expect_equal(resolve_afm_name("modern", italic = TRUE),               "Courier-Oblique")
+  expect_equal(resolve_afm_name("modern", bold = TRUE, italic = TRUE),  "Courier-BoldOblique")
+})
+
+test_that("resolve_afm_name covers all bold/italic combos for swiss", {
+  expect_equal(resolve_afm_name("swiss"),                              "Helvetica")
+  expect_equal(resolve_afm_name("swiss", bold = TRUE),                 "Helvetica-Bold")
+  expect_equal(resolve_afm_name("swiss", italic = TRUE),               "Helvetica-Oblique")
+  expect_equal(resolve_afm_name("swiss", bold = TRUE, italic = TRUE),  "Helvetica-BoldOblique")
+})
+
+test_that("resolve_afm_name covers all bold/italic combos for roman", {
+  expect_equal(resolve_afm_name("roman"),                              "Times-Roman")
+  expect_equal(resolve_afm_name("roman", bold = TRUE),                 "Times-Bold")
+  expect_equal(resolve_afm_name("roman", italic = TRUE),               "Times-Italic")
+  expect_equal(resolve_afm_name("roman", bold = TRUE, italic = TRUE),  "Times-BoldItalic")
+})
+
+test_that("resolve_afm_name falls back to modern for unknown font names", {
+  expect_equal(resolve_afm_name("UnknownFont"), "Courier")
+  expect_equal(resolve_afm_name("UnknownFont", bold = TRUE), "Courier-Bold")
+  expect_equal(resolve_afm_name("UnknownFont", italic = TRUE), "Courier-Oblique")
+  expect_equal(resolve_afm_name("UnknownFont", bold = TRUE, italic = TRUE), "Courier-BoldOblique")
+})
+
+test_that("resolve_afm_name resolves all font names in each family", {
+  # Modern family fonts
+  for (fn in c("Courier", "Consolas", "Lucida Console", "DejaVu Sans Mono", "Liberation Mono")) {
+    expect_equal(resolve_afm_name(fn), "Courier", info = paste0("Font: ", fn))
+  }
+  # Swiss family fonts
+  for (fn in c("Helvetica", "Calibri", "Verdana", "Tahoma", "Segoe UI", "DejaVu Sans", "Liberation Sans")) {
+    expect_equal(resolve_afm_name(fn), "Helvetica", info = paste0("Font: ", fn))
+  }
+  # Roman family fonts
+  for (fn in c("Times", "Georgia", "Palatino", "Book Antiqua", "Cambria", "DejaVu Serif", "Liberation Serif")) {
+    expect_equal(resolve_afm_name(fn), "Times-Roman", info = paste0("Font: ", fn))
+  }
+})
+
+
+# ── get_rtf_font_family and get_rtf_font_prq: all families ───────────────
+
+test_that("get_rtf_font_family returns correct family for all font names", {
+  # Modern fonts
+  for (fn in c("Courier New", "Courier", "Consolas", "Lucida Console")) {
+    expect_equal(get_rtf_font_family(fn), "fmodern", info = paste0("Font: ", fn))
+  }
+  # Swiss fonts
+  for (fn in c("Arial", "Helvetica", "Calibri", "Verdana", "Tahoma")) {
+    expect_equal(get_rtf_font_family(fn), "fswiss", info = paste0("Font: ", fn))
+  }
+  # Roman fonts
+  for (fn in c("Times New Roman", "Times", "Georgia", "Palatino")) {
+    expect_equal(get_rtf_font_family(fn), "froman", info = paste0("Font: ", fn))
+  }
+})
+
+test_that("get_rtf_font_family falls back to fmodern for unknown fonts", {
+  expect_equal(get_rtf_font_family("NonExistentFont"), "fmodern")
+})
+
+test_that("get_rtf_font_prq returns correct pitch for all families", {
+  expect_equal(get_rtf_font_prq("Courier New"), 1L)      # modern = fixed
+  expect_equal(get_rtf_font_prq("Times New Roman"), 2L)   # roman = variable
+  expect_equal(get_rtf_font_prq("Arial"), 2L)             # swiss = variable
+})
+
+test_that("get_rtf_font_prq falls back to modern pitch for unknown fonts", {
+  expect_equal(get_rtf_font_prq("NonExistentFont"), 1L)
+})
+
+test_that("get_tex_font_cmd falls back to ttfamily for unknown fonts", {
+  expect_match(get_tex_font_cmd("NonExistentFont"), "ttfamily")
+})
+
+
+# ── paper_dims_twips: all sizes and orientations ─────────────────────────
+
+test_that("paper_dims_twips portrait returns original dimensions", {
+  letter <- paper_dims_twips("letter", "portrait")
+  expect_equal(letter[["width"]],  12240L)
+  expect_equal(letter[["height"]], 15840L)
+})
+
+test_that("paper_dims_twips landscape swaps for all paper sizes", {
+  for (sz in c("letter", "a4", "legal")) {
+    p <- paper_dims_twips(sz, "portrait")
+    l <- paper_dims_twips(sz, "landscape")
+    expect_equal(p[["width"]],  l[["height"]], info = paste0(sz, " width"))
+    expect_equal(p[["height"]], l[["width"]],  info = paste0(sz, " height"))
+  }
+})
+
+test_that("paper_dims_twips a4 has correct dimensions", {
+  a4 <- paper_dims_twips("a4", "portrait")
+  expect_equal(a4[["width"]],  11906L)
+  expect_equal(a4[["height"]], 16838L)
+})
+
+test_that("paper_dims_twips legal has correct dimensions", {
+  legal <- paper_dims_twips("legal", "portrait")
+  expect_equal(legal[["width"]],  12240L)
+  expect_equal(legal[["height"]], 20163L)
+})
+
+test_that("paper_dims_twips warns and falls back for unknown paper size", {
+  expect_warning(
+    dims <- paper_dims_twips("tabloid", "portrait"),
+    "Unknown paper size"
+  )
+  letter <- paper_dims_twips("letter", "portrait")
+  expect_equal(dims, letter)
+})
+
+
+# ── is_system_font_available: Windows always TRUE ────────────────────────
+
+test_that("is_system_font_available returns TRUE for standard fonts on Windows", {
+  skip_if_not(tolower(Sys.info()[["sysname"]]) == "windows",
+              "Test only runs on Windows")
+  expect_true(is_system_font_available("Arial"))
+  expect_true(is_system_font_available("Courier New"))
+  expect_true(is_system_font_available("Times New Roman"))
+  expect_true(is_system_font_available("SomeRandomFont"))
+})
+
+
+# ── hex_to_rgb: 3-digit hex and invalid hex ──────────────────────────────
+
+test_that("hex_to_rgb handles 3-digit shorthand", {
+  rgb <- hex_to_rgb("#F00")
+  expect_equal(rgb, c(r = 255L, g = 0L, b = 0L))
+
+  rgb2 <- hex_to_rgb("#ABC")
+  expect_equal(rgb2, c(r = 170L, g = 187L, b = 204L))
+})
+
+test_that("hex_to_rgb handles input without # prefix", {
+  rgb <- hex_to_rgb("FF0000")
+  expect_equal(rgb, c(r = 255L, g = 0L, b = 0L))
+})
+
+test_that("hex_to_rgb errors on invalid hex length", {
+  expect_error(hex_to_rgb("#FFFF"), "Invalid hex color")
+  expect_error(hex_to_rgb("#F"), "Invalid hex color")
+  expect_error(hex_to_rgb("#FFFFFFF"), "Invalid hex color")
+})
+
+
+# ── hex_to_latex_color: format ────────────────────────────────────────────
+
+test_that("hex_to_latex_color strips # and uppercases", {
+  expect_equal(hex_to_latex_color("#ff0000"), "FF0000")
+  expect_equal(hex_to_latex_color("#003366"), "003366")
+  expect_equal(hex_to_latex_color("#ABCDEF"), "ABCDEF")
+})
+
+
+# ── resolve_color: NULL and NA ───────────────────────────────────────────
+
+test_that("resolve_color returns NULL for NULL", {
+  expect_null(resolve_color(NULL))
+})
+
+test_that("resolve_color returns NULL for NA", {
+  expect_null(resolve_color(NA))
+  expect_null(resolve_color(NA_character_))
+})
+
+test_that("resolve_color error on unknown name without close match", {
+  expect_error(resolve_color("xyzzy123"), "hex string")
+})
+
+
+# ── resolve_line_width: multi-element character error ────────────────────
+
+test_that("resolve_line_width errors on multi-element character vector", {
+  expect_error(resolve_line_width(c("thin", "thick")), "single string")
+})
+
+
+# ── resolve_tokens: NULL and non-character input ─────────────────────────
+
+test_that("resolve_tokens returns NULL for NULL input", {
+  expect_null(resolve_tokens(NULL, list(thepage = "1")))
+})
+
+test_that("resolve_tokens returns non-character input as-is", {
+  expect_equal(resolve_tokens(42, list(thepage = "1")), 42)
+})
+
+test_that("resolve_tokens handles vector of multiple strings", {
+  token_map <- list(x = "A", y = "B")
+  result <- resolve_tokens(c("{x}", "{y}", "plain"), token_map)
+  expect_equal(result, c("A", "B", "plain"))
+})
+
+
+# ── os_default_fonts: values are in font tables ─────────────────────────
+
+test_that("os_default_fonts returns fonts that exist in font tables", {
+  fonts <- os_default_fonts()
+  for (nm in c("mono", "sans", "serif")) {
+    fam <- lookup_font_family(fonts[[nm]])
+    expect_true(fam %in% c("modern", "swiss", "roman"),
+                info = paste0("Font: ", fonts[[nm]]))
+  }
+})
+
+
+# ── Grouped sub-lists ────────────────────────────────────────────────────
+
+test_that("fr_env$presets contains hline, linestyles, and line_widths", {
+  expect_true(is.list(fr_env$presets))
+  expect_true("hline" %in% names(fr_env$presets))
+  expect_true("linestyles" %in% names(fr_env$presets))
+  expect_true("line_widths" %in% names(fr_env$presets))
+  expect_identical(fr_env$presets$hline, fr_env$hline_presets)
+  expect_identical(fr_env$presets$linestyles, fr_env$valid_linestyles)
+  expect_identical(fr_env$presets$line_widths, fr_env$line_widths)
+})
+
+test_that("fr_env$rtf contains linestyle, cell_border, para_border, specials, unicode", {
+  expect_true(is.list(fr_env$rtf))
+  expect_named(fr_env$rtf, c("linestyle", "cell_border", "para_border", "specials", "unicode"),
+               ignore.order = TRUE)
+  expect_identical(fr_env$rtf$linestyle, fr_env$linestyle_rtf)
+  expect_identical(fr_env$rtf$cell_border, fr_env$cell_border_rtf)
+  expect_identical(fr_env$rtf$specials, fr_env$rtf_specials)
+})
+
+test_that("fr_env$validation contains aligns, valigns, linestyles", {
+  expect_true(is.list(fr_env$validation))
+  expect_identical(fr_env$validation$aligns, fr_env$valid_aligns)
+  expect_identical(fr_env$validation$valigns, fr_env$valid_valigns)
+  expect_identical(fr_env$validation$linestyles, fr_env$valid_linestyles)
+})
+
+
+# ── Rendering constants ─────────────────────────────────────────────────
+
+test_that("LaTeX rendering constants exist and have expected types", {
+  expect_true(is.numeric(fr_env$latex_leading_factor))
+  expect_true(is.character(fr_env$latex_rowsep))
+  expect_true(is.character(fr_env$latex_colsep))
+  expect_true(is.numeric(fr_env$latex_space_width_em))
+  expect_true(is.numeric(fr_env$latex_fn_sep_width_pt))
+  expect_true(is.numeric(fr_env$latex_align_gap_width))
+  expect_true(is.numeric(fr_env$points_per_inch))
+  expect_equal(fr_env$points_per_inch, 72)
+})
+
+test_that("RTF rendering constants exist and have expected types", {
+  expect_true(is.numeric(fr_env$rtf_leading_factor))
+  expect_true(is.integer(fr_env$rtf_min_headery))
+  expect_true(is.integer(fr_env$rtf_decimal_pad))
+  expect_true(is.numeric(fr_env$rtf_box_border_wd))
+  expect_true(is.integer(fr_env$rtf_spanner_brdrw))
+})
+
+
+# ── Vertical alignment maps ─────────────────────────────────────────────
+
+test_that("valid_valigns contains all expected values", {
+  expect_equal(fr_env$valid_valigns, c("top", "middle", "bottom"))
+})
+
+test_that("valign_to_rtf maps all valid vertical alignments", {
+  for (v in fr_env$valid_valigns) {
+    expect_true(v %in% names(fr_env$valign_to_rtf),
+                info = paste0("valign_to_rtf should contain '", v, "'"))
+  }
+  # top maps to empty string (default)
+  expect_equal(fr_env$valign_to_rtf[["top"]], "")
+  expect_match(fr_env$valign_to_rtf[["middle"]], "clvertalc")
+  expect_match(fr_env$valign_to_rtf[["bottom"]], "clvertalb")
+})
+
+test_that("valign_to_latex maps all valid vertical alignments", {
+  for (v in fr_env$valid_valigns) {
+    expect_true(v %in% names(fr_env$valign_to_latex),
+                info = paste0("valign_to_latex should contain '", v, "'"))
+  }
+  expect_equal(fr_env$valign_to_latex[["top"]], "t")
+  expect_equal(fr_env$valign_to_latex[["middle"]], "m")
+  expect_equal(fr_env$valign_to_latex[["bottom"]], "b")
+})
+
+
+# ── LaTeX linestyle map ──────────────────────────────────────────────────
+
+test_that("linestyle_latex maps all valid linestyles", {
+  for (style in fr_env$valid_linestyles) {
+    expect_true(style %in% names(fr_env$linestyle_latex),
+                info = paste0("linestyle_latex should contain '", style, "'"))
+  }
+  expect_equal(fr_env$linestyle_latex[["solid"]], "solid")
+  expect_equal(fr_env$linestyle_latex[["dashdot"]], "dashed")
+})
+
+
+# ── RTF border map completeness ──────────────────────────────────────────
+
+test_that("cell_border_rtf maps all four sides", {
+  expect_named(fr_env$cell_border_rtf, c("top", "bottom", "left", "right"),
+               ignore.order = TRUE)
+})
+
+test_that("para_border_rtf maps all four sides", {
+  expect_named(fr_env$para_border_rtf, c("top", "bottom", "left", "right"),
+               ignore.order = TRUE)
+})
+
+
+# ── hline_presets detailed checks ────────────────────────────────────────
+
+test_that("hline_presets$box is the string sentinel 'box'", {
+  expect_equal(fr_env$hline_presets$box, "box")
+})
+
+test_that("hline_presets$hsides has header above + body below", {
+  p <- fr_env$hline_presets$hsides
+  expect_length(p, 2L)
+  expect_equal(p[[1]]$region, "header")
+  expect_equal(p[[1]]$side, "above")
+  expect_equal(p[[2]]$region, "body")
+  expect_equal(p[[2]]$side, "below")
+})
+
+test_that("hline_presets$above has single rule above header", {
+  p <- fr_env$hline_presets$above
+  expect_length(p, 1L)
+  expect_equal(p[[1]]$region, "header")
+  expect_equal(p[[1]]$side, "above")
+})
+
+test_that("hline_presets$below has single rule below body", {
+  p <- fr_env$hline_presets$below
+  expect_length(p, 1L)
+  expect_equal(p[[1]]$region, "body")
+  expect_equal(p[[1]]$side, "below")
+})
+
+test_that("hline_presets$booktabs has correct widths (thick/thin/thick)", {
+  p <- fr_env$hline_presets$booktabs
+  expect_equal(p[[1]]$width, 1.0)  # toprule
+  expect_equal(p[[2]]$width, 0.5)  # midrule
+  expect_equal(p[[3]]$width, 1.0)  # bottomrule
+})
+
+
+# ── Backend registry ─────────────────────────────────────────────────────
+
+test_that("fr_env$backends is initialized as a list", {
+  expect_true(is.list(fr_env$backends))
+})
+
+
+# ── builtin_tokens ───────────────────────────────────────────────────────
+
+test_that("builtin_tokens contains all four token names", {
+  expect_equal(
+    sort(fr_env$builtin_tokens),
+    sort(c("thepage", "total_pages", "program", "datetime"))
+  )
 })
