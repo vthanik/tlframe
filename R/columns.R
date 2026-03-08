@@ -1,0 +1,320 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# columns.R — Column width estimation and distribution
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 1. Column Initialisation
+#
+# Auto-generates fr_col objects for data frame columns that haven't been
+# explicitly configured via fr_cols(). Uses fr_col() from classes.R —
+# NEVER duplicates the class construction.
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' Build default columns for unconfigured data frame columns
+#'
+#' @param data Data frame.
+#' @param configured Named list of fr_col objects already set by user.
+#' @param default_width Numeric, "auto", "equal", or NULL. Global width
+#'   default from fr_cols .width. NULL → 1.5 in.
+#' @param width_mode Character. "fixed", "auto", or "equal".
+#' @param default_align Character. Global alignment default. NULL →
+#'   auto-detect from column type.
+#' @param label_fn Function or NULL. Applied to auto-generated labels
+#'   (column names not explicitly labelled).
+#' @param labels Named list of column name → fully formatted label string.
+#'   Overrides all other label sources for matching columns.
+#' @param page fr_page object (for font metrics and printable area).
+#' @return Named list of fr_col objects for all columns.
+#' @noRd
+build_default_columns <- function(data,
+                                   configured    = list(),
+                                   default_width = NULL,
+                                   width_mode    = "fixed",
+                                   default_align = NULL,
+                                   label_fn      = NULL,
+                                   labels        = NULL,
+                                   page          = new_fr_page()) {
+  col_names <- names(data)
+  result <- vector("list", length(col_names))
+  names(result) <- col_names
+
+  # For fixed mode, resolve the fallback width
+  # For percent mode, default_width is an fr_pct — assign directly
+  fallback_width <- if (width_mode == "fixed") (default_width %||% 1.5)
+                    else if (width_mode == "percent") default_width
+                    else NULL
+
+  for (nm in col_names) {
+    auto_align <- default_align %||%
+                  (if (is.numeric(data[[nm]])) "right" else "left")
+
+    if (nm %in% names(configured)) {
+      col_def       <- configured[[nm]]
+      col_def$id    <- nm
+      if (is.null(col_def$align)) col_def$align <- auto_align
+    } else {
+      # Auto-generate label: use label_fn if provided, else column name
+      auto_label <- if (!is.null(label_fn)) label_fn(nm) else nm
+      col_def    <- fr_col(label = auto_label, align = auto_align)
+      col_def$id <- nm
+    }
+
+    # .labels wins: fully formatted label overrides all other sources
+    if (!is.null(labels) && nm %in% names(labels)) {
+      col_def$label <- as.character(labels[[nm]])
+    }
+
+    # Resolve width = "auto" at the per-column level
+    if (identical(col_def$width, "auto") ||
+        (is.null(col_def$width) && width_mode %in% c("auto", "fit"))) {
+      col_def$width <- estimate_col_width(data, nm, col_def$label, page)
+    }
+
+    # Fill NULL width from fallback (fixed or percent mode)
+    if (is.null(col_def$width) && width_mode %in% c("fixed", "percent")) {
+      col_def$width <- fallback_width
+    }
+
+    result[[nm]] <- col_def
+  }
+
+  # ── Post-pass: width distribution ──────────────────────────────────────
+
+  if (width_mode == "auto") {
+    # Distribution deferred to finalize_spec() which has the final page context
+    # (e.g., col_split may be set after fr_cols via fr_page)
+  } else if (width_mode == "fit") {
+    result <- distribute_fit_widths(result, page)
+  } else if (width_mode == "equal") {
+    result <- distribute_equal_widths(result, page)
+  }
+
+  result
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 2. Text Width Measurement (AFM-based)
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' Measure text width in twips using AFM font metrics
+#'
+#' Sums per-character widths from pre-parsed AFM data to produce accurate
+#' text width measurements for proportional fonts. Vectorized over `text`.
+#'
+#' @param text Character vector. Strings to measure.
+#' @param font_family Character. Font family type ("modern"/"swiss"/"roman")
+#'   or a font name (e.g. "Courier New", "Arial").
+#' @param font_size_pt Numeric. Font size in points.
+#' @param bold Logical. Use bold variant metrics.
+#' @param italic Logical. Use italic variant metrics.
+#' @return Numeric vector. Width in twips for each element of `text`.
+#' @noRd
+measure_text_width_twips <- function(text,
+                                      font_family = "Helvetica",
+                                      font_size_pt = 10,
+                                      bold = FALSE,
+                                      italic = FALSE) {
+  afm_name <- resolve_afm_name(font_family, bold = bold, italic = italic)
+  char_widths <- afm_metrics[[afm_name]]
+
+  # Default width for unknown characters (use space width as fallback)
+  default_w <- unname(char_widths[" "])
+  if (is.na(default_w)) default_w <- 500L  # safe fallback
+
+  # Conversion factor: AFM units (1/1000 em) → twips
+  # 1 pt = 20 twips; AFM width at font_size_pt = width/1000 * font_size_pt pt
+  scale <- font_size_pt / 1000 * 20
+
+  vapply(text, function(t) {
+    if (is.na(t) || !nzchar(t)) return(0)
+    chars <- strsplit(t, "", fixed = TRUE)[[1L]]
+    widths <- char_widths[chars]
+    widths[is.na(widths)] <- default_w
+    sum(widths) * scale
+  }, numeric(1), USE.NAMES = FALSE)
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 3. Width Estimation
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' Estimate column width from content and header text
+#'
+#' Uses the page font metrics to measure the widest cell value and
+#' the header label, then converts to inches with padding.
+#'
+#' @param data Data frame.
+#' @param col_name Column name to measure.
+#' @param label Resolved display label (may contain sentinels).
+#' @param page fr_page object for font metrics.
+#' @return Numeric. Estimated width in inches.
+#' @noRd
+estimate_col_width <- function(data, col_name, label, page) {
+  font_family <- page$font_family
+  font_size   <- page$font_size
+
+  # Content width: measure widest cell value using AFM metrics
+  col_values <- as.character(data[[col_name]])
+  if (length(col_values) == 0L || all(is.na(col_values))) {
+    max_content_twips <- 0
+  } else {
+    col_values[is.na(col_values)] <- ""
+    col_values <- unique(col_values)
+    max_content_twips <- max(measure_text_width_twips(
+      col_values, font_family, font_size
+    ))
+  }
+
+  # Label width: widest line (multi-line aware, strip sentinels)
+  label_plain <- label_to_plain(label)
+  label_lines <- strsplit(label_plain, "\n", fixed = TRUE)[[1L]]
+  if (length(label_lines) == 0L) {
+    label_lines <- col_name
+  }
+  max_label_twips <- max(measure_text_width_twips(
+    label_lines, font_family, font_size, bold = TRUE
+  ))
+
+  # Use the wider of content or label + 2 chars padding
+  padding_twips <- measure_text_width_twips("  ", font_family, font_size)
+  max_twips <- max(max_content_twips, max_label_twips) + padding_twips
+
+  # Convert to inches
+  width_inches <- twips_to_inches(max_twips)
+
+  # Clamp: minimum 0.5in, maximum 5.0in
+  max(0.5, min(5.0, width_inches))
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 3. Width Distribution
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' Distribute auto-calculated widths to fit the printable page
+#'
+#' After per-column auto-estimation, scale all auto-width columns
+#' proportionally so the total fits the printable page width.
+#' Fixed-width columns (explicit numeric in fr_col) are preserved.
+#'
+#' @param columns Named list of fr_col objects (all widths resolved).
+#' @param page fr_page object.
+#' @return Named list of fr_col objects with adjusted widths.
+#' @noRd
+distribute_auto_widths <- function(columns, page) {
+  printable <- printable_area_inches(page)[["width"]]
+  visible <- Filter(function(col) !isFALSE(col$visible), columns)
+  if (length(visible) == 0L) return(columns)
+
+  total <- sum(vapply(visible, function(col) col$width, numeric(1)))
+  if (total <= 0 || total <= printable) return(columns)
+
+  # Scale down proportionally to fit
+  scale_factor <- printable / total
+  for (nm in names(columns)) {
+    if (!isFALSE(columns[[nm]]$visible)) {
+      columns[[nm]]$width <- columns[[nm]]$width * scale_factor
+    }
+  }
+  columns
+}
+
+
+#' Distribute fit widths: scale auto-calculated widths to fill page exactly
+#'
+#' Like "auto", but always scales (up or down) so the total width
+#' exactly matches the printable page width, preserving the ratio
+#' between columns.
+#'
+#' @param columns Named list of fr_col objects (all widths resolved).
+#' @param page fr_page object.
+#' @return Named list of fr_col objects with adjusted widths.
+#' @noRd
+distribute_fit_widths <- function(columns, page) {
+  printable <- printable_area_inches(page)[["width"]]
+  visible <- Filter(function(col) !isFALSE(col$visible), columns)
+  if (length(visible) == 0L) return(columns)
+
+  total <- sum(vapply(visible, function(col) col$width, numeric(1)))
+  if (total <= 0) return(columns)
+
+  scale_factor <- printable / total
+  for (nm in names(columns)) {
+    if (!isFALSE(columns[[nm]]$visible)) {
+      columns[[nm]]$width <- columns[[nm]]$width * scale_factor
+    }
+  }
+  columns
+}
+
+
+#' Distribute equal widths across unfixed columns
+#'
+#' Columns with an explicit numeric width in fr_col keep their size.
+#' Remaining printable space is divided equally among columns that
+#' had NULL width (not explicitly set).
+#'
+#' @param columns Named list of fr_col objects.
+#' @param page fr_page object.
+#' @return Named list of fr_col objects with resolved widths.
+#' @noRd
+distribute_equal_widths <- function(columns, page) {
+  printable <- printable_area_inches(page)[["width"]]
+  visible <- Filter(function(col) !isFALSE(col$visible), columns)
+  if (length(visible) == 0L) return(columns)
+
+  # Separate fixed vs unfixed
+  fixed_sum <- 0
+  unfixed_names <- character(0)
+  for (nm in names(visible)) {
+    if (is.null(columns[[nm]]$width)) {
+      unfixed_names <- c(unfixed_names, nm)
+    } else {
+      fixed_sum <- fixed_sum + columns[[nm]]$width
+    }
+  }
+
+  if (length(unfixed_names) == 0L) return(columns)
+
+  remaining <- max(0.5 * length(unfixed_names), printable - fixed_sum)
+  equal_width <- remaining / length(unfixed_names)
+
+  for (nm in unfixed_names) {
+    columns[[nm]]$width <- equal_width
+  }
+  columns
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 4. Printable Area Calculation
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' Calculate printable area in inches
+#'
+#' @param page fr_page object.
+#' @return Named numeric: `width` and `height` in inches.
+#' @noRd
+printable_area_inches <- function(page) {
+  dims <- paper_dims_twips(page$paper, page$orientation)
+  c(
+    width  = twips_to_inches(dims[["width"]]) -
+              page$margins$left - page$margins$right,
+    height = twips_to_inches(dims[["height"]]) -
+              page$margins$top - page$margins$bottom
+  )
+}
+
+
+#' Calculate printable area in twips
+#' @noRd
+printable_area_twips <- function(page) {
+  area <- printable_area_inches(page)
+  c(
+    width  = inches_to_twips(area[["width"]]),
+    height = inches_to_twips(area[["height"]])
+  )
+}

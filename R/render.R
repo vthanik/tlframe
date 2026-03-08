@@ -1,0 +1,833 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# render.R — Top-level rendering dispatch
+#
+# fr_render() is the terminal verb in the pipeline. It takes a fully
+# configured fr_spec and writes the output file.
+#
+# Pipeline:
+#   fr_spec → finalize_spec() → prepare_pages() → render_backend()
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+#' Render a Table to File
+#'
+#' @description
+#'
+#' The terminal verb in every **tlframe** pipeline. Takes a fully configured
+#' `fr_spec` object and writes the rendered table to a file. Supports RTF,
+#' LaTeX, and PDF output.
+#'
+#' Row pagination within the RTF output is delegated to the Word/LibreOffice
+#' rendering engine via native RTF properties (`\trhdr` for repeating
+#' headers). The LaTeX backend uses tabularray's `longtblr` environment with
+#' `rowhead` for repeating headers. R handles `page_by` group splitting
+#' (section/page breaks between groups) and `col_split` (column panel
+#' calculation for wide tables).
+#'
+#' @param spec An `fr_spec` object from [fr_table()], configured with
+#'   `fr_*()` pipeline verbs.
+#' @param path Character scalar. Output file path. The file extension
+#'   determines the format unless `format` is specified:
+#'   * `.rtf` — Rich Text Format.
+#'   * `.tex` — LaTeX source (tabularray/XeLaTeX).
+#'   * `.pdf` — PDF via XeLaTeX compilation (requires XeLaTeX on PATH or
+#'     **tinytex**).
+#' @param format Character scalar or `NULL`. Output format: `"rtf"`, `"latex"`,
+#'   or `"pdf"`. If `NULL` (default), detected from the file extension of `path`.
+#' @param ... Reserved for future backend-specific options.
+#'
+#' @return Invisibly returns `path` (the output file path).
+#'
+#' @section Page-by groups:
+#' When `fr_rows(page_by = "col_name")` is set, the data is split by the
+#' unique values of that column. Each group is rendered as a separate section
+#' with its own table, separated by `\sect` (section break) in RTF. The
+#' page-by column value is printed as a bold label above each group's table.
+#'
+#' @section Column splitting:
+#' When `fr_page(col_split = TRUE)` is set and the total column width
+#' exceeds the printable page area, columns are automatically split into
+#' panels. Stub columns (set via `fr_page(stub_cols = ...)`) are repeated
+#' in every panel. Each panel is rendered as a separate section.
+#'
+#' @examples
+#' \dontrun{
+#' # Minimal render
+#' tbl_demog |>
+#'   fr_table() |>
+#'   fr_render("demog.rtf")
+#'
+#' # Full pipeline
+#' tbl_demog |>
+#'   fr_table() |>
+#'   fr_titles("Table 14.1.1", "Summary of Demographics") |>
+#'   fr_footnotes("Source: ADSL", "Program: t_demog.R") |>
+#'   fr_cols(.width = "auto") |>
+#'   fr_hlines("header") |>
+#'   fr_page(orientation = "landscape") |>
+#'   fr_pagehead(left = "{program}", right = "{datetime}") |>
+#'   fr_pagefoot(center = "Page {thepage} of {total_pages}") |>
+#'   fr_render("demog.rtf")
+#' }
+#'
+#' @seealso [fr_table()] to start a pipeline, [fr_page()] for page layout,
+#'   [fr_rows()] for pagination control.
+#'
+#' @export
+fr_render <- function(spec, path, format = NULL, ...) {
+  call <- caller_env()
+  check_fr_spec(spec, call = call)
+  check_scalar_chr(path, arg = "path", call = call)
+
+  format <- format %||% detect_format(path, call = call)
+
+  spec <- finalize_spec(spec)
+  page_groups <- prepare_pages(spec)
+  col_panels <- calculate_col_panels(spec)
+
+  # When col_split produces multiple panels, scale each panel's column widths
+  # to fill the printable page width (AutoFit to Window per panel)
+  if (isTRUE(spec$page$col_split) && length(col_panels) > 1L) {
+    spec <- fit_panel_widths(spec, col_panels)
+  }
+
+  backend <- get_backend(format, call = call)
+  backend$render(spec, page_groups, col_panels, path)
+
+  invisible(path)
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Internal: Format Detection
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' Detect output format from file extension
+#' @noRd
+detect_format <- function(path, call = caller_env()) {
+  ext <- tolower(tools::file_ext(path))
+  if (ext == "") {
+    cli_abort(
+      c("Cannot detect format from {.path {path}}.",
+        "i" = "Provide a file extension (e.g. {.path .rtf}) or set {.arg format} explicitly."),
+      call = call
+    )
+  }
+  format_map <- c(rtf = "rtf", doc = "rtf", tex = "latex", pdf = "pdf")
+  fmt <- unname(format_map[ext])
+  if (is.na(fmt)) {
+    cli_abort(
+      c("Unsupported file extension {.val {ext}}.",
+        "i" = "Supported formats: {.val {names(format_map)}}."),
+      call = call
+    )
+  }
+  fmt
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Internal: Backend Registry
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' Get backend render function
+#' @noRd
+get_backend <- function(format, call = caller_env()) {
+  backends <- list(
+    rtf   = list(render = render_rtf),
+    latex = list(render = render_latex),
+    pdf   = list(render = render_pdf)
+  )
+  backend <- backends[[format]]
+  if (is.null(backend)) {
+    cli_abort(
+      c("No backend available for format {.val {format}}.",
+        "i" = "Available backends: {.val {names(backends)}}."),
+      call = call
+    )
+  }
+  backend
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Internal: Spec Finalization
+#
+# Resolves columns, widths, and styles to produce a render-ready spec.
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' Finalize spec for rendering
+#'
+#' 1. Build columns if empty (auto-generate from data)
+#' 2. Resolve widths
+#' 3. Filter to visible columns only for rendering
+#'
+#' @noRd
+finalize_spec <- function(spec) {
+  spec <- finalize_columns(spec)
+  spec <- finalize_labels(spec)
+  spec <- finalize_rows(spec)
+  spec
+}
+
+
+#' Finalize column structure: build defaults, resolve widths, inject gaps
+#' @noRd
+finalize_columns <- function(spec) {
+  # If no columns configured, auto-generate defaults
+  if (length(spec$columns) == 0L) {
+    spec$columns <- build_default_columns(
+      data          = spec$data,
+      configured    = list(),
+      default_width = NULL,
+      width_mode    = "auto",
+      default_align = NULL,
+      label_fn      = NULL,
+      labels        = NULL,
+      page          = spec$page
+    )
+  }
+
+  # Ensure all data columns have a column spec
+  for (nm in names(spec$data)) {
+    if (is.null(spec$columns[[nm]])) {
+      auto_align <- if (is.numeric(spec$data[[nm]])) "right" else "left"
+      col_def <- fr_col(label = nm, align = auto_align)
+      col_def$id <- nm
+      col_def$width <- estimate_col_width(spec$data, nm, nm, spec$page)
+      spec$columns[[nm]] <- col_def
+    }
+  }
+
+  # Resolve percentage widths to absolute inches
+  printable_w <- printable_area_inches(spec$page)[["width"]]
+  for (nm in names(spec$columns)) {
+    w <- spec$columns[[nm]]$width
+    if (is_fr_pct(w)) {
+      spec$columns[[nm]]$width <- unclass(w) * printable_w
+    }
+  }
+
+  # Ensure all columns have a resolved numeric width
+  for (nm in names(spec$columns)) {
+    col <- spec$columns[[nm]]
+    if (is.null(col$width) || identical(col$width, "auto")) {
+      label <- col$label
+      if (!nzchar(label)) label <- nm
+      spec$columns[[nm]]$width <- estimate_col_width(
+        spec$data, nm, label, spec$page
+      )
+    }
+  }
+
+  # Resolve column visibility:
+  # - page_by columns with visible = NULL -> FALSE (auto-hide)
+  # - all other columns with visible = NULL -> TRUE (default visible)
+  # - explicit TRUE/FALSE always respected
+  page_by_cols <- spec$body$page_by
+  for (nm in names(spec$columns)) {
+    vis <- spec$columns[[nm]]$visible
+    if (is.null(vis)) {
+      spec$columns[[nm]]$visible <- !(nm %in% page_by_cols)
+    }
+  }
+
+  # Scale auto widths to fit printable area (skip when col_split is on —
+  # columns must keep natural widths so calculate_col_panels() can split them)
+  if (!isTRUE(spec$page$col_split)) {
+    spec$columns <- distribute_auto_widths(spec$columns, spec$page)
+  }
+
+  # Inject gap columns between adjacent spanning headers
+  spec <- inject_span_gaps(spec)
+
+  # Inject gap columns between adjacent right→left aligned columns
+  spec <- inject_align_gaps(spec)
+
+  spec
+}
+
+
+#' Finalize header labels and N-count resolution
+#' @noRd
+finalize_labels <- function(spec) {
+  # Resolve deferred header N-count labels (from fr_header())
+  spec <- resolve_header_labels(spec)
+
+  # Warn if per-group n is used without page_by
+  n_input <- spec$header$n
+  if (is.list(n_input) && !is.numeric(n_input) &&
+      length(spec$body$page_by) == 0L) {
+    cli_warn(
+      "Per-group {.arg n} requires {.fn fr_rows} with {.arg page_by}. N-counts ignored."
+    )
+  }
+
+  # Apply header-level defaults to columns (from fr_header() or config)
+  spec <- apply_header_defaults(spec)
+
+  spec
+}
+
+
+#' Finalize row structure: blank rows and indent
+#' @noRd
+finalize_rows <- function(spec) {
+  # Insert blank rows at group boundaries. group_by auto-implies blank_after
+  # for visual separation between groups.
+  blank_cols <- union(spec$body$group_by, spec$body$blank_after)
+  spec$data <- insert_blank_after(spec$data, blank_cols)
+
+  # Apply indent_by as cell styles (after blank_after so indices are correct)
+  spec <- apply_indent_by(spec)
+
+  spec
+}
+
+
+#' Resolve deferred header N-count labels (global form only)
+#'
+#' When fr_header(n = <named numeric>, format = ...) is set, reformat column
+#' labels using the stored N-counts and format string. This runs during
+#' finalize_spec() so fr_header() and fr_cols() are order-independent.
+#'
+#' Per-group forms (named list, function, "auto") are resolved per group in
+#' the render loop via resolve_group_labels().
+#'
+#' @noRd
+resolve_header_labels <- function(spec) {
+  n_counts <- spec$header$n
+  fmt <- spec$header$format
+  if (is.null(n_counts) || is.null(fmt)) return(spec)
+
+  # Per-group or auto N-counts are resolved per group in the render loop
+  if (!is.numeric(n_counts)) return(spec)
+
+  for (nm in names(n_counts)) {
+    if (!nm %in% names(spec$columns)) next
+    col <- spec$columns[[nm]]
+
+    # Base label: from fr_col(label=) or auto-generated column name
+    base_label <- col$label
+    if (is.null(base_label) || !nzchar(base_label)) base_label <- nm
+
+    # Build data for glue_data
+    row_data <- list(name = base_label, n = as.integer(n_counts[[nm]]))
+
+    new_label <- tryCatch(
+      as.character(glue::glue_data(row_data, fmt)),
+      error = function(e) base_label
+    )
+
+    spec$columns[[nm]]$label <- new_label
+  }
+
+  spec
+}
+
+
+#' Resolve header labels for a specific page_by group
+#'
+#' Returns a named character vector of label overrides for one group,
+#' or NULL when no per-group resolution is needed (global numeric n is
+#' already resolved in finalize_spec).
+#'
+#' @param spec Finalized fr_spec object.
+#' @param group_data Data frame — the page_by subset for this group.
+#' @param group_label Character scalar — the page_by composite key,
+#'   or NULL when no page_by is set.
+#' @return Named character vector of column label overrides, or NULL.
+#' @noRd
+resolve_group_labels <- function(spec, group_data, group_label) {
+  n_input <- spec$header$n
+  fmt <- spec$header$format
+  if (is.null(fmt)) return(NULL)
+
+  # Determine the source data for n computation
+  source_data <- spec$header$n_data %||% group_data
+
+  if (identical(n_input, "auto")) {
+    # Auto: split source data by page_by if needed, then count
+    if (!is.null(group_label) && !is.null(spec$header$n_data)) {
+      # Split n_data by same page_by columns
+      source_data <- subset_n_data(
+        spec$header$n_data, spec$body$page_by, group_label
+      )
+    }
+    n_counts <- compute_auto_n(
+      source_data, names(spec$columns), spec$header$n_subject
+    )
+  } else if (is.function(n_input)) {
+    # Function form: call with source data and group label
+    if (!is.null(spec$header$n_data) && !is.null(group_label)) {
+      source_data <- subset_n_data(
+        spec$header$n_data, spec$body$page_by, group_label
+      )
+    }
+    n_counts <- n_input(source_data, group_label)
+    if (!is.numeric(n_counts) || is.null(names(n_counts))) {
+      cli_warn(
+        c("{.arg n} function must return a named numeric vector.",
+          "i" = "Got {.cls {class(n_counts)}} for group {.val {group_label}}."),
+      )
+      return(NULL)
+    }
+  } else if (is.list(n_input) && !is.numeric(n_input)) {
+    # Per-group list
+    n_counts <- n_input[[group_label]]
+    if (is.null(n_counts)) return(NULL)
+  } else {
+    return(NULL)
+  }
+
+  # Build label overrides from n_counts
+  overrides <- character(0)
+  for (nm in names(n_counts)) {
+    if (!nm %in% names(spec$columns)) next
+    col <- spec$columns[[nm]]
+    base_label <- col$label
+    if (is.null(base_label) || !nzchar(base_label)) base_label <- nm
+    row_data <- list(name = base_label, n = as.integer(n_counts[[nm]]))
+    new_label <- tryCatch(
+      as.character(glue::glue_data(row_data, fmt)),
+      error = function(e) base_label
+    )
+    overrides[nm] <- new_label
+  }
+
+  if (length(overrides) == 0L) NULL else overrides
+}
+
+
+#' Subset n_data by page_by columns to match a group label
+#'
+#' Matches page_by column names case-insensitively against n_data columns,
+#' so `page_by = "param"` matches `n_data$PARAM` (common CDISC pattern
+#' where display tables use lowercase, source data uses uppercase).
+#'
+#' @param n_data Data frame (record-level source data).
+#' @param page_by Character vector of page_by column names (from display data).
+#' @param group_label Character scalar — composite key (sep = " / ").
+#' @return Data frame subset matching the group.
+#' @noRd
+subset_n_data <- function(n_data, page_by, group_label) {
+  if (length(page_by) == 0L || is.null(group_label)) return(n_data)
+
+  # Case-insensitive column matching (display "param" → source "PARAM")
+  nd_names <- names(n_data)
+  nd_lower <- tolower(nd_names)
+  resolved <- vapply(page_by, function(col) {
+    idx <- match(tolower(col), nd_lower)
+    if (is.na(idx)) col else nd_names[idx]
+  }, character(1))
+
+  keys <- inject(paste(!!!lapply(resolved, function(col) n_data[[col]]),
+                        sep = " / "))
+  n_data[keys == group_label, , drop = FALSE]
+}
+
+
+#' Auto-compute N-counts: unique subjects per column per group
+#'
+#' For each column in the display table that also exists in the source
+#' data, counts unique values of the subject column where the data
+#' column is non-missing.
+#'
+#' @param data Data frame (source data, possibly a page_by subset).
+#' @param col_names Character vector of display column names.
+#' @param subject_col Character scalar — column name for subject IDs.
+#' @return Named integer vector keyed by column name.
+#' @noRd
+compute_auto_n <- function(data, col_names, subject_col) {
+  result <- vapply(col_names, function(nm) {
+    if (!nm %in% names(data)) return(NA_integer_)
+    x <- data[[nm]]
+    mask <- !is.na(x) & nzchar(as.character(x))
+    length(unique(data[[subject_col]][mask]))
+  }, integer(1))
+  result[!is.na(result)]
+}
+
+
+#' Apply header-level styling defaults to columns
+#'
+#' Propagates fr_header(align = ...) to columns that don't have a
+#' per-column header_align set.
+#'
+#' @noRd
+apply_header_defaults <- function(spec) {
+  h <- spec$header
+  if (is.null(h)) return(spec)
+
+  # Header align → column header_align (unless per-column override exists)
+  if (!is.null(h$align)) {
+    for (nm in names(spec$columns)) {
+      if (is.null(spec$columns[[nm]]$header_align)) {
+        spec$columns[[nm]]$header_align <- h$align
+      }
+    }
+  }
+
+  spec
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Internal: Page-by Grouping
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' Split data by page_by column(s)
+#'
+#' @param spec An fr_spec object.
+#' @return List of lists, each with `data` and `group_label`.
+#' @noRd
+prepare_pages <- function(spec) {
+  page_by <- spec$body$page_by
+
+  if (length(page_by) == 0L) {
+    return(list(list(data = spec$data, group_label = NULL)))
+  }
+
+  # Validate page_by columns exist
+  missing <- setdiff(page_by, names(spec$data))
+  if (length(missing) > 0L) {
+    cli_abort(
+      c("{.arg page_by} column{?s} not found in data: {.val {missing}}.",
+        "i" = "Available columns: {.val {names(spec$data)}}.")
+    )
+  }
+
+  # Build composite key preserving original row order (split() would
+  # convert to factor and sort alphabetically, losing data order)
+  keys <- inject(paste(!!!spec$data[page_by], sep = " / "))
+  unique_keys <- unique(keys)
+
+  lapply(unique_keys, function(k) {
+    mask <- keys == k
+    list(data = spec$data[mask, , drop = FALSE], group_label = k)
+  })
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Internal: Column Panel Calculation
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' Calculate column panels for wide tables
+#'
+#' When col_split = TRUE and total width exceeds printable area,
+#' splits columns into panels with stub columns repeated in each.
+#'
+#' @param spec An fr_spec object (finalized).
+#' @return List of character vectors (column names per panel).
+#' @noRd
+calculate_col_panels <- function(spec) {
+  if (!isTRUE(spec$page$col_split)) {
+    # Single panel with all visible columns
+    vis_names <- names(Filter(function(c) !isFALSE(c$visible), spec$columns))
+    return(list(vis_names))
+  }
+
+  printable <- printable_area_inches(spec$page)[["width"]]
+  stub_cols <- spec$page$stub_cols
+  vis_cols <- Filter(function(c) !isFALSE(c$visible), spec$columns)
+  vis_names <- names(vis_cols)
+
+  # Calculate stub width
+  stub_width <- sum(vapply(
+    vis_cols[intersect(stub_cols, vis_names)],
+    function(c) c$width, numeric(1)
+  ))
+  available <- printable - stub_width
+
+  if (available <= 0) {
+    cli_abort("Stub columns exceed the printable page width.")
+  }
+
+  # Data columns (non-stub)
+  data_cols <- setdiff(vis_names, stub_cols)
+
+  # Check if all columns fit in one panel
+  total_data_width <- sum(vapply(
+    vis_cols[data_cols], function(c) c$width, numeric(1)
+  ))
+  if (total_data_width <= available) {
+    return(list(vis_names))
+  }
+
+  # Greedy left-to-right packing
+  panels <- list()
+  current <- character(0)
+  current_width <- 0
+
+  for (col in data_cols) {
+    w <- vis_cols[[col]]$width
+    if (current_width + w > available && length(current) > 0L) {
+      panels <- c(panels, list(c(intersect(stub_cols, vis_names), current)))
+      current <- col
+      current_width <- w
+    } else {
+      current <- c(current, col)
+      current_width <- current_width + w
+    }
+  }
+  if (length(current) > 0L) {
+    panels <- c(panels, list(c(intersect(stub_cols, vis_names), current)))
+  }
+
+  panels
+}
+
+
+#' Scale column widths per panel to fill the printable page width
+#'
+#' When col_split produces multiple panels, each panel typically has
+#' stub columns + a few data columns — far narrower than the page.
+#' This function scales each panel's data columns proportionally so
+#' the total panel width fills the printable area (AutoFit to Window).
+#'
+#' Stub columns keep their original width (shared across panels).
+#' Only the data (non-stub) columns within each panel are scaled up.
+#'
+#' @param spec Finalized fr_spec with resolved column widths.
+#' @param col_panels List of character vectors (column names per panel).
+#' @return Modified fr_spec with adjusted column widths.
+#' @noRd
+fit_panel_widths <- function(spec, col_panels) {
+  printable <- printable_area_inches(spec$page)[["width"]]
+  stub_cols <- spec$page$stub_cols %||% character(0)
+
+  # Compute stub width (constant across panels)
+  stub_width <- sum(vapply(
+    spec$columns[intersect(stub_cols, names(spec$columns))],
+    function(c) c$width, numeric(1)
+  ))
+  available <- printable - stub_width
+  if (available <= 0) return(spec)
+
+  # For each panel, find its data columns and compute the scale factor.
+  # Data columns are unique per panel (non-stub), so scaling them won't
+
+  # conflict across panels.
+  for (panel_cols in col_panels) {
+    data_cols <- setdiff(panel_cols, stub_cols)
+    if (length(data_cols) == 0L) next
+
+    panel_data_width <- sum(vapply(
+      spec$columns[data_cols],
+      function(c) c$width, numeric(1)
+    ))
+    if (panel_data_width <= 0) next
+
+    scale_factor <- available / panel_data_width
+    for (nm in data_cols) {
+      spec$columns[[nm]]$width <- spec$columns[[nm]]$width * scale_factor
+    }
+  }
+
+  spec
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Internal: Span Gap Column Injection
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' Inject narrow gap columns between adjacent spanning headers
+#'
+#' When `spec$header$span_gap` is TRUE, inserts empty gap columns at
+#' boundaries where two spans at the same level are adjacent. The gap
+#' column creates a visual break between span hlines in both RTF and
+#' LaTeX without relying on border trimming.
+#'
+#' Called in `finalize_spec()` after width distribution, before header
+#' label resolution.
+#'
+#' @param spec An fr_spec object.
+#' @return Modified fr_spec with gap columns inserted.
+#' @noRd
+inject_span_gaps <- function(spec) {
+  if (!isTRUE(spec$header$span_gap)) return(spec)
+  spans <- spec$header$spans
+  if (length(spans) == 0L) return(spec)
+
+  col_names <- names(spec$columns)
+  vis_names <- col_names[vapply(spec$columns, function(c) !isFALSE(c$visible), logical(1))]
+  nc <- length(vis_names)
+
+  # For each level, find boundaries between adjacent spans
+  levels <- sort(unique(vapply(spans, function(s) s$level, integer(1))))
+  gap_after <- character(0)
+
+  for (lvl in levels) {
+    lvl_spans <- Filter(function(s) s$level == lvl, spans)
+    for (sp in lvl_spans) {
+      sp_cols <- intersect(sp$columns, vis_names)
+      if (length(sp_cols) == 0L) next
+      last_col <- sp_cols[length(sp_cols)]
+      last_idx <- match(last_col, vis_names)
+      if (last_idx < nc) {
+        next_col <- vis_names[last_idx + 1L]
+        for (sp2 in lvl_spans) {
+          sp2_cols <- intersect(sp2$columns, vis_names)
+          if (length(sp2_cols) > 0L && sp2_cols[1L] == next_col) {
+            gap_after <- c(gap_after, last_col)
+            break
+          }
+        }
+      }
+    }
+  }
+
+  gap_after <- unique(gap_after)
+  if (length(gap_after) == 0L) return(spec)
+
+  # Gap width: font_size * 0.5 / 72 inches
+  fs <- spec$page$font_size %||% 9
+  gap_width <- fs * 0.5 / fr_env$points_per_inch
+
+  # Insert gap columns in reverse order to preserve indices
+  gap_positions <- match(gap_after, names(spec$columns))
+  sorted_idx <- order(gap_positions, decreasing = TRUE)
+
+  for (i in sorted_idx) {
+    pos <- gap_positions[i]
+    gap_name <- paste0(".__span_gap_", pos, "__")
+
+    # Create gap fr_col
+    gap_col <- fr_col(label = "", width = gap_width, align = "center")
+    gap_col$id <- gap_name
+    gap_col$is_gap <- TRUE
+    gap_col$gap_type <- "span"
+
+    # Insert into columns list
+    cols <- spec$columns
+    n_cols <- length(cols)
+    gap_list <- list(gap_col)
+    names(gap_list) <- gap_name
+    new_cols <- c(cols[seq_len(pos)], gap_list)
+    if (pos < n_cols) {
+      new_cols <- c(new_cols, cols[(pos + 1L):n_cols])
+    }
+    spec$columns <- new_cols
+
+    # Insert empty column into data
+    spec$data <- insert_gap_column(spec$data, pos, gap_name)
+
+    # Expand higher-level spans that straddle this gap
+    spec$header$spans <- expand_spans_for_gap(
+      spec$header$spans, gap_name, gap_after[i]
+    )
+  }
+
+  spec
+}
+
+
+#' Inject gap columns between adjacent right-aligned and left-aligned columns
+#'
+#' When column A is right-aligned and column B (immediately to its right) is
+#' left-aligned, their content can appear visually merged. This inserts a thin
+#' empty gap column between such pairs, following the same pattern as
+#' inject_span_gaps().
+#'
+#' @noRd
+inject_align_gaps <- function(spec) {
+  if (!isTRUE(spec$header$align_gap %||% TRUE)) return(spec)
+
+  col_names <- names(spec$columns)
+  vis_names <- col_names[vapply(spec$columns, function(c) {
+    !isFALSE(c$visible) && !isTRUE(c$is_gap)
+  }, logical(1))]
+  nc <- length(vis_names)
+  if (nc < 2L) return(spec)
+
+  # Find adjacent right→left pairs
+  gap_after <- character(0)
+  for (i in seq_len(nc - 1L)) {
+    align_i <- spec$columns[[vis_names[i]]]$align %||% "left"
+    align_j <- spec$columns[[vis_names[i + 1L]]]$align %||% "left"
+    if (align_i == "right" && align_j == "left") {
+      gap_after <- c(gap_after, vis_names[i])
+    }
+  }
+
+  if (length(gap_after) == 0L) return(spec)
+
+  # Gap width: font_size * 0.5 / 72 inches (same as span gaps)
+  fs <- spec$page$font_size %||% 9
+  gap_width <- fs * 0.5 / fr_env$points_per_inch
+
+  # Insert gap columns in reverse order to preserve indices
+  gap_positions <- match(gap_after, names(spec$columns))
+  sorted_idx <- order(gap_positions, decreasing = TRUE)
+
+  for (i in sorted_idx) {
+    pos <- gap_positions[i]
+    gap_name <- paste0(".__align_gap_", pos, "__")
+
+    gap_col <- fr_col(label = "", width = gap_width, align = "center")
+    gap_col$id <- gap_name
+    gap_col$is_gap <- TRUE
+    gap_col$gap_type <- "align"
+
+    cols <- spec$columns
+    n_cols <- length(cols)
+    gap_list <- list(gap_col)
+    names(gap_list) <- gap_name
+    new_cols <- c(cols[seq_len(pos)], gap_list)
+    if (pos < n_cols) {
+      new_cols <- c(new_cols, cols[(pos + 1L):n_cols])
+    }
+    spec$columns <- new_cols
+
+    spec$data <- insert_gap_column(spec$data, pos, gap_name)
+  }
+
+  spec
+}
+
+
+#' Insert an empty character column into a data frame at a given position
+#' @noRd
+insert_gap_column <- function(df, after_pos, col_name) {
+  nr <- nrow(df)
+  gap_data <- rep_len("", nr)
+  n_cols <- ncol(df)
+
+  # Build new data frame with gap column inserted after position
+  before <- df[, seq_len(after_pos), drop = FALSE]
+  gap_df <- data.frame(x = gap_data, stringsAsFactors = FALSE)
+  names(gap_df) <- col_name
+
+  if (after_pos < n_cols) {
+    after <- df[, (after_pos + 1L):n_cols, drop = FALSE]
+    cbind(before, gap_df, after)
+  } else {
+    cbind(before, gap_df)
+  }
+}
+
+
+#' Expand spans that straddle a gap insertion point
+#'
+#' If a higher-level span covers columns on BOTH sides of the gap,
+#' the gap column is added to its columns vector so it renders as
+#' part of the merged cell.
+#'
+#' @param spans List of fr_span objects.
+#' @param gap_name Name of the new gap column.
+#' @param after_col Name of the column after which the gap was inserted.
+#' @return Modified list of fr_span objects.
+#' @noRd
+expand_spans_for_gap <- function(spans, gap_name, after_col) {
+  lapply(spans, function(sp) {
+    cols <- sp$columns
+    idx <- match(after_col, cols)
+    if (!is.na(idx) && idx < length(cols)) {
+      # This span has columns on both sides of the gap — include the gap
+      sp$columns <- c(cols[seq_len(idx)], gap_name, cols[(idx + 1L):length(cols)])
+    }
+    sp
+  })
+}

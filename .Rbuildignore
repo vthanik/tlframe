@@ -1,0 +1,11 @@
+^tframer\.Rproj$
+^\.Rproj\.user$
+^data-raw$
+^\.claude$
+^CLAUDE\.md$
+^test_demog\.rtf$
+^reference$
+^screenshots$
+^verify_compare$
+^verify_compare\.R$
+^BACKEND\.md$

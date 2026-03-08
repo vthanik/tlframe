@@ -1,0 +1,65 @@
+# _tlframe.yml — Package default configuration (ICH E3 compliant)
+#
+# This file ships with the package and serves as the lowest-priority
+# fallback. Users override settings by placing their own _tlframe.yml
+# at the project root, using fr_theme(), or per-table verb calls.
+#
+# Precedence (lowest → highest):
+#   1. This file (package defaults)
+#   2. Project _tlframe.yml (auto-discovered)
+#   3. fr_theme() / fr_theme_set() (session-level)
+#   4. Per-table verb overrides (fr_page(), fr_header(), etc.)
+
+page:
+  paper: letter
+  orientation: landscape
+  margins: [1.0, 0.75, 1.0, 0.75]
+  font_family: "Courier New"
+  font_size: 9
+  col_split: false
+  continuation: ~
+
+header:
+  align: ~
+  valign: bottom
+  bold: false
+  span_gap: true
+  align_gap: true
+  n_format: "{name}\n(N={n})"
+
+pagehead:
+  left: ~
+  center: ~
+  right: ~
+  font_size: ~
+  bold: false
+
+pagefoot:
+  left: "{program}"
+  center: ~
+  right: "{datetime}"
+  font_size: ~
+  bold: false
+
+rules:
+  hlines: header
+  vlines: void
+
+footnotes:
+  separator: false
+  font_size: ~
+  placement: every
+
+spacing:
+  titles_after: 1
+  footnotes_before: 1
+  pagehead_after: 0
+  pagefoot_before: 0
+  page_by_after: 1
+
+titles:
+  align: center
+  bold: false
+  font_size: ~
+
+tokens: {}

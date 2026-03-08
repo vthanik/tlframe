@@ -1,0 +1,933 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# classes.R — S3 Intermediate Representation (IR) classes
+#
+# NAMING CONVENTION (Advanced R, Hadley Wickham §13.3):
+#
+#   new_fr_*()  — Internal low-level constructors. Minimal validation, not
+#                 exported. Called by pipeline verbs in api.R. Analogous to
+#                 vctrs::new_vctr(), ggplot2::new_scale().
+#
+#   fr_col()    — User-facing helper. Exported, full validation, nice errors.
+#                 Called directly by users inside fr_cols().
+#
+# Rule of thumb:
+#   - If the user types it directly → no new_ prefix, export it
+#   - If only our code calls it     → new_ prefix, @noRd
+#
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# fr_page — Page layout specification (internal constructor)
+#
+# Users configure page layout via the fr_page() pipeline verb in api.R,
+# which calls new_fr_page() internally. Not exported.
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' @noRd
+new_fr_page <- function(orientation = "landscape",
+                         paper = "letter",
+                         margins = 1,
+                         font_family = NULL,
+                         font_size = 9,
+                         orphan_min = 3L,
+                         widow_min = 3L,
+                         continuation = NULL,
+                         col_split = FALSE,
+                         stub_cols = character(0),
+                         tokens = list(),
+                         call = caller_env()) {
+
+  orientation <- match_arg_fr(orientation, c("landscape", "portrait"),
+                               call = call)
+  paper <- match_arg_fr(paper, c("letter", "a4", "legal"), call = call)
+
+  # ── Margin normalisation (ggplot2 / CSS convention) ───────────────────────
+  # Length 1: all sides equal       → margins = 1
+  # Length 2: c(vertical, horizontal) → margins = c(1, 0.75)
+  # Length 4: c(top, right, bottom, left) → CSS order (t, r, b, l)
+  # Named list: list(top=, bottom=, left=, right=) → explicit
+  margins <- normalise_margins(margins, call = call)
+
+  check_positive_num(font_size, arg = "font_size", call = call)
+  if (font_size < 4 || font_size > 72) {
+    cli_abort("{.arg font_size} must be between 4 and 72.", call = call)
+  }
+
+  if (is.null(font_family)) {
+    font_family <- os_default_fonts()$mono
+  }
+
+  check_scalar_lgl(col_split, arg = "col_split", call = call)
+
+  # Validate continuation: NULL or character scalar
+  # Default NULL — no continuation text. LaTeX longtable has no default
+  # continuation text; \endhead is empty by default and the user must
+  # explicitly write e.g. "\multicolumn{N}{c}{Table N -- continued}"
+  # in the \endhead block. We follow the same philosophy: opt-in only.
+  if (!is.null(continuation)) {
+    check_scalar_chr(continuation, arg = "continuation", call = call)
+  }
+
+  # Validate tokens (checks for built-in override attempt)
+  validate_user_tokens(tokens, call = call)
+
+  structure(
+    list(
+      orientation  = orientation,
+      paper        = paper,
+      margins      = margins,
+      font_family  = font_family,
+      font_size    = font_size,
+      orphan_min   = vec_cast(orphan_min, integer()),
+      widow_min    = vec_cast(widow_min, integer()),
+      continuation = continuation,
+      col_split    = col_split,
+      stub_cols    = vec_cast(stub_cols, character()),
+      tokens       = as.list(tokens)
+    ),
+    class = "fr_page"
+  )
+}
+
+
+# ── Margin normalisation helper ─────────────────────────────────────────────
+#
+# ggplot2 source (R/margins.R):
+#   margin(t = 0, r = 0, b = 0, l = 0, unit = "pt")
+#   margin_auto(t = 0, r = t, b = t, l = r, unit = "pt")
+#   Mnemonic: "trouble" → t, r, b, l
+#
+# CSS shorthand:
+#   margin: 1in;                        → all sides
+#   margin: 1in 0.75in;                 → vertical horizontal
+#   margin: 1in 0.75in 1in 0.75in;     → top right bottom left
+#
+# We accept:
+#   Scalar numeric  → all four sides equal
+#   Length-2 numeric → c(vertical, horizontal) = c(top_bottom, left_right)
+#   Length-4 numeric → c(top, right, bottom, left)  (CSS t-r-b-l order)
+#   Named list       → list(top =, bottom =, left =, right =)
+# ─────────────────────────────────────────────────────────────────────────────
+
+#' @noRd
+normalise_margins <- function(margins, call = caller_env()) {
+  # Named list form (our original API)
+  if (is.list(margins)) {
+    req <- c("top", "bottom", "left", "right")
+    if (!all(req %in% names(margins))) {
+      cli_abort(
+        c("{.arg margins} as a list must have names: {.val {req}}.",
+          "i" = "Or pass a numeric: {.code 1} (all sides), {.code c(1, 0.75)} (vert, horiz), or {.code c(1, 0.75, 1, 0.75)} (t, r, b, l)."),
+        call = call
+      )
+    }
+    for (side in req) {
+      if (!is.numeric(margins[[side]]) || margins[[side]] < 0) {
+        cli_abort("{.arg margins${side}} must be a non-negative number.",
+                  call = call)
+      }
+    }
+    return(margins)
+  }
+
+  # Numeric shorthand
+  if (!is.numeric(margins)) {
+    cli_abort(
+      c("{.arg margins} must be a numeric vector or a named list.",
+        "i" = "Examples: {.code 1}, {.code c(1, 0.75)}, {.code c(1, 0.75, 1, 0.75)}, or {.code list(top = 1, bottom = 1, left = 0.75, right = 0.75)}."),
+      call = call
+    )
+  }
+
+  if (any(margins < 0)) {
+    cli_abort("{.arg margins} values must be non-negative.", call = call)
+  }
+
+  n <- length(margins)
+  result <- switch(as.character(n),
+    "1" = list(top = margins[1], bottom = margins[1],
+               left = margins[1], right = margins[1]),
+    "2" = list(top = margins[1], bottom = margins[1],
+               left = margins[2], right = margins[2]),
+    "4" = list(top = margins[1], right = margins[2],
+               bottom = margins[3], left = margins[4]),
+    cli_abort(
+      c("{.arg margins} must have length 1, 2, or 4.",
+        "i" = "{.code 1} = all sides, {.code c(vert, horiz)}, {.code c(top, right, bottom, left)}."),
+      call = call
+    )
+  )
+
+  result
+}
+
+
+# ── Token validation ────────────────────────────────────────────────────────
+
+#' Validate user tokens: error if overriding built-in tokens
+#' @noRd
+validate_user_tokens <- function(tokens, call = caller_env()) {
+  if (length(tokens) == 0L) return(invisible(NULL))
+
+  if (!is.list(tokens) || is.null(names(tokens))) {
+    cli_abort(
+      "{.arg tokens} must be a named list (e.g., {.code list(study = \"ABC-001\")}).",
+      call = call
+    )
+  }
+
+  # thepage and total_pages are controlled by the pagination engine and
+  # cannot be overridden — they change on every page
+  builtin_readonly <- c("thepage", "total_pages")
+  conflicts <- intersect(names(tokens), builtin_readonly)
+  if (length(conflicts) > 0L) {
+    cli_abort(
+      c("Cannot override built-in token{?s}: {.val {conflicts}}.",
+        "i" = "{.val thepage} and {.val total_pages} are set automatically by the pagination engine.",
+        "i" = "You can set {.val program} and {.val datetime} via {.arg tokens}."),
+      call = call
+    )
+  }
+
+  invisible(NULL)
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# fr_pct — Percentage width marker (internal)
+#
+# Wraps a numeric fraction (0–1) to distinguish percentage-based widths from
+# absolute inch widths. Resolved to absolute inches in finalize_columns().
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' @noRd
+fr_pct <- function(x) structure(x, class = "fr_pct")
+
+#' @noRd
+is_fr_pct <- function(x) inherits(x, "fr_pct")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# fr_col — Column definition (USER-FACING, exported)
+#
+# Called directly by users inside fr_cols():
+#   fr_cols(param = fr_col("Parameter", width = 2.5))
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' Define a Column Specification
+#'
+#' @description
+#'
+#' Defines the display properties of a single table column: its label, width,
+#' alignment, and visibility. Used inside [fr_cols()] as a named argument
+#' to configure individual columns. Columns not explicitly configured receive
+#' auto-generated defaults from the `.width`, `.align`, and `.label_fn`
+#' arguments of [fr_cols()].
+#'
+#' @param label Character scalar. Display label shown in the column header.
+#'   Supports `{fr_*()}` inline markup (e.g. `"{fr_super('a')}"` for
+#'   superscript footnote markers). Default `""` inherits the data frame
+#'   column name as the label, optionally transformed by the `.label_fn`
+#'   argument of [fr_cols()].
+#' @param width Column width. Accepts:
+#'   * **Numeric** — fixed width in inches (e.g. `2.5`). Use for stub
+#'     columns or when you need exact control.
+#'   * **`"auto"`** — auto-calculate from content and header widths using
+#'     the page font metrics. The layout engine measures the widest cell
+#'     value and the header label, adds padding, and converts to inches.
+#'     Columns are then proportionally scaled to fit the printable page
+#'     width. This is the fastest way to get a working table.
+#'   * **Percentage string** — e.g. `"20%"`. Sets the column width as a
+#'     fraction of the printable page width. Resolved to absolute inches
+#'     at render time. Must be between `"0%"` (exclusive) and `"100%"`
+#'     (inclusive). Useful for responsive layouts that adapt to different
+#'     page sizes or orientations.
+#'   * **`NULL`** (default) — inherits from the `.width` argument of
+#'     [fr_cols()]. If `.width` is also `NULL`, the package default
+#'     of 1.5 in is used.
+#' @param align Column alignment. One of:
+#'   * `"left"` — left-aligned. Standard for text and stub columns.
+#'   * `"center"` — centered. Rare in regulatory tables; used for
+#'     binary indicators (Yes/No) or short categorical values.
+#'   * `"right"` — right-aligned. Standard for numeric columns (counts,
+#'     percentages, p-values).
+#'   * `"decimal"` — decimal-point alignment. Aligns the decimal point
+#'     (or last digit for integers) across all rows in the column.
+#'     Standard for continuous summary statistics (mean, SD, median).
+#'   * `NULL` (default) — auto-detects from the R column type:
+#'     numeric/integer → `"right"`, everything else → `"left"`.
+#' @param header_align Horizontal alignment for the column header cell.
+#'   One of `"left"`, `"center"`, `"right"`, `"decimal"`, or `NULL`
+#'   (default). When `NULL`, the header inherits alignment from `align`.
+#'   Use this to center treatment-arm headers while keeping body cells
+#'   right-aligned. Can also be set uniformly via
+#'   `fr_header(align = ...)`; per-column values here take priority.
+#'   `fr_style(region = "header", align = ...)` overrides both.
+#' @param visible Logical or `NULL`. Controls whether the column appears
+#'   in the rendered output.
+#'   * `NULL` (default): the system decides — columns used as
+#'     [fr_rows()] `page_by` keys are auto-hidden; all others are visible.
+#'   * `TRUE`: force the column visible, even if it is a `page_by` key.
+#'   * `FALSE`: hide the column. Useful for structural columns (grouping
+#'     keys, sort-order columns, row-type flags) that should remain in the
+#'     data for pagination and styling logic but not appear in output.
+#'
+#' @return An S3 object of class `fr_col` with components `id`, `label`,
+#'   `width`, `align`, `header_align`, and `visible`.
+#'
+#' @section Width guidelines:
+#' Landscape Letter paper (11 × 8.5 in) with 1 in margins gives **9 in**
+#' of printable width. A common pharma layout:
+#'
+#' | Column type | Typical width |
+#' |-------------|---------------|
+#' | Stub / row label | 2.0–3.0 in |
+#' | Treatment arm (n, %) | 1.2–1.5 in |
+#' | P-value | 0.8–1.0 in |
+#' | Total column | 1.2–1.5 in |
+#'
+#' Use `width = "auto"` to let the layout engine calculate these from
+#' content, or set fixed widths for exact control.
+#'
+#' @section Alignment conventions:
+#' Standard pharma house styles (Roche, Novartis, Pfizer TFL guides):
+#' * **Stub / parameter column**: left-aligned.
+#' * **Count and percentage columns**: right-aligned or decimal-aligned.
+#' * **P-value columns**: right-aligned or decimal-aligned.
+#' * **Category columns** (Yes/No, Male/Female): centered or left-aligned.
+#'
+#' @examples
+#' ## ── Fixed width with explicit alignment ──────────────────────────────────
+#'
+#' fr_col("Parameter", width = 2.5, align = "left")
+#'
+#' ## ── Percentage width: 25% of printable area ──────────────────────────────
+#'
+#' fr_col("Parameter", width = "25%")
+#'
+#' ## ── Auto-width: let the engine measure content ───────────────────────────
+#'
+#' fr_col("Parameter", width = "auto")
+#'
+#' ## ── Markup in label: superscript unit ────────────────────────────────────
+#'
+#' fr_col("BMI (kg/m{fr_super('2')})", width = 1.5, align = "decimal")
+#'
+#' ## ── Decimal alignment for continuous statistics ──────────────────────────
+#'
+#' fr_col("Mean (SD)", width = 1.5, align = "decimal")
+#'
+#' ## ── Hidden structural column (grouping key for fr_rows) ─────────────────
+#'
+#' fr_col(visible = FALSE)
+#'
+#' ## ── Footnote marker in column header ─────────────────────────────────────
+#'
+#' fr_col("Placebo{fr_super('a')}\n(N=45)", width = 1.5, align = "right")
+#'
+#' ## ── Inside a full fr_cols call ──────────────────────────────────────────
+#'
+#' tbl_demog |>
+#'   fr_table() |>
+#'   fr_cols(
+#'     characteristic = fr_col("Characteristic", width = 2.5),
+#'     zom_50mg       = fr_col("Zomerane 50 mg", width = 1.5, align = "right"),
+#'     placebo        = fr_col("Placebo",         width = 1.5, align = "right"),
+#'     group          = fr_col(visible = FALSE)
+#'   ) |>
+#'   fr_header(
+#'     n = c(zom_50mg = 45, placebo = 45),
+#'     format = "{name}\n(N={n})"
+#'   )
+#'
+#' @seealso [fr_cols()] to apply column specs to a table,
+#'   [fr_header()] for N-count labels and header styling,
+#'   [fr_super()], [fr_bold()], [fr_italic()] for inline markup in labels.
+#'
+#' @export
+fr_col <- function(label = "",
+                    width = NULL,
+                    align = NULL,
+                    header_align = NULL,
+                    visible = NULL) {
+  check_scalar_chr(label, arg = "label")
+  if (!is.null(width)) {
+    if (is.character(width)) {
+      pct <- parse_pct_width(width, arg = "width")
+      if (!is.null(pct)) {
+        width <- pct
+      } else {
+        width <- match_arg_fr(width, "auto")
+      }
+    } else {
+      check_positive_num(width, arg = "width")
+    }
+  }
+  if (!is.null(align)) align <- match_arg_fr(align, fr_env$valid_aligns)
+  if (!is.null(header_align)) header_align <- match_arg_fr(header_align, fr_env$valid_aligns)
+  if (!is.null(visible)) check_scalar_lgl(visible, arg = "visible")
+
+  structure(
+    list(
+      id           = "",
+      label        = label,
+      width        = width,
+      align        = align,
+      header_align = header_align,
+      visible      = visible
+    ),
+    class = "fr_col"
+  )
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# fr_span — Spanning header (internal)
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' @noRd
+new_fr_span <- function(label, columns, level = 1L, hline = TRUE) {
+  check_scalar_chr(label, arg = "label")
+
+  structure(
+    list(
+      label   = label,
+      columns = vec_cast(columns, character()),
+      level   = vec_cast(level, integer()),
+      hline   = vec_cast(hline, logical())
+    ),
+    class = "fr_span"
+  )
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# fr_header — Column header configuration (internal)
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' @noRd
+new_fr_header <- function(spans = list(), repeat_on_page = TRUE,
+                          valign = "bottom", align = NULL,
+                          bold = NULL, bg = NULL, fg = NULL,
+                          font_size = NULL, n = NULL,
+                          format = NULL, n_subject = NULL,
+                          n_data = NULL, span_gap = TRUE,
+                          align_gap = TRUE) {
+  structure(
+    list(
+      spans          = spans,
+      repeat_on_page = repeat_on_page,
+      valign         = valign,
+      align          = align,
+      bold           = bold,
+      bg             = bg,
+      fg             = fg,
+      font_size      = font_size,
+      n              = n,
+      format         = format,
+      n_subject      = n_subject,
+      n_data         = n_data,
+      span_gap       = span_gap,
+      align_gap      = align_gap
+    ),
+    class = "fr_header"
+  )
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# fr_body — Row grouping and pagination control (internal)
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' @noRd
+new_fr_body <- function(page_by = character(0),
+                         group_by = character(0),
+                         indent_by = character(0),
+                         blank_after = character(0),
+                         page_by_bold = FALSE,
+                         page_by_align = "left") {
+  structure(
+    list(
+      page_by        = vec_cast(page_by, character()),
+      group_by       = vec_cast(group_by, character()),
+      indent_by      = vec_cast(indent_by, character()),
+      blank_after    = vec_cast(blank_after, character()),
+      page_by_bold   = page_by_bold,
+      page_by_align  = page_by_align
+    ),
+    class = "fr_body"
+  )
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# fr_rule — A single horizontal or vertical rule (internal)
+#
+# FIELDS:
+#
+#   direction   "horizontal" | "vertical"
+#
+#   region      "header"   — column header row(s) + spanner row(s)
+#               "body"     — data rows
+#               "spanners" — spanner rows only
+#
+#   side        "above" | "below"  (horizontal rules only)
+#
+#   rows        NULL = side-based positioning
+#               "all" = rule below every row in the region
+#               integer vector = specific row index(es)
+#
+#   cols        NULL = all columns
+#               "all" = all columns
+#               integer vector = specific column index(es)
+#
+#   width       Rule thickness in points. Resolved from named shorthand or
+#               numeric by resolve_line_width().
+#
+#   linestyle   "solid" | "dashed" | "dotted" | "double" | "dashdot"
+#               CSS + SAS ODS vocabulary.
+#
+#   fg          Rule colour, hex string. Default "#000000".
+#
+#   leftpos / rightpos   (horizontal rules only)
+#               Fraction 0–1 controlling partial rule extent.
+#               NULL = full width. Controls partial horizontal extent.
+#
+#   abovepos / belowpos  (vertical rules only)
+#               Fraction 0–1 controlling partial rule extent.
+#               NULL = full height. Controls partial vertical extent.
+#
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' @noRd
+new_fr_rule <- function(direction = "horizontal",
+                         region    = "header",
+                         side      = "below",
+                         rows      = NULL,
+                         cols      = NULL,
+                         width     = 0.5,
+                         linestyle = "solid",
+                         fg        = "#000000",
+                         leftpos   = NULL,
+                         rightpos  = NULL,
+                         abovepos  = NULL,
+                         belowpos  = NULL,
+                         call      = caller_env()) {
+
+  direction <- match_arg_fr(direction, c("horizontal", "vertical"), call = call)
+  region    <- match_arg_fr(region, c("header", "body", "spanners"), call = call)
+  side      <- match_arg_fr(side,   c("above", "below"),             call = call)
+
+  # ── Validate rows ───────────────────────────────────────────────────────
+  if (!is.null(rows)) {
+    if (is.character(rows)) {
+      rows <- match_arg_fr(rows, "all", call = call)
+    } else if (is.numeric(rows)) {
+      if (any(rows < 1L) || any(rows != as.integer(rows))) {
+        cli_abort("{.arg rows} must be positive integers or {.val all}.",
+                  call = call)
+      }
+      rows <- as.integer(rows)
+    } else {
+      cli_abort("{.arg rows} must be {.val all}, an integer vector, or {.code NULL}.",
+                call = call)
+    }
+  }
+
+  # ── Validate cols ───────────────────────────────────────────────────────
+  if (!is.null(cols)) {
+    if (is.character(cols)) {
+      cols <- match_arg_fr(cols, "all", call = call)
+    } else if (is.numeric(cols)) {
+      if (any(cols < 1L) || any(cols != as.integer(cols))) {
+        cli_abort("{.arg cols} must be positive integers or {.val all}.",
+                  call = call)
+      }
+      cols <- as.integer(cols)
+    } else {
+      cli_abort("{.arg cols} must be {.val all}, an integer vector, or {.code NULL}.",
+                call = call)
+    }
+  }
+
+  linestyle <- match_arg_fr(linestyle, fr_env$valid_linestyles, call = call)
+  width     <- resolve_line_width(width, call = call)
+
+  if (!is.null(fg)) fg <- resolve_color(fg, call = call)
+
+  # ── Validate partial line fractions ────────────────────────────────────
+  validate_fraction <- function(x, arg) {
+    if (is.null(x)) return(NULL)
+    if (!is.numeric(x) || length(x) != 1L || is.na(x) || x < 0 || x > 1) {
+      cli_abort("{.arg {arg}} must be a number in [0, 1] or {.code NULL}.",
+                call = call)
+    }
+    x
+  }
+  leftpos  <- validate_fraction(leftpos,  "leftpos")
+  rightpos <- validate_fraction(rightpos, "rightpos")
+  abovepos <- validate_fraction(abovepos, "abovepos")
+  belowpos <- validate_fraction(belowpos, "belowpos")
+
+  structure(
+    list(
+      direction = direction,
+      region    = region,
+      side      = side,
+      rows      = rows,
+      cols      = cols,
+      width     = width,
+      linestyle = linestyle,
+      fg        = fg %||% "#000000",
+      leftpos   = leftpos,
+      rightpos  = rightpos,
+      abovepos  = abovepos,
+      belowpos  = belowpos
+    ),
+    class = c(
+      if (direction == "horizontal") "fr_rule_hline" else "fr_rule_vline",
+      "fr_rule"
+    )
+  )
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# fr_cell_style — Cell-level style override (internal)
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' @noRd
+new_fr_cell_style <- function(type      = "cell",
+                               region    = "body",
+                               rows      = NULL,
+                               cols      = NULL,
+                               bold      = NULL,
+                               italic    = NULL,
+                               underline = NULL,
+                               fg        = NULL,
+                               bg        = NULL,
+                               font      = NULL,
+                               font_size = NULL,
+                               align     = NULL,
+                               valign    = NULL,
+                               indent    = NULL,
+                               colspan   = NULL,
+                               rowspan   = NULL,
+                               height    = NULL) {
+  structure(
+    list(
+      type      = type,
+      region    = region,
+      rows      = rows,
+      cols      = cols,
+      bold      = bold,
+      italic    = italic,
+      underline = underline,
+      fg        = if (!is.null(fg)) resolve_color(fg) else NULL,
+      bg        = if (!is.null(bg)) resolve_color(bg) else NULL,
+      font      = font,
+      font_size = font_size,
+      align     = align,
+      valign    = valign,
+      indent    = indent,
+      colspan   = colspan,
+      rowspan   = rowspan,
+      height    = height
+    ),
+    class = "fr_cell_style"
+  )
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# fr_row_style / fr_col_style — Row- and column-level style overrides (internal)
+#
+# These are thin wrappers over new_fr_cell_style() that set type = "row" or
+# type = "col" and restrict the available fields accordingly.
+#
+# Backend key mapping:
+#   type = "row"  → row{i} = {bg, fg, font, halign, valign, ht, ...}
+#   type = "col"  → column{j} = {bg, fg, font, halign, wd}
+#
+# RTF mapping:
+#   type = "row"  → per-row: \trrh (height), \clcbpat (bg), \cf (fg), \b\i\ul
+#   type = "col"  → per-column: applied to every cell in the column
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' @noRd
+new_fr_row_style <- function(rows      = NULL,
+                              bold      = NULL,
+                              italic    = NULL,
+                              underline = NULL,
+                              fg        = NULL,
+                              bg        = NULL,
+                              font_size = NULL,
+                              align     = NULL,
+                              valign    = NULL,
+                              height    = NULL) {
+  new_fr_cell_style(
+    type      = "row",
+    region    = "body",
+    rows      = rows,
+    cols      = NULL,
+    bold      = bold,
+    italic    = italic,
+    underline = underline,
+    fg        = fg,
+    bg        = bg,
+    font_size = font_size,
+    align     = align,
+    valign    = valign,
+    height    = height
+  )
+}
+
+
+#' @noRd
+new_fr_col_style <- function(cols      = NULL,
+                              bold      = NULL,
+                              italic    = NULL,
+                              underline = NULL,
+                              fg        = NULL,
+                              bg        = NULL,
+                              font_size = NULL,
+                              align     = NULL,
+                              valign    = NULL) {
+  new_fr_cell_style(
+    type      = "col",
+    region    = "body",
+    rows      = NULL,
+    cols      = cols,
+    bold      = bold,
+    italic    = italic,
+    underline = underline,
+    fg        = fg,
+    bg        = bg,
+    font_size = font_size,
+    align     = align,
+    valign    = valign
+  )
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# fr_meta — Titles and footnotes (internal)
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' @noRd
+new_fr_meta <- function(titles = list(),
+                         footnotes = list(),
+                         footnote_separator = FALSE) {
+  structure(
+    list(
+      titles              = as.list(titles),
+      footnotes           = as.list(footnotes),
+      footnote_separator  = footnote_separator
+    ),
+    class = "fr_meta"
+  )
+}
+
+
+#' Create a title entry
+#'
+#' Each title line is stored with its own alignment and styling.
+#'
+#' @param content Character. Title text (supports `{fr_*()}` markup).
+#' @param align Character. `"left"`, `"center"`, or `"right"`.
+#' @param bold Logical.
+#' @param font_size Numeric or NULL (inherit from page).
+#' @return A named list (lightweight data container, not an S3 class).
+#' @noRd
+new_title_entry <- function(content,
+                             align = "center",
+                             bold = FALSE,
+                             font_size = NULL) {
+  structure(
+    list(
+      content   = content,
+      align     = match_arg_fr(align, c("left", "center", "right")),
+      bold      = bold,
+      font_size = font_size
+    ),
+    class = "fr_title_entry"
+  )
+}
+
+#' @export
+print.fr_title_entry <- function(x, ...) {
+  style <- if (x$bold) " [bold]" else ""
+  size  <- if (!is.null(x$font_size)) paste0(" ", x$font_size, "pt") else ""
+  cat(sprintf("<fr_title_entry> (%s%s%s) %s\n", x$align, style, size,
+              label_to_plain(x$content)))
+  invisible(x)
+}
+
+
+#' Create a footnote entry
+#'
+#' @param content Character.
+#' @param align Character.
+#' @param placement Character. `"every"` (default) or `"last"`.
+#' @param font_size Numeric or NULL.
+#' @return A named list.
+#' @noRd
+new_footnote_entry <- function(content,
+                                align = "left",
+                                placement = "every",
+                                font_size = NULL) {
+  structure(
+    list(
+      content   = content,
+      align     = match_arg_fr(align, c("left", "center", "right")),
+      placement = match_arg_fr(placement, c("every", "last")),
+      font_size = font_size
+    ),
+    class = "fr_footnote_entry"
+  )
+}
+
+#' @export
+print.fr_footnote_entry <- function(x, ...) {
+  place <- if (x$placement == "last") " [last]" else ""
+  size  <- if (!is.null(x$font_size)) paste0(" ", x$font_size, "pt") else ""
+  cat(sprintf("<fr_footnote_entry> (%s%s%s) %s\n", x$align, place, size,
+              label_to_plain(x$content)))
+  invisible(x)
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# fr_pagechrome — Page header/footer definition (internal)
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' @noRd
+new_fr_pagechrome <- function(left = NULL,
+                               center = NULL,
+                               right = NULL,
+                               font_size = NULL,
+                               bold = FALSE) {
+  structure(
+    list(
+      left      = left,
+      center    = center,
+      right     = right,
+      font_size = font_size,
+      bold      = bold
+    ),
+    class = "fr_pagechrome"
+  )
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# fr_spec — Root specification object (internal)
+#
+# Created by fr_table() in api.R, modified by pipeline verbs,
+# consumed by fr_render().
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' @noRd
+new_fr_spec <- function(data,
+                         meta = new_fr_meta(),
+                         columns = list(),
+                         header = new_fr_header(),
+                         body = new_fr_body(),
+                         rules = list(),
+                         cell_styles = list(),
+                         page = new_fr_page(),
+                         pagehead = NULL,
+                         pagefoot = NULL,
+                         spacing = list(titles_after = 1L,
+                                        footnotes_before = 1L,
+                                        pagehead_after = 0L,
+                                        pagefoot_before = 0L,
+                                        page_by_after = 1L),
+                         call = caller_env()) {
+
+  if (!is.data.frame(data)) {
+    cli_abort("{.arg data} must be a data frame.", call = call)
+  }
+
+  structure(
+    list(
+      data        = data,
+      meta        = meta,
+      columns     = columns,
+      header      = header,
+      body        = body,
+      rules       = rules,
+      cell_styles = cell_styles,
+      page        = page,
+      pagehead    = pagehead,
+      pagefoot    = pagefoot,
+      spacing     = spacing
+    ),
+    class = "fr_spec"
+  )
+}
+
+
+#' @export
+print.fr_spec <- function(x, ...) {
+  nr <- nrow(x$data)
+  nc <- length(x$columns)
+  orient <- x$page$orientation %||% "landscape"
+  n_titles <- length(x$meta$titles %||% list())
+  n_fn <- length(x$meta$footnotes %||% list())
+  cat(sprintf("<fr_spec> %d rows x %d columns [%s]", nr, nc, orient))
+  if (n_titles > 0L || n_fn > 0L) {
+    parts <- character(0)
+    if (n_titles > 0L) parts <- c(parts, sprintf("%d title(s)", n_titles))
+    if (n_fn > 0L)     parts <- c(parts, sprintf("%d footnote(s)", n_fn))
+    cat(" | ", paste(parts, collapse = ", "))
+  }
+  cat("\n")
+  invisible(x)
+}
+
+
+#' @export
+print.fr_col <- function(x, ...) {
+  label <- x$label %||% x$id %||% ""
+  width <- if (is_fr_pct(x$width)) sprintf("%.0f%%", unclass(x$width) * 100)
+           else if (is.numeric(x$width)) sprintf("%.2fin", x$width)
+           else "auto"
+  align <- x$align %||% "left"
+  cat(sprintf("<fr_col> \"%s\" [%s, %s]\n", label, width, align))
+  invisible(x)
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Validators
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' Validate that an object is an fr_spec
+#' @noRd
+check_fr_spec <- function(x,
+                           arg = caller_arg(x),
+                           call = caller_env()) {
+  if (!inherits(x, "fr_spec")) {
+    cli_abort(
+      "{.arg {arg}} must be an {.cls fr_spec} object (created by {.fn fr_table}).",
+      arg = arg, call = call
+    )
+  }
+  invisible(x)
+}
+
+#' Validate that an object is an fr_col
+#' @noRd
+check_fr_col <- function(x,
+                          arg = caller_arg(x),
+                          call = caller_env()) {
+  if (!inherits(x, "fr_col")) {
+    cli_abort(
+      "{.arg {arg}} must be an {.cls fr_col} object (created by {.fn fr_col}).",
+      arg = arg, call = call
+    )
+  }
+  invisible(x)
+}

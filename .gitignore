@@ -1,0 +1,7 @@
+.Rproj.user
+
+/.quarto/
+**/*.quarto_ipynb
+
+# Generated verification output
+verify_compare/

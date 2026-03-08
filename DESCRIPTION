@@ -1,0 +1,38 @@
+Package: tlframe
+Title: Clinical Tables, Figures, and Listings for Regulatory Submission
+Version: 0.1.0.9000
+Authors@R:
+    person("SColumn", , , "scolumn@example.com", role = c("aut", "cre"))
+Description: Produces regulatory-grade clinical trial tables, listings, and
+    figures (TLFs) in RTF and PDF from a single specification. Designed for
+    pharmaceutical industry workflows with support for paginated output,
+    spanning headers, decimal alignment, programmatic page headers/footers,
+    and company-specific rule presets. Built on disciplined S3 classes with
+    a clean, composable pipeline API. Zero tidyverse runtime dependencies.
+License: MIT + file LICENSE
+URL: https://github.com/scolumn/tlframe
+BugReports: https://github.com/scolumn/tlframe/issues
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Language: en-US
+Depends:
+    R (>= 4.1.0)
+Imports:
+    cli (>= 3.6.0),
+    glue (>= 1.6.0),
+    rlang (>= 1.1.0),
+    stringi (>= 1.7.0),
+    tidyselect (>= 1.2.0),
+    vctrs (>= 0.6.0),
+    yaml
+Suggests:
+    ggplot2 (>= 3.4.0),
+    gt (>= 0.10.0),
+    knitr,
+    rstudioapi,
+    testthat (>= 3.0.0),
+    tinytex,
+    withr
+Config/testthat/edition: 3
+LazyData: true
