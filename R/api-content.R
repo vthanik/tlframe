@@ -4,6 +4,49 @@
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# Shared content entry normalization
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' Normalize a single title or footnote entry
+#'
+#' @param x Character scalar or named list with `content`, `align`, etc.
+#' @param constructor Function to call (new_title_entry or new_footnote_entry).
+#' @param defaults Named list of default values for `align`, `bold`/`placement`,
+#'   `font_size`.
+#' @param entry_name Label for error messages ("title" or "footnote").
+#' @param call Caller environment for error messages.
+#' @return A title/footnote entry object.
+#' @noRd
+normalize_content_entry <- function(x, constructor, defaults, entry_name,
+                                    call) {
+  if (is.character(x)) {
+    check_scalar_chr(x, arg = entry_name, call = call)
+    inject(constructor(content = normalise_text(x, env = call), !!!defaults))
+  } else if (is.list(x)) {
+    content <- x[["content"]] %||% x[[1L]]
+    if (is.null(content)) {
+      cli_abort(c(
+        "Named list {entry_name} must have a {.field content} element or an unnamed first element.",
+        "i" = 'Example: {.code list(content = "text", align = "center")}'
+      ), call = call)
+    }
+    check_scalar_chr(content, arg = paste(entry_name, "content"), call = call)
+    overrides <- defaults
+    for (nm in intersect(names(x), names(defaults))) {
+      overrides[[nm]] <- x[[nm]]
+    }
+    inject(constructor(content = normalise_text(content, env = call),
+                       !!!overrides))
+  } else {
+    cli_abort(c(
+      "Each {entry_name} must be a character scalar or a named list.",
+      "x" = "You supplied {.obj_type_friendly {x}}."
+    ), call = call)
+  }
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # fr_titles — Set table titles
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -147,30 +190,10 @@ fr_titles <- function(spec, ..., .align = "center", .bold = FALSE,
     return(spec)
   }
 
-  entries <- lapply(dots, function(x) {
-    if (is.character(x)) {
-      check_scalar_chr(x, arg = "title", call = call)
-      new_title_entry(
-        content   = normalise_text(x, env = call),
-        align     = .align,
-        bold      = .bold,
-        font_size = .font_size
-      )
-    } else if (is.list(x)) {
-      content <- x[["content"]] %||% x[[1L]]
-      check_scalar_chr(content, arg = "title content", call = call)
-      new_title_entry(
-        content   = normalise_text(content, env = call),
-        align     = x[["align"]]     %||% .align,
-        bold      = x[["bold"]]      %||% .bold,
-        font_size = x[["font_size"]] %||% .font_size
-      )
-    } else {
-      cli_abort(c("Each title must be a character scalar or a named list.",
-                  "x" = "You supplied {.obj_type_friendly {x}}."),
-                call = call)
-    }
-  })
+  defaults <- list(align = .align, bold = .bold, font_size = .font_size)
+  entries <- lapply(dots, normalize_content_entry,
+                    constructor = new_title_entry, defaults = defaults,
+                    entry_name = "title", call = call)
 
   spec$meta$titles <- entries
   spec
@@ -368,30 +391,11 @@ fr_footnotes <- function(spec, ..., .align = "left", .placement = "every",
     return(spec)
   }
 
-  entries <- lapply(dots, function(x) {
-    if (is.character(x)) {
-      check_scalar_chr(x, arg = "footnote", call = call)
-      new_footnote_entry(
-        content   = normalise_text(x, env = call),
-        align     = .align,
-        placement = .placement,
-        font_size = .font_size
-      )
-    } else if (is.list(x)) {
-      content <- x[["content"]] %||% x[[1L]]
-      check_scalar_chr(content, arg = "footnote content", call = call)
-      new_footnote_entry(
-        content   = normalise_text(content, env = call),
-        align     = x[["align"]]     %||% .align,
-        placement = x[["placement"]] %||% .placement,
-        font_size = x[["font_size"]] %||% .font_size
-      )
-    } else {
-      cli_abort(c("Each footnote must be a character scalar or a named list.",
-                  "x" = "You supplied {.obj_type_friendly {x}}."),
-                call = call)
-    }
-  })
+  defaults <- list(align = .align, placement = .placement,
+                   font_size = .font_size)
+  entries <- lapply(dots, normalize_content_entry,
+                    constructor = new_footnote_entry, defaults = defaults,
+                    entry_name = "footnote", call = call)
 
   spec$meta$footnotes          <- entries
   spec$meta$footnote_separator <- .separator

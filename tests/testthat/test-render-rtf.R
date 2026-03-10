@@ -423,7 +423,7 @@ test_that("page_by preserves original data order (not alphabetical)", {
 # Issue 5: Decimal-aligned cells get reduced cell padding
 # ──────────────────────────────────────────────────────────────────────────────
 
-test_that("decimal-aligned cells use sub-cell split with right-before / left-after", {
+test_that("decimal-aligned cells render as single cell with left indent", {
   tmp <- tempfile(fileext = ".rtf")
   on.exit(unlink(tmp), add = TRUE)
 
@@ -440,22 +440,19 @@ test_that("decimal-aligned cells use sub-cell split with right-before / left-aft
 
   txt <- rawToChar(readBin(tmp, "raw", file.info(tmp)$size))
 
-  # Sub-cell padding
-  expect_true(grepl("clpadt36", txt, fixed = TRUE))
-  expect_true(grepl("clpadr36", txt, fixed = TRUE))
-  # Right-aligned sub-cell for before-part
-  expect_true(grepl("\\qr", txt, fixed = TRUE))
-  # Left-aligned sub-cell for after-part
+  # No sub-cell padding (no dual cells)
+  expect_false(grepl("clpadt36", txt, fixed = TRUE))
+  # Left-aligned cell with indent for centering
   expect_true(grepl("\\ql", txt, fixed = TRUE))
+  expect_true(grepl("\\li", txt, fixed = TRUE))
   # No tab-stop patterns
   expect_false(grepl("\\tqdec", txt, fixed = TRUE))
-  expect_false(grepl("\\tqr", txt, fixed = TRUE))
-  # Before/after parts appear in content
+  # Content appears
   expect_true(grepl("65", txt, fixed = TRUE))
-  expect_true(grepl(".2", txt, fixed = TRUE))
+  expect_true(grepl("80", txt, fixed = TRUE))
 })
 
-test_that("decimal sub-cell split works with space-separated content", {
+test_that("decimal alignment works with n(%) content", {
   tmp <- tempfile(fileext = ".rtf")
   on.exit(unlink(tmp), add = TRUE)
 
@@ -470,18 +467,18 @@ test_that("decimal sub-cell split works with space-separated content", {
     fr_render(tmp)
 
   txt <- rawToChar(readBin(tmp, "raw", file.info(tmp)$size))
-  # Sub-cell split: \qr before, \ql after, no tab stops
-  expect_true(grepl("\\qr", txt, fixed = TRUE))
+  # Single-cell with left-align + indent
   expect_true(grepl("\\ql", txt, fixed = TRUE))
+  expect_true(grepl("\\li", txt, fixed = TRUE))
   expect_false(grepl("\\tqdec", txt, fixed = TRUE))
 })
 
-test_that("decimal sub-cell split works with dash-separated content", {
+test_that("decimal alignment works with scalar float content", {
   tmp <- tempfile(fileext = ".rtf")
   on.exit(unlink(tmp), add = TRUE)
 
   data <- data.frame(
-    val = c("41-82", "55-99"),
+    val = c("135.2", "85.1", "0.07"),
     stringsAsFactors = FALSE
   )
 
@@ -491,8 +488,8 @@ test_that("decimal sub-cell split works with dash-separated content", {
     fr_render(tmp)
 
   txt <- rawToChar(readBin(tmp, "raw", file.info(tmp)$size))
-  # Sub-cell split with no tab stops
-  expect_true(grepl("\\qr", txt, fixed = TRUE))
+  # Single-cell with left-align + indent
+  expect_true(grepl("\\ql", txt, fixed = TRUE))
   expect_false(grepl("\\tqdec", txt, fixed = TRUE))
 })
 
@@ -921,8 +918,8 @@ test_that("pagehead with left, center, and right renders tab stops", {
   expect_true(grepl("Left", txt, fixed = TRUE))
   expect_true(grepl("Center", txt, fixed = TRUE))
   expect_true(grepl("Right", txt, fixed = TRUE))
-  expect_true(grepl("\\tqc", txt, fixed = TRUE))
-  expect_true(grepl("\\tqr", txt, fixed = TRUE))
+  expect_true(grepl("\\trowd", txt, fixed = TRUE))
+  expect_true(grepl("\\intbl", txt, fixed = TRUE))
 })
 
 test_that("pagehead with bold = TRUE uses \\b control word", {
@@ -1370,7 +1367,7 @@ test_that("rtf_chrome_content returns empty for chrome with no text", {
   expect_equal(result, "")
 })
 
-test_that("rtf_chrome_content includes tab stops for center text", {
+test_that("rtf_chrome_content uses table layout for L+C zones", {
   spec <- data.frame(x = 1, stringsAsFactors = FALSE) |> fr_table()
   spec <- tlframe:::finalize_spec(spec)
   chrome <- list(left = "L", center = "C", right = NULL, bold = FALSE,
@@ -1378,13 +1375,24 @@ test_that("rtf_chrome_content includes tab stops for center text", {
   token_map <- tlframe:::build_token_map(page_num = 1, total_pages = 1, spec = spec)
 
   result <- tlframe:::rtf_chrome_content(chrome, spec, token_map, "test")
-  expect_true(grepl("\\tqc", result, fixed = TRUE))
-  expect_true(grepl("\\tab", result, fixed = TRUE))
+  # Table row structure
+
+  expect_true(grepl("\\trowd", result, fixed = TRUE))
+  expect_true(grepl("\\intbl", result, fixed = TRUE))
+  expect_true(grepl("\\cell", result, fixed = TRUE))
+  expect_true(grepl("\\row", result, fixed = TRUE))
+  # Cell alignments
+  expect_true(grepl("\\ql", result, fixed = TRUE))
+  expect_true(grepl("\\qc", result, fixed = TRUE))
+  # Content present
   expect_true(grepl("L", result, fixed = TRUE))
   expect_true(grepl("C", result, fixed = TRUE))
+  # No old tab-stop approach
+  expect_false(grepl("\\tqc", result, fixed = TRUE))
+  expect_false(grepl("\\tqr", result, fixed = TRUE))
 })
 
-test_that("rtf_chrome_content adds right tab even without center text", {
+test_that("rtf_chrome_content uses table layout for L+R zones (no center)", {
   spec <- data.frame(x = 1, stringsAsFactors = FALSE) |> fr_table()
   spec <- tlframe:::finalize_spec(spec)
   chrome <- list(left = "L", center = NULL, right = "R", bold = FALSE,
@@ -1392,8 +1400,61 @@ test_that("rtf_chrome_content adds right tab even without center text", {
   token_map <- tlframe:::build_token_map(page_num = 1, total_pages = 1, spec = spec)
 
   result <- tlframe:::rtf_chrome_content(chrome, spec, token_map, "test")
-  expect_true(grepl("\\tqr", result, fixed = TRUE))
+  # Table structure
+  expect_true(grepl("\\trowd", result, fixed = TRUE))
+  expect_true(grepl("\\intbl", result, fixed = TRUE))
+  expect_true(grepl("\\row", result, fixed = TRUE))
+  # Two cells: left-aligned and right-aligned
+  expect_true(grepl("\\ql", result, fixed = TRUE))
+  expect_true(grepl("\\qr", result, fixed = TRUE))
   expect_true(grepl("R", result, fixed = TRUE))
+})
+
+test_that("rtf_chrome_content handles 3-zone L+C+R layout", {
+  spec <- data.frame(x = 1, stringsAsFactors = FALSE) |> fr_table()
+  spec <- tlframe:::finalize_spec(spec)
+  chrome <- list(left = "Left", center = "Center", right = "Right",
+                 bold = FALSE, font_size = NULL)
+  token_map <- tlframe:::build_token_map(page_num = 1, total_pages = 1, spec = spec)
+
+  result <- tlframe:::rtf_chrome_content(chrome, spec, token_map, "test")
+  expect_true(grepl("\\ql", result, fixed = TRUE))
+  expect_true(grepl("\\qc", result, fixed = TRUE))
+  expect_true(grepl("\\qr", result, fixed = TRUE))
+  expect_true(grepl("Left", result, fixed = TRUE))
+  expect_true(grepl("Center", result, fixed = TRUE))
+  expect_true(grepl("Right", result, fixed = TRUE))
+  # Three \cell terminators (not counting \cellx)
+  expect_equal(length(gregexpr("\\\\cell[^x]", result)[[1]]), 3L)
+})
+
+test_that("rtf_chrome_content handles single-zone layout", {
+  spec <- data.frame(x = 1, stringsAsFactors = FALSE) |> fr_table()
+  spec <- tlframe:::finalize_spec(spec)
+  chrome <- list(left = NULL, center = "Only", right = NULL,
+                 bold = FALSE, font_size = NULL)
+  token_map <- tlframe:::build_token_map(page_num = 1, total_pages = 1, spec = spec)
+
+  result <- tlframe:::rtf_chrome_content(chrome, spec, token_map, "test")
+  expect_true(grepl("\\qc", result, fixed = TRUE))
+  expect_true(grepl("Only", result, fixed = TRUE))
+  # Single cell (not counting \cellx)
+  expect_equal(length(gregexpr("\\\\cell[^x]", result)[[1]]), 1L)
+})
+
+test_that("rtf_chrome_content multi-line right text stays right-aligned", {
+  spec <- data.frame(x = 1, stringsAsFactors = FALSE) |> fr_table()
+  spec <- tlframe:::finalize_spec(spec)
+  chrome <- list(left = "Protocol XYZ", center = NULL,
+                 right = "Page 1 of 2\nDatabase Lock: 15MAR2025",
+                 bold = FALSE, font_size = NULL)
+  token_map <- tlframe:::build_token_map(page_num = 1, total_pages = 1, spec = spec)
+
+  result <- tlframe:::rtf_chrome_content(chrome, spec, token_map, "test")
+  # Right cell has its own \qr alignment — multi-line text uses \line within
+  expect_true(grepl("\\qr", result, fixed = TRUE))
+  expect_true(grepl("\\line", result, fixed = TRUE))
+  expect_true(grepl("Database Lock: 15MAR2025", result, fixed = TRUE))
 })
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1682,7 +1743,7 @@ test_that("deterministic row height: zero cell padding on all rows", {
   expect_true(grepl("\\trpaddt0\\trpaddft3\\trpaddb0\\trpaddfb3", txt, fixed = TRUE))
 })
 
-test_that("deterministic row height: exact line spacing on cell paragraphs", {
+test_that("cell paragraphs have zero space before/after", {
   tmp <- tempfile(fileext = ".rtf")
   on.exit(unlink(tmp), add = TRUE)
 
@@ -1692,8 +1753,9 @@ test_that("deterministic row height: exact line spacing on cell paragraphs", {
     fr_render(tmp)
 
   txt <- rawToChar(readBin(tmp, "raw", file.info(tmp)$size))
-  # baseline_skip_twips(9) = 1.2 * 9 * 20 = 216, negative = -216
-  expect_true(grepl("\\sb0\\sa0\\sl-216\\slmult0", txt, fixed = TRUE))
+  # Default spacing: zero space before/after, Word default line spacing
+  expect_true(grepl("\\sb0\\sa0", txt, fixed = TRUE))
+  expect_false(grepl("\\slmult0", txt, fixed = TRUE))
 })
 
 test_that("continuation text does not appear on panel 1 (single-panel table)", {

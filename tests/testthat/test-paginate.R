@@ -97,6 +97,53 @@ test_that("paginate_rows handles empty input", {
   expect_length(pages, 0L)
 })
 
+test_that("deferred blank saves page break", {
+  # 4 groups: 6+5+7+6 data rows, with blank rows between groups
+
+  # Old behavior: G1(6)+blank=7, G2(5)+blank=13, G3(7)+blank=21, G4(6)=27>26 → 2 pages
+  # New behavior: G3's trailing blank deferred, 20+6=26 ≤ 26 → 1 page
+  grp <- c(rep("A", 6), rep("B", 5), rep("C", 7), rep("D", 6))
+  n_data <- length(grp)
+  # Insert blank rows between groups
+  df <- data.frame(
+    grp = c(grp[1:6],  "", grp[7:11], "", grp[12:18], "", grp[19:24]),
+    val = c(paste0("a", 1:6),  "", paste0("b", 1:5),  "",
+            paste0("c", 1:7),  "", paste0("d", 1:6)),
+    stringsAsFactors = FALSE
+  )
+  heights <- rep(1L, nrow(df))
+  pages <- paginate_rows(heights, 26L, df, "grp")
+  expect_equal(max(pages), 1L)
+})
+
+test_that("genuine page break preserved with deferred blanks", {
+  # 2 groups of 15 rows each, budget=20, must be 2 pages regardless
+  df <- data.frame(
+    grp = c(rep("A", 15), "", rep("B", 15)),
+    val = c(paste0("a", 1:15), "", paste0("b", 1:15)),
+    stringsAsFactors = FALSE
+  )
+  heights <- rep(1L, nrow(df))
+  pages <- paginate_rows(heights, 20L, df, "grp")
+  expect_equal(max(pages), 2L)
+  # Group A on page 1, Group B on page 2
+  expect_true(all(pages[1:15] == 1L))
+  expect_true(all(pages[17:31] == 2L))
+})
+
+test_that("last group without trailing blank paginates correctly", {
+  # 2 groups: 5+5 data rows, 1 blank between, budget=12
+  # 5 + 1(blank) + 5 = 11 ≤ 12 → 1 page
+  df <- data.frame(
+    grp = c(rep("A", 5), "", rep("B", 5)),
+    val = c(paste0("a", 1:5), "", paste0("b", 1:5)),
+    stringsAsFactors = FALSE
+  )
+  heights <- rep(1L, nrow(df))
+  pages <- paginate_rows(heights, 12L, df, "grp")
+  expect_equal(max(pages), 1L)
+})
+
 test_that("RTF render with group_by produces multiple sections", {
   tmp <- tempfile(fileext = ".rtf")
   on.exit(unlink(tmp), add = TRUE)

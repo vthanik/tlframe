@@ -3,7 +3,8 @@
 #
 # These accessors provide a stable public interface to read spec properties
 # without coupling user code to the internal list structure of fr_spec.
-# All return deep copies so modifications don't affect the original spec.
+# All return the stored values directly. Modifying returned data frames
+# or lists will NOT affect the original spec (R copy-on-modify semantics).
 # ──────────────────────────────────────────────────────────────────────────────
 
 
@@ -15,7 +16,8 @@
 #' data frame passed to [fr_table()] or [fr_listing()], before any rendering
 #' transformations (sorting, repeat suppression, blank-after rows).
 #'
-#' Returns a **deep copy** — modifying the result does not affect the spec.
+#' Modifying the returned data frame does not affect the spec
+#' (R copy-on-modify semantics protect the original).
 #'
 #' @param spec An `fr_spec` object from [fr_table()] or [fr_listing()].
 #'

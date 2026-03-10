@@ -165,13 +165,8 @@ fr_spans <- function(spec, ..., .level = 1L, .hline = TRUE) {
         call = call
       )
     }
-    bad <- setdiff(cols, names(spec$data))
-    if (length(bad) > 0L) {
-      cli_abort(
-        "Span {.val {label}}: column{?s} not found in the data: {.val {bad}}.",
-        call = call
-      )
-    }
+    validate_cols_exist(cols, names(spec$data),
+                        arg = paste0("span '", label, "'"), call = call)
     new_fr_span(label, cols, level = .level, hline = .hline)
   })
 

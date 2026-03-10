@@ -308,14 +308,8 @@ fr_cols <- function(spec, ..., .list = NULL, .width = NULL, .align = NULL,
         call = call
       )
     }
-    bad_labels <- setdiff(names(.list), names(spec$data))
-    if (length(bad_labels) > 0L) {
-      cli_abort(
-        c("{.arg .list} column{?s} not found in the data: {.val {bad_labels}}.",
-          "i" = "Available columns: {.val {names(spec$data)}}."),
-        call = call
-      )
-    }
+    validate_cols_exist(names(.list), names(spec$data), arg = ".list",
+                        call = call)
     labels_vec <- as.list(.list)
   } else {
     labels_vec <- list()
@@ -492,14 +486,7 @@ fr_select <- function(spec, pattern = NULL, cols = NULL, exclude = NULL) {
                     "x" = "You supplied {.obj_type_friendly {cols}}."),
                   call = call)
       }
-      bad <- setdiff(cols, all_cols)
-      if (length(bad) > 0L) {
-        cli_abort(
-          c("{.arg cols}: column{?s} not found in the data: {.val {bad}}.",
-            "i" = "Available columns: {.val {all_cols}}."),
-          call = call
-        )
-      }
+      validate_cols_exist(cols, all_cols, arg = "cols", call = call)
       selected <- c(selected, cols)
     }
   }

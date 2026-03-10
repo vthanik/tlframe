@@ -18,7 +18,8 @@ Extracts the data frame stored in the \code{fr_spec} object. This is the same
 data frame passed to \code{\link[=fr_table]{fr_table()}} or \code{\link[=fr_listing]{fr_listing()}}, before any rendering
 transformations (sorting, repeat suppression, blank-after rows).
 
-Returns a \strong{deep copy} — modifying the result does not affect the spec.
+Modifying the returned data frame does not affect the spec
+(R copy-on-modify semantics protect the original).
 }
 \examples{
 spec <- tbl_demog |> fr_table()

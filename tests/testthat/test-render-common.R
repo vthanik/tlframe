@@ -179,57 +179,155 @@ test_that("group_by alone does NOT auto-insert blank rows", {
 
 # ── Decimal alignment (tests for R/decimal.R) ────────────────────────────────
 
-test_that("detect_separator finds ' - ' in range values", {
-  vals <- c("11.1 - 18.2", "5.0 - 9.3", "123.4 - 200.1")
-  expect_equal(detect_separator(vals), " - ")
+# --- detect_stat_type tests ---
+
+test_that("detect_stat_type identifies missing values", {
+  expect_equal(detect_stat_type(""), "missing")
+  expect_equal(detect_stat_type("NE"), "missing")
+  expect_equal(detect_stat_type("NA"), "missing")
+  expect_equal(detect_stat_type("NC"), "missing")
+  expect_equal(detect_stat_type("-"), "missing")
 })
 
-test_that("detect_separator finds ', ' in comma-separated values", {
-  vals <- c("55.0, 88.0", "1.2, 3.4")
-  expect_equal(detect_separator(vals), ", ")
+test_that("detect_stat_type identifies n_only", {
+  expect_equal(detect_stat_type("84"), "n_only")
+  expect_equal(detect_stat_type("0"), "n_only")
+  expect_equal(detect_stat_type("100"), "n_only")
 })
 
-test_that("detect_separator returns NULL when no separator dominates", {
-  vals <- c("168.0", "45", "1")
-  expect_null(detect_separator(vals))
+test_that("detect_stat_type identifies scalar_float", {
+  expect_equal(detect_stat_type("12.3"), "scalar_float")
+  expect_equal(detect_stat_type("135.20"), "scalar_float")
+  expect_equal(detect_stat_type("-2.5"), "scalar_float")
 })
 
-test_that("split_at_separator splits at detected separator", {
-  vals <- c("11.1 - 18.2", "5.0 - 9.3")
-  res <- split_at_separator(vals, " - ")
-  expect_equal(res$left, c("11.1", "5.0"))
-  expect_equal(res$right, c("18.2", "9.3"))
+test_that("detect_stat_type identifies n_pct", {
+  expect_equal(detect_stat_type("42 (50.0%)"), "n_pct")
+  expect_equal(detect_stat_type("1 (2.2)"), "n_pct")
+  expect_equal(detect_stat_type("100 (100.0%)"), "n_pct")
 })
 
-test_that("split_at_separator handles missing separator in some cells", {
-  vals <- c("11.1 - 18.2", "N/A", "5.0 - 9.3")
-  res <- split_at_separator(vals, " - ")
-  expect_equal(res$left, c("11.1", "N/A", "5.0"))
-  expect_equal(res$right, c("18.2", "", "9.3"))
+test_that("detect_stat_type identifies n_over_N_pct", {
+  expect_equal(detect_stat_type("42/84 (50.0%)"), "n_over_N_pct")
 })
 
-test_that("split_at_separator with NULL separator returns all-left", {
-  vals <- c("11.1", "5.0")
-  res <- split_at_separator(vals, NULL)
-  expect_equal(res$left, vals)
-  expect_equal(res$right, c("", ""))
+test_that("detect_stat_type identifies est_spread", {
+  expect_equal(detect_stat_type("75.0 (6.75)"), "est_spread")
+  expect_equal(detect_stat_type("12.3 (4.56)"), "est_spread")
 })
 
-test_that("compute_decimal_geometry returns sub-cell widths", {
-  vals <- c("11.1", "5.0", "123.4")
-  geom <- compute_decimal_geometry(vals, 2880L, "Courier New", 9)
-  expect_true(geom$sub1_width > 0L)
-  expect_true(geom$max_left > 0L)
-  expect_equal(length(geom$left_parts), 3L)
+test_that("detect_stat_type identifies est_ci", {
+  expect_equal(detect_stat_type("168.0 (152.4, 183.6)"), "est_ci")
+  expect_equal(detect_stat_type("1.520 (0.650, 3.570)"), "est_ci")
+  expect_equal(detect_stat_type("-2.1 (-4.3, 0.1)"), "est_ci")
 })
 
-test_that("compute_decimal_geometry with separator produces two halves", {
-  vals <- c("11.1 - 18.2", "5.0 - 9.3")
-  geom <- compute_decimal_geometry(vals, 2880L, "Courier New", 9)
-  expect_equal(geom$separator, " - ")
-  expect_equal(geom$left_parts, c("11.1", "5.0"))
-  expect_equal(geom$right_parts, c("18.2", "9.3"))
+test_that("detect_stat_type identifies range_pair", {
+  expect_equal(detect_stat_type("2.0, 45.0"), "range_pair")
+  expect_equal(detect_stat_type("65.0, 88.0"), "range_pair")
 })
+
+test_that("detect_stat_type identifies pvalue", {
+  expect_equal(detect_stat_type("<0.001"), "pvalue")
+  expect_equal(detect_stat_type(">0.999"), "pvalue")
+})
+
+test_that("detect_stat_type identifies int_range", {
+  expect_equal(detect_stat_type("10 - 365"), "int_range")
+})
+
+# --- parse_stat_value tests ---
+
+test_that("parse_stat_value parses n_pct correctly", {
+  p <- parse_stat_value("42 (50.0%)", "n_pct")
+  expect_equal(p$type, "n_pct")
+  expect_equal(p$n, "42")
+  expect_equal(p$pct_int, "50")
+  expect_equal(p$pct_dec, "0")
+  expect_equal(p$pct_sign, "%")
+})
+
+test_that("parse_stat_value parses scalar_float correctly", {
+  p <- parse_stat_value("135.2", "scalar_float")
+  expect_equal(p$type, "scalar_float")
+  expect_equal(p$sign, "")
+  expect_equal(p$int, "135")
+  expect_equal(p$dec, "2")
+})
+
+test_that("parse_stat_value parses est_ci with negative values", {
+  p <- parse_stat_value("-2.1 (-4.3, 0.1)", "est_ci")
+  expect_equal(p$type, "est_ci")
+  expect_equal(p$est_sign, "-")
+  expect_equal(p$est_int, "2")
+  expect_equal(p$est_dec, "1")
+  expect_equal(p$lo_sign, "-")
+  expect_equal(p$lo_int, "4")
+})
+
+test_that("parse_stat_value parses range_pair correctly", {
+  p <- parse_stat_value("65.0, 88.0", "range_pair")
+  expect_equal(p$type, "range_pair")
+  expect_equal(p$l_int, "65")
+  expect_equal(p$l_dec, "0")
+  expect_equal(p$r_int, "88")
+  expect_equal(p$r_dec, "0")
+})
+
+# --- align_decimal_column tests ---
+
+test_that("align_decimal_column aligns n(%) values to same nchar", {
+  vals <- c("100 (100.0%)", "42 (50.0%)", "1 (2.2%)")
+  result <- align_decimal_column(vals)
+  nchars <- nchar(result)
+  expect_true(all(nchars == nchars[1]))
+  expect_true(nchars[1] > 0L)
+})
+
+test_that("align_decimal_column aligns scalar floats with decimal alignment", {
+  vals <- c("135.2", "85.1", "0.07")
+  result <- align_decimal_column(vals)
+  nchars <- nchar(result)
+  expect_true(all(nchars == nchars[1]))
+  # Decimal points should be at the same position
+  dot_pos <- regexpr("\\.", result)
+  expect_true(all(dot_pos == dot_pos[1]))
+})
+
+test_that("align_decimal_column right-aligns plain integers", {
+  vals <- c("84", "7", "100")
+  result <- align_decimal_column(vals)
+  nchars <- nchar(result)
+  expect_true(all(nchars == nchars[1]))
+  # Right-aligned: "100" has no leading space, " 84" has 1, "  7" has 2
+  expect_equal(nchar(sub("^ +", "", result[3])), 3L)  # "100"
+})
+
+test_that("align_decimal_column handles mixed with missing", {
+  vals <- c("42 (50.0%)", "", "NE")
+  result <- align_decimal_column(vals)
+  nchars <- nchar(result)
+  expect_true(all(nchars == nchars[1]))
+  # Missing values should be all spaces
+  expect_equal(trimws(result[2]), "")
+  expect_equal(trimws(result[3]), "")
+})
+
+test_that("align_decimal_column handles range_pair values", {
+  vals <- c("2.0, 45.0", "65.0, 88.0")
+  result <- align_decimal_column(vals)
+  nchars <- nchar(result)
+  expect_true(all(nchars == nchars[1]))
+})
+
+test_that("align_decimal_column handles est_spread values", {
+  vals <- c("75.0 (6.75)", "74.0 (8.20)")
+  result <- align_decimal_column(vals)
+  nchars <- nchar(result)
+  expect_true(all(nchars == nchars[1]))
+})
+
+# --- compute_all_decimal_geometry integration ---
 
 test_that("compute_all_decimal_geometry returns NULL for non-decimal specs", {
   spec <- data.frame(a = "x", stringsAsFactors = FALSE) |> fr_table()
@@ -237,13 +335,273 @@ test_that("compute_all_decimal_geometry returns NULL for non-decimal specs", {
   expect_null(spec$decimal_geometry)
 })
 
-test_that("compute_all_decimal_geometry pre-computes for decimal columns", {
+test_that("compute_all_decimal_geometry produces formatted vector and center_offset", {
   spec <- data.frame(a = c("12.3", "4.56"), stringsAsFactors = FALSE) |>
     fr_table() |>
     fr_cols(a = fr_col("A", align = "decimal", width = 2))
   spec <- finalize_spec(spec)
   expect_true("a" %in% names(spec$decimal_geometry))
-  expect_true(spec$decimal_geometry$a$sub1_width > 0L)
+  geom <- spec$decimal_geometry$a
+  expect_equal(length(geom$formatted), 2L)
+  expect_equal(length(geom$center_offset), 2L)
+  expect_true(all(geom$center_offset >= 0L))
+  expect_true(all(nchar(geom$formatted) == nchar(geom$formatted[1])))
+})
+
+# --- Family-aware type priority tests ---
+
+test_that("align_decimal_column: n_pct dominates over n_only in mixed count column (disposition)", {
+  # Disposition pattern: n_only values outnumber n_pct, but count family groups them
+  vals <- c("45", "44 (97.8)", "1 (2.2)", "1 (2.2)", "0", "0", "0", "0")
+  result <- align_decimal_column(vals)
+  nchars <- nchar(result)
+  # All same width
+
+  expect_true(all(nchars == nchars[1]))
+  # "45" should be right-aligned within n field, not right-aligned to full width
+  # The n_pct "44" and n_only "45" should have their n parts aligned
+  trimmed_45 <- trimws(result[1])
+  trimmed_44 <- sub("\\s*\\(.*", "", trimws(result[2]))
+  # Both should right-justify at the same position
+  pos_45 <- regexpr("\\d+", result[1])
+  pos_44 <- regexpr("\\d+", result[2])
+  expect_equal(attr(pos_45, "match.length") + as.integer(pos_45),
+               attr(pos_44, "match.length") + as.integer(pos_44))
+})
+
+test_that("align_decimal_column: est_spread dominates with family tie-breaking (vitals)", {
+  # Vitals pattern: 4-way tie between n_only, est_spread, scalar_float, range_pair
+  vals <- c("45", "136.8 (17.61)", "136.6", "86.5, 181.5")
+  result <- align_decimal_column(vals)
+  nchars <- nchar(result)
+  expect_true(all(nchars == nchars[1]))
+  # "45" should align with integer part of "136.8", not be right-aligned to full width
+  # After trimming, "45" should not be at the far right
+  trailing_spaces_45 <- nchar(result[1]) - nchar(sub(" +$", "", result[1]))
+  expect_true(trailing_spaces_45 > 0L)
+})
+
+test_that("align_decimal_column: n_only in estimate column aligns to integer part", {
+  vals <- c("45", "136.8 (17.61)", "75.2 (8.30)")
+  result <- align_decimal_column(vals)
+  nchars <- nchar(result)
+  expect_true(all(nchars == nchars[1]))
+  # "45" padded right (trailing spaces), not left-only
+  trailing_spaces <- nchar(result[1]) - nchar(sub(" +$", "", result[1]))
+  expect_true(trailing_spaces > 0L)
+})
+
+test_that("align_decimal_column: scalar_float in estimate column aligns decimals", {
+  vals <- c("0.0", "-0.0 (1.47)", "0.3 (2.10)")
+  result <- align_decimal_column(vals)
+  nchars <- nchar(result)
+  expect_true(all(nchars == nchars[1]))
+  # "0.0" decimal should align with "-0.0" decimal
+  dot_pos_float <- regexpr("\\.", result[1])
+  dot_pos_est <- regexpr("\\.", result[2])
+  expect_equal(as.integer(dot_pos_float), as.integer(dot_pos_est))
+})
+
+# --- Group-aware decimal geometry tests ---
+
+test_that("compute_all_decimal_geometry aligns per group_by independently", {
+  df <- data.frame(
+    section = c("A", "A", "B", "B"),
+    stat = c("4 (8.9)", "41 (91.1)", "168.0 (152.4, 183.6)", "100.0 (90.0, 110.0)"),
+    stringsAsFactors = FALSE
+  )
+  spec <- df |>
+    fr_table() |>
+    fr_rows(group_by = "section") |>
+    fr_cols(stat = fr_col("Stat", align = "decimal", width = 3))
+  spec <- finalize_spec(spec)
+  geom <- spec$decimal_geometry$stat
+  expect_true(!is.null(geom))
+  # group_by adds a blank_after row between groups, so 5 rows total
+  expect_equal(length(geom$formatted), nrow(spec$data))
+  # Group A (n_pct) rows should have parentheses, Group B (est_ci) should have comma
+  grp_a <- geom$formatted[spec$data$section == "A"]
+  grp_b <- geom$formatted[spec$data$section == "B"]
+  expect_true(all(grepl("\\(", trimws(grp_a[nzchar(trimws(grp_a))]))))
+  expect_true(all(grepl(",", trimws(grp_b[nzchar(trimws(grp_b))]))))
+})
+
+test_that("compute_all_decimal_geometry aligns per page_by independently", {
+  df <- data.frame(
+    param = c("SBP", "SBP", "DBP", "DBP"),
+    stat = c("45", "136.8 (17.61)", "45", "80.2 (10.30)"),
+    stringsAsFactors = FALSE
+  )
+  spec <- df |>
+    fr_table() |>
+    fr_cols(stat = fr_col("Stat", align = "decimal", width = 3))
+  spec$body$page_by <- "param"
+  spec <- finalize_spec(spec)
+  geom <- spec$decimal_geometry$stat
+  expect_true(!is.null(geom))
+  expect_equal(length(geom$formatted), 4L)
+  # center_offset is a per-row vector
+  expect_equal(length(geom$center_offset), 4L)
+  expect_true(all(geom$center_offset >= 0L))
+  # Within each group, nchar should be uniform
+  sbp <- geom$formatted[df$param == "SBP"]
+  dbp <- geom$formatted[df$param == "DBP"]
+  expect_true(all(nchar(sbp) == nchar(sbp[1])))
+  expect_true(all(nchar(dbp) == nchar(dbp[1])))
+})
+
+test_that("per-group center_offset varies by group formatted width", {
+  df <- data.frame(
+    section = c("A", "A", "B", "B"),
+    stat = c("4 (8.9)", "41 (91.1)", "168.0 (152.4, 183.6)", "100.0 (90.0, 110.0)"),
+    stringsAsFactors = FALSE
+  )
+  spec <- df |>
+    fr_table() |>
+    fr_rows(group_by = "section") |>
+    fr_cols(stat = fr_col("Stat", align = "decimal", width = 3))
+  spec <- finalize_spec(spec)
+  geom <- spec$decimal_geometry$stat
+  expect_equal(length(geom$center_offset), nrow(spec$data))
+  # Group A (n_pct) is narrower than Group B (est_ci), so gets larger offset
+  a_rows <- which(spec$data$section == "A")
+  b_rows <- which(spec$data$section == "B")
+  expect_true(all(geom$center_offset[a_rows] > geom$center_offset[b_rows]))
+})
+
+test_that("range_pair aligns with estimate in est_spread-dominant column", {
+  vals <- c("45", "136.8 (17.61)", "136.6", "86.5, 181.5")
+  result <- align_decimal_column(vals)
+  # range_pair left value decimal should align with est decimal
+  est_dot <- regexpr("\\.", result[2])
+  rng_dot <- regexpr("\\.", result[4])
+  expect_equal(as.integer(est_dot), as.integer(rng_dot))
+  # n_only should right-align to integer part
+  expect_true(nchar(result[1]) == nchar(result[2]))
+})
+
+
+# --- Phase 1: New pattern detection tests ---
+
+test_that("detect_stat_type recognizes triple-dash as missing", {
+  expect_equal(detect_stat_type("---"), "missing")
+  expect_equal(detect_stat_type("--"), "missing")
+})
+
+test_that("detect_stat_type recognizes double em-dash as missing", {
+  expect_equal(detect_stat_type("\u2014\u2014"), "missing")
+})
+
+test_that("detect_stat_type recognizes = prefix as pvalue", {
+  expect_equal(detect_stat_type("=0.500"), "pvalue")
+})
+
+test_that("parse_stat_value parses = pvalue correctly", {
+  p <- parse_stat_value("=0.500", "pvalue")
+  expect_equal(p$prefix, "=")
+  expect_equal(p$int, "0")
+  expect_equal(p$dec, "500")
+})
+
+
+# --- Cross-type fallback tests ---
+
+test_that("pvalue aligns with scalar_float: decimal dots align", {
+  vals <- c("<0.001", "12.34", "5.67")
+  result <- align_decimal_column(vals)
+  expect_equal(nchar(result[1]), nchar(result[2]))
+  # Decimal dots should align
+  dot1 <- regexpr("\\.", result[1])
+  dot2 <- regexpr("\\.", result[2])
+  expect_equal(as.integer(dot1), as.integer(dot2))
+})
+
+test_that("pvalue aligns with est_spread: pvalue decimal aligns with est decimal", {
+  vals <- c("<0.050", "136.8 (17.61)")
+  result <- align_decimal_column(vals)
+  expect_equal(nchar(result[1]), nchar(result[2]))
+  # First dot in pvalue should align with est decimal dot
+  pv_dot <- regexpr("\\.", result[1])
+  est_dot <- regexpr("\\.", result[2])
+  expect_equal(as.integer(pv_dot), as.integer(est_dot))
+})
+
+test_that("n_pct aligns with n_over_N_pct: parentheses align", {
+  vals <- c("3 (6.7)", "3/45 (6.7)", "10/45 (22.2)")
+  result <- align_decimal_column(vals)
+  expect_equal(nchar(result[1]), nchar(result[2]))
+  # Opening parentheses should align
+  paren1 <- regexpr("\\(", result[1])
+  paren2 <- regexpr("\\(", result[2])
+  expect_equal(as.integer(paren1), as.integer(paren2))
+})
+
+test_that("est_spread aligns with est_ci: estimate decimals align", {
+  vals <- c("75.0 (6.75)", "168.0 (152.4, 183.6)")
+  result <- align_decimal_column(vals)
+  expect_equal(nchar(result[1]), nchar(result[2]))
+  # Estimate decimal dots should align
+  dot1 <- regexpr("\\.", result[1])
+  dot2 <- regexpr("\\.", result[2])
+  expect_equal(as.integer(dot1), as.integer(dot2))
+})
+
+
+# --- Fill existing test gaps ---
+
+test_that("n_only in n_over_N_pct column aligns to numerator", {
+  vals <- c("45", "3/45 (6.7)", "10/45 (22.2)")
+  result <- align_decimal_column(vals)
+  expect_equal(nchar(result[1]), nchar(result[2]))
+})
+
+test_that("n_only in pvalue column aligns to integer part", {
+  vals <- c("5", "<0.001", ">0.999")
+  result <- align_decimal_column(vals)
+  expect_equal(nchar(result[1]), nchar(result[2]))
+})
+
+test_that("n_only in range_pair column aligns to left-value integer part", {
+  vals <- c("45", "2.0, 45.0", "65.0, 88.0")
+  result <- align_decimal_column(vals)
+  expect_equal(nchar(result[1]), nchar(result[2]))
+})
+
+test_that("n_only in int_range column aligns to left integer", {
+  vals <- c("5", "10 - 365", "1 - 180")
+  result <- align_decimal_column(vals)
+  expect_equal(nchar(result[1]), nchar(result[2]))
+})
+
+test_that("scalar_float in est_ci column aligns decimal with estimate", {
+  vals <- c("5.67", "168.0 (152.4, 183.6)")
+  result <- align_decimal_column(vals)
+  expect_equal(nchar(result[1]), nchar(result[2]))
+  dot1 <- regexpr("\\.", result[1])
+  dot2 <- regexpr("\\.", result[2])
+  expect_equal(as.integer(dot1), as.integer(dot2))
+})
+
+
+# --- Edge case tests ---
+
+test_that("all-missing column returns all empty strings", {
+  vals <- c("", "NA", "---")
+  result <- align_decimal_column(vals)
+  expect_true(all(result == ""))
+})
+
+test_that("compute_stat_widths safety net: non-zero width when typed is empty", {
+  parsed <- list(
+    list(type = "n_only", n = "42", raw = "42"),
+    list(type = "n_pct", n = "3", pct_prefix = "", pct_int = "6",
+         pct_dec = "7", pct_sign = "%", raw = "3 (6.7%)")
+  )
+  # Ask for widths of a type that doesn't exist in parsed_values
+  widths <- compute_stat_widths(parsed, "est_spread")
+  # Should have non-zero full_width from raw values
+
+  expect_true(widths$full_width > 0L)
 })
 
 

@@ -107,6 +107,30 @@ check_non_negative_int <- function(x,
 
 
 
+#' Validate that column names exist in a data frame
+#'
+#' Checks that all column names in `cols` are present in `data_names`.
+#' Errors with a helpful message if any are missing.
+#'
+#' @param cols Character vector of column names to check.
+#' @param data_names Character vector of available column names.
+#' @param arg Argument name for error messages.
+#' @param call Caller environment for backtrace.
+#' @noRd
+validate_cols_exist <- function(cols, data_names,
+                                arg = "cols",
+                                call = caller_env()) {
+  bad <- setdiff(cols, data_names)
+  if (length(bad) > 0L) {
+    cli_abort(c(
+      "{.arg {arg}}: column{?s} not found in the data: {.val {bad}}.",
+      "i" = "Available columns: {.val {data_names}}."
+    ), call = call)
+  }
+  invisible(cols)
+}
+
+
 #' Parse a percentage width string to an fr_pct value
 #'
 #' Parses strings like `"20%"` or `"50.5%"` into `fr_pct(0.20)`. Returns

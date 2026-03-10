@@ -36,18 +36,17 @@ rtf_row_height_str <- function(font_size_pt) {
 }
 
 
-#' Paragraph-level spacing string: zero sb/sa + exact line spacing
+#' Paragraph-level spacing string: zero space before/after
 #'
-#' Produces `\sb0\sa0\sl-N\slmult0` where N = baseline skip in twips.
-#' Combined with `rtf_row_height_str()`, this eliminates all Word auto-sizing
-#' and produces deterministic row heights matching `row_height_twips()`.
+#' Produces `\sb0\sa0` to eliminate paragraph spacing. Line spacing is
+#' left at the Word default (single-line) so the viewer controls row
+#' height naturally, with `\trrh` providing the minimum.
 #'
 #' @param font_size_pt Numeric. Font size in points.
 #' @return Character scalar. RTF paragraph spacing string.
 #' @noRd
 rtf_cell_spacing_str <- function(font_size_pt) {
-  sl <- -baseline_skip_twips(font_size_pt)
-  paste0("\\sb0\\sa0\\sl", sl, "\\slmult0")
+  "\\sb0\\sa0"
 }
 
 
@@ -253,8 +252,9 @@ render_rtf <- function(spec, page_groups, col_panels, path) {
 
           # Emit body rows for this sub-page
           sub_data <- group$data[sub_rows, , drop = FALSE]
+          sub_styles <- remap_styles_for_subpage(spec$cell_styles, sub_rows)
           sub_grid <- build_cell_grid(sub_data, vis_columns,
-                                       spec$cell_styles, spec$page)
+                                       sub_styles, spec$page)
           # Resolve borders for sub-page row count
           sub_borders <- resolve_borders(spec$rules, nrow(sub_data),
                                           length(vis_columns), nrow_header)
@@ -269,7 +269,22 @@ render_rtf <- function(spec, page_groups, col_panels, path) {
             }
           }
 
-          rtf_write(con, rtf_body_rows(spec, sub_data, vis_columns,
+          # Slice decimal geometry for sub-page rows
+          sub_spec <- spec
+          if (!is.null(spec$decimal_geometry)) {
+            sub_dec <- list()
+            for (nm in names(spec$decimal_geometry)) {
+              geom <- spec$decimal_geometry[[nm]]
+              sub_dec[[nm]] <- list(
+                formatted     = geom$formatted[sub_rows],
+                center_offset = geom$center_offset[sub_rows],
+                max_width     = geom$max_width
+              )
+            }
+            sub_spec$decimal_geometry <- sub_dec
+          }
+
+          rtf_write(con, rtf_body_rows(sub_spec, sub_data, vis_columns,
                                        sub_grid, sub_borders, color_info))
         }
 
@@ -526,7 +541,7 @@ rtf_footer_group <- function(spec, token_map, is_last, vis_columns,
     }
   }
 
-  # Pagefoot (L/C/R tab-stop layout, full printable width)
+  # Pagefoot (invisible table row layout, full printable width)
   if (has_pagefoot) {
     # 1/4 baselineskip gap between footnotes and pagefoot
     gap_twips <- if (has_footnotes) {
@@ -547,65 +562,65 @@ rtf_footer_group <- function(spec, token_map, is_last, vis_columns,
 
 
 
-#' Build RTF chrome paragraph content (no group wrapper)
+#' Build RTF chrome content as invisible table row
 #'
-#' Returns the inner paragraph string for L/C/R tab-stop layout.
+#' Returns an invisible single-row RTF table with 1–3 cells for L/C/R layout.
+#' Each cell has its own paragraph alignment, so multi-line text stays aligned.
 #' Used by rtf_pagechrome_paragraph() and rtf_footer_group().
 #' @param chrome Chrome spec (left/center/right/bold/font_size).
 #' @param spec Finalized fr_spec object.
 #' @param token_map Token map for token resolution.
 #' @param context Context string for error messages.
-#' @param sb_twips Space before in twips (\\sb). Default 0.
+#' @param sb_twips Space before in twips. Emits a spacer \\par before the row.
 #' @noRd
 rtf_chrome_content <- function(chrome, spec, token_map, context,
                                sb_twips = 0L) {
+  has_left   <- !is.null(chrome$left)
+  has_center <- !is.null(chrome$center)
+  has_right  <- !is.null(chrome$right)
+  if (!has_left && !has_center && !has_right) return("")
+
   fs <- pt_to_half_pt(chrome$font_size %||% (spec$page$font_size - 1))
-
-  # Calculate tab stop positions in twips (full printable width)
   printable_twips <- printable_area_twips(spec$page)[["width"]]
-  center_pos <- as.integer(round(printable_twips / 2))
-  right_pos  <- as.integer(printable_twips)
 
-  # Tab stop definitions
-  tab_defs <- paste0("\\tqc\\tx", center_pos, "\\tqr\\tx", right_pos)
-
-  # Helper: resolve tokens, escape for RTF, convert \n to \line breaks
+  # Helper: resolve tokens + escape + \n → \line
   chrome_escape <- function(txt) {
     txt <- resolve_tokens(txt, token_map, context)
     txt <- rtf_escape_and_resolve(txt)
     gsub("\n", "\\\\line ", txt)
   }
 
-  # Build content: left text, then \tab + center, then \tab + right
-  content_parts <- character(0)
-
-  if (!is.null(chrome$left)) {
-    content_parts <- c(content_parts, chrome_escape(chrome$left))
-  }
-
-  if (!is.null(chrome$center)) {
-    content_parts <- c(content_parts, paste0("\\tab ", chrome_escape(chrome$center)))
-  } else if (!is.null(chrome$right)) {
-    content_parts <- c(content_parts, "\\tab ")
-  }
-
-  if (!is.null(chrome$right)) {
-    content_parts <- c(content_parts, paste0("\\tab ", chrome_escape(chrome$right)))
-  }
-
-  if (length(content_parts) == 0L) return("")
-
   bold_on  <- if (isTRUE(chrome$bold)) "\\b " else ""
   bold_off <- if (isTRUE(chrome$bold)) "\\b0" else ""
 
-  sb_str <- paste0("\\sb", as.integer(sb_twips))
+  # Build zones: list of (alignment, content) pairs
+  zones <- list()
+  if (has_left)   zones <- c(zones, list(list(align = "\\ql", text = chrome_escape(chrome$left))))
+  if (has_center) zones <- c(zones, list(list(align = "\\qc", text = chrome_escape(chrome$center))))
+  if (has_right)  zones <- c(zones, list(list(align = "\\qr", text = chrome_escape(chrome$right))))
 
-  paste0("\\pard\\plain", sb_str, "\\ql", tab_defs,
-         "\\fs", fs, " ",
-         bold_on,
-         paste0(content_parts, collapse = ""),
-         bold_off,
-         "\\par\n")
+  n_zones <- length(zones)
+
+  # Cell widths: equal split (cumulative \cellx positions)
+  zone_widths <- as.integer(round(seq_len(n_zones) / n_zones * printable_twips))
+
+  # Row definition (no borders, auto height)
+  cell_defs <- paste0("\\cellx", zone_widths, collapse = "")
+  row_def <- paste0("\\trowd\\trrh0\\trqc", cell_defs, "\n")
+
+  # Cell contents
+  cell_contents <- vapply(zones, function(z) {
+    paste0("\\pard\\plain\\intbl", z$align, "\\fs", fs, " ",
+           bold_on, z$text, bold_off, "\\cell")
+  }, character(1))
+
+  # Assemble: optional space-before + row
+  sb_part <- ""
+  if (sb_twips > 0L) {
+    sb_part <- paste0("\\pard\\plain\\sb", as.integer(sb_twips), "\\fs2\\par\n")
+  }
+
+  paste0(sb_part, row_def, paste0(cell_contents, collapse = ""), "\\row\\pard\n")
 }
 
 
@@ -720,7 +735,7 @@ rtf_page_by_rows <- function(spec, columns, group_label) {
   pb_align <- fr_env$align_to_rtf[[spec$body$page_by_align %||% "left"]]
   pb_bold_on  <- if (isTRUE(spec$body$page_by_bold)) "\\b " else ""
   pb_bold_off <- if (isTRUE(spec$body$page_by_bold)) "\\b0" else ""
-  content <- rtf_escape(group_label)
+  content <- rtf_escape_and_resolve(group_label)
 
   # Merged cell defs spanning all columns
   cum_widths <- cumsum(vapply(columns, function(c) inches_to_twips(c$width),
@@ -958,20 +973,6 @@ rtf_body_rows <- function(spec, data, columns, cell_grid, borders, color_info) {
   dec_geom <- spec$decimal_geometry
   is_decimal_col <- col_names %in% names(dec_geom %||% list())
 
-  # Precompute decimal sub-cell geometry (column-dependent, row-independent)
-  dec_sub1_end <- integer(ncol)
-  dec_sub2_end <- integer(ncol)
-  decimal_pad <- fr_env$rtf_decimal_pad
-  decimal_pad_str <- paste0("\\clpadt", decimal_pad,
-                            "\\clpadr", decimal_pad,
-                            "\\clpadft3\\clpadfr3")
-  for (j in which(is_decimal_col)) {
-    geom <- dec_geom[[col_names[j]]]
-    left_edge <- if (j == 1L) 0L else cum_widths[j - 1L]
-    dec_sub1_end[j] <- left_edge + geom$sub1_width
-    dec_sub2_end[j] <- cum_widths[j]
-  }
-
   empty_cell <- "\\pard\\intbl\\cell"
 
   # Precompute keep-together mask from group_by with orphan/widow awareness
@@ -1018,32 +1019,16 @@ rtf_body_rows <- function(spec, data, columns, cell_grid, borders, color_info) {
       va <- cell_grid$valign[grid_row]
       va_str <- fr_env$valign_to_rtf[va]
 
-      if (is_decimal_col[j]) {
-        # Sub-cell split: two adjacent cells for right-before / left-after
-        border_str1 <- rtf_cell_border_string(borders$body, i, j, color_info,
-                                               sides = c("top", "bottom", "left"))
-        border_str2 <- rtf_cell_border_string(borders$body, i, j, color_info,
-                                               sides = c("top", "bottom", "right"))
-        cell_defs[[j]] <- paste0(
-          border_str1, bg_str, va_str, decimal_pad_str, "\\cellx", dec_sub1_end[j],
-          border_str2, bg_str, va_str, decimal_pad_str, "\\cellx", dec_sub2_end[j]
-        )
-      } else {
-        border_str <- rtf_cell_border_string(borders$body, i, j, color_info)
-        cell_defs[[j]] <- paste0(border_str, bg_str, va_str, pad_str, "\\cellx", cum_widths[j])
-      }
+      border_str <- rtf_cell_border_string(borders$body, i, j, color_info)
+      cell_defs[[j]] <- paste0(border_str, bg_str, va_str, pad_str, "\\cellx", cum_widths[j])
     }
 
-    # Cell contents (decimal columns emit two \cell entries)
+    # Cell contents
     cell_contents <- vector("list", ncol)
     for (j in seq_len(ncol)) {
       grid_row <- which(cell_grid$row_idx == i & cell_grid$col_idx == j)
       if (length(grid_row) == 0L) {
-        cell_contents[[j]] <- if (is_decimal_col[j]) {
-          paste0(empty_cell, empty_cell)
-        } else {
-          empty_cell
-        }
+        cell_contents[[j]] <- empty_cell
         next
       }
       g <- cell_grid[grid_row, ]
@@ -1071,37 +1056,22 @@ rtf_body_rows <- function(spec, data, columns, cell_grid, borders, color_info) {
         indent_str <- paste0("\\li", indent_twips)
       }
 
-      # Decimal alignment: two right-aligned sub-cells (centered in column)
+      # Decimal alignment: single cell with left indent for centering
       if (identical(g$align, "decimal") && is_decimal_col[j]) {
-        trimmed <- trimws(g$content)
-        if (nzchar(trimmed)) {
-          geom <- dec_geom[[col_names[j]]]
-          left_esc  <- rtf_escape_and_resolve(geom$left_parts[i])
-          left_esc  <- gsub("\n", "\\\\line ", left_esc)
-          right_esc <- rtf_escape_and_resolve(geom$right_parts[i])
-          right_esc <- gsub("\n", "\\\\line ", right_esc)
+        geom <- dec_geom[[col_names[j]]]
+        formatted <- geom$formatted[i]
+        if (nzchar(trimws(formatted))) {
+          formatted_esc <- rtf_escape_and_resolve(formatted)
+          formatted_esc <- gsub("\n", "\\\\line ", formatted_esc)
+          dec_indent <- paste0("\\li", geom$center_offset[i])
           cell_contents[[j]] <- paste0(
-            "\\pard\\plain\\intbl\\qr", sp_str, indent_str,
+            "\\pard\\plain\\intbl\\ql", sp_str, dec_indent,
             "\\fs", fs, " ",
-            fg_str, fmt_on, left_esc, fmt_off, "\\cell",
-            "\\pard\\plain\\intbl\\qr", sp_str,
-            "\\fs", fs, " ",
-            fg_str, fmt_on, right_esc, fmt_off, "\\cell"
+            fg_str, fmt_on, formatted_esc, fmt_off, "\\cell"
           )
         } else {
-          cell_contents[[j]] <- paste0(empty_cell, empty_cell)
+          cell_contents[[j]] <- empty_cell
         }
-      } else if (is_decimal_col[j]) {
-        # Non-decimal cell in a decimal column (style override)
-        align_rtf <- fr_env$align_to_rtf[[g$align]]
-        content <- rtf_escape_and_resolve(g$content)
-        content <- gsub("\n", "\\\\line ", content)
-        cell_contents[[j]] <- paste0(
-          "\\pard\\plain\\intbl", align_rtf, sp_str, indent_str,
-          "\\fs", fs, " ",
-          fg_str, fmt_on, content, fmt_off, "\\cell",
-          empty_cell
-        )
       } else {
         align_rtf <- fr_env$align_to_rtf[[g$align]]
         content <- rtf_escape_and_resolve(g$content)

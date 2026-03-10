@@ -668,10 +668,13 @@ test_that("finalize_spec pre-computes decimal geometry for decimal columns", {
             b = fr_col("B", align = "left", width = 2))
   fspec <- finalize_spec(spec)
   expect_true("a" %in% names(fspec$decimal_geometry))
-  expect_true(fspec$decimal_geometry$a$sub1_width > 0L)
+  geom <- fspec$decimal_geometry$a
+  expect_equal(length(geom$formatted), 2L)
+  expect_equal(length(geom$center_offset), 2L)
+  expect_true(all(geom$center_offset >= 0L))
 })
 
-test_that("latex_body_rows produces makebox for decimal cells", {
+test_that("latex_body_rows produces hspace for decimal cells", {
   df <- data.frame(a = c("12.3", "4.56"), b = c("x", "y"))
   spec <- df |> fr_table() |>
     fr_cols(a = fr_col("A", align = "decimal", width = 2),
@@ -680,8 +683,9 @@ test_that("latex_body_rows produces makebox for decimal cells", {
   grid <- build_cell_grid(fspec$data, fspec$columns, fspec$cell_styles, fspec$page)
   rows <- latex_body_rows(fspec$data, fspec$columns, grid,
                            dec_geom = fspec$decimal_geometry)
-  expect_true(all(grepl("\\\\makebox\\[", rows)))
-  expect_true(all(grepl("\\]\\[r\\]\\{", rows)))
+  expect_true(all(grepl("\\\\hspace\\{", rows)))
+  # No makebox (old approach removed)
+  expect_false(any(grepl("\\\\makebox\\[", rows)))
 })
 
 test_that("latex_body_rows handles empty decimal cells", {
@@ -694,10 +698,10 @@ test_that("latex_body_rows handles empty decimal cells", {
   rows <- latex_body_rows(fspec$data, fspec$columns, grid,
                            dec_geom = fspec$decimal_geometry)
   expect_length(rows, 2L)
-  expect_match(rows[1], "\\\\makebox", fixed = FALSE)
+  expect_match(rows[1], "\\\\hspace\\{", fixed = FALSE)
 })
 
-test_that("latex_body_rows handles space-split values (n/% pattern)", {
+test_that("latex_body_rows uses non-breaking spaces for decimal alignment", {
   df <- data.frame(a = c("5 (45%)", "12 (55%)"), b = c("x", "y"))
   spec <- df |> fr_table() |>
     fr_cols(a = fr_col("A", align = "decimal", width = 2),
@@ -706,11 +710,13 @@ test_that("latex_body_rows handles space-split values (n/% pattern)", {
   grid <- build_cell_grid(fspec$data, fspec$columns, fspec$cell_styles, fspec$page)
   rows <- latex_body_rows(fspec$data, fspec$columns, grid,
                            dec_geom = fspec$decimal_geometry)
-  expect_match(rows[1], "\\\\makebox", fixed = FALSE)
-  expect_match(rows[1], "\\(45\\\\%\\)", fixed = FALSE)
+  # Non-breaking spaces (~) used for alignment in LaTeX
+  expect_true(any(grepl("~", rows, fixed = TRUE)))
+  # No makebox
+  expect_false(any(grepl("\\\\makebox\\[", rows)))
 })
 
-test_that("latex_body_rows handles space-split pct with dot-after-space", {
+test_that("latex_body_rows handles n_pct with decimal percentage", {
   df <- data.frame(a = c("28 (62.2%)", "5 (11.1%)"), b = c("x", "y"))
   spec <- df |> fr_table() |>
     fr_cols(a = fr_col("A", align = "decimal", width = 2),
@@ -719,7 +725,7 @@ test_that("latex_body_rows handles space-split pct with dot-after-space", {
   grid <- build_cell_grid(fspec$data, fspec$columns, fspec$cell_styles, fspec$page)
   rows <- latex_body_rows(fspec$data, fspec$columns, grid,
                            dec_geom = fspec$decimal_geometry)
-  expect_match(rows[1], "\\\\makebox", fixed = FALSE)
+  expect_match(rows[1], "\\\\hspace\\{", fixed = FALSE)
   expect_match(rows[1], "28", fixed = TRUE)
 })
 

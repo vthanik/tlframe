@@ -1064,22 +1064,18 @@ latex_body_rows <- function(data, columns, cell_grid,
       cell_indent <- cell_grid$indent[grid_row]
 
       if (is_decimal[j]) {
-        # Decimal alignment via two right-aligned makebox sub-cells (centered)
-        trimmed <- trimws(content)
-        if (!nzchar(trimmed)) {
+        # Decimal alignment via pre-formatted string with centering offset
+        geom <- dec_geom[[col_names[j]]]
+        formatted <- geom$formatted[i]
+        if (!nzchar(trimws(formatted))) {
           cells[j] <- ""
           next
         }
-        geom <- dec_geom[[col_names[j]]]
-        left_esc  <- latex_escape_and_resolve(geom$left_parts[i])
-        right_esc <- latex_escape_and_resolve(geom$right_parts[i])
-        w1 <- round(geom$sub1_width / 20, 1)  # twips → points
-        col_width_twips <- inches_to_twips(columns[[j]]$width)
-        w2 <- round((col_width_twips - geom$sub1_width) / 20, 1)
-        cells[j] <- paste0(
-          "\\makebox[", w1, "pt][r]{", left_esc, "}",
-          "\\makebox[", w2, "pt][r]{", right_esc, "}"
-        )
+        formatted_esc <- latex_escape_and_resolve(formatted)
+        # Replace spaces with ~ (non-breaking) for LaTeX alignment preservation
+        formatted_esc <- gsub(" ", "~", formatted_esc, fixed = TRUE)
+        offset_pt <- round(geom$center_offset[i] / 20, 1)
+        cells[j] <- paste0("\\hspace{", offset_pt, "pt}", formatted_esc)
       } else {
         # Standard cell handling
         # Preserve leading whitespace: convert leading spaces to \hspace

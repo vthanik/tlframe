@@ -169,12 +169,19 @@ paginate_rows <- function(row_heights, budget, data, group_by,
   current_page <- 1L
   used <- 0L
 
+  # Deferred blank accounting: trailing blanks between groups are not counted
+  # toward `used` immediately. At the next group, we check whether the pending
+  # blank + group fit. If only the group fits, the blank is dropped (invisible
+  # at a page boundary). This avoids wasting 1 row of budget per group.
+  pending_blank_idx <- NULL
+  pending_blank_height <- 0L
+
   # Identify blank rows and group boundaries
   is_blank <- rowSums(data != "") == 0L
   group_by <- intersect(group_by, names(data))
 
   if (length(group_by) > 0L) {
-    keys <- inject(paste(!!!data[group_by], sep = "\x1f"))
+    keys <- inject(paste(!!!data[group_by], sep = fr_env$group_sep))
   } else {
     keys <- rep("__all__", nr)
   }
@@ -197,18 +204,27 @@ paginate_rows <- function(row_heights, budget, data, group_by,
     group_rows <- g_start:g_end
     group_height <- sum(row_heights[group_rows])
 
-    # Can this group fit on the current page?
-    if (used + group_height <= budget) {
-      # Fits — assign all to current page
+    # Flush pending blank from previous group onto current page
+    if (!is.null(pending_blank_idx)) {
+      pages[pending_blank_idx] <- current_page
+    }
+
+    # Deferred blank logic: 4 branches
+    if (used + pending_blank_height + group_height <= budget) {
+      # Branch 1: pending blank + group both fit on current page
+      pages[group_rows] <- current_page
+      used <- used + pending_blank_height + group_height
+    } else if (used + group_height <= budget) {
+      # Branch 2: group fits without blank — drop blank (invisible at page bottom)
       pages[group_rows] <- current_page
       used <- used + group_height
     } else if (group_height <= budget) {
-      # Doesn't fit on current page but fits on a fresh page
+      # Branch 3: new page needed, group starts fresh
       current_page <- current_page + 1L
       pages[group_rows] <- current_page
       used <- group_height
     } else {
-      # Group is larger than one page — must split
+      # Branch 4: group larger than one page — must split row-by-row
       if (used > 0L) {
         current_page <- current_page + 1L
         used <- 0L
@@ -224,11 +240,19 @@ paginate_rows <- function(row_heights, budget, data, group_by,
       }
     }
 
-    # Include trailing blank (if it exists between groups)
+    # Defer trailing blank (if it exists between groups)
     if (g_end < nr && is_blank[g_end + 1L]) {
-      pages[g_end + 1L] <- current_page
-      used <- used + row_heights[g_end + 1L]
+      pending_blank_idx <- g_end + 1L
+      pending_blank_height <- row_heights[g_end + 1L]
+    } else {
+      pending_blank_idx <- NULL
+      pending_blank_height <- 0L
     }
+  }
+
+  # Assign final pending blank to current page
+  if (!is.null(pending_blank_idx)) {
+    pages[pending_blank_idx] <- current_page
   }
 
   pages

@@ -322,7 +322,7 @@ insert_blank_after <- function(data, blank_cols) {
   blank_cols <- intersect(blank_cols, names(data))
   if (length(blank_cols) == 0L) return(empty)
 
-  keys <- inject(paste(!!!data[blank_cols], sep = "\x1f"))
+  keys <- inject(paste(!!!data[blank_cols], sep = fr_env$group_sep))
 
   # Find rows where the next row has a different key (group boundary)
   boundaries <- which(keys[-length(keys)] != keys[-1L])
@@ -370,7 +370,67 @@ remap_style_indices <- function(cell_styles, insert_positions) {
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 1e. Indent-By Style Injection
+# 1e. Sub-page Style Remapping
+#
+# When R-side pagination splits body rows into sub-pages, cell_styles
+# contain absolute row indices (relative to the full data frame). These
+# must be remapped to sub-page-relative indices so that build_cell_grid()
+# can match them correctly.
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' Remap cell style row indices for a sub-page slice
+#'
+#' Translates absolute row indices in `cell_styles` to positions relative
+#' to the sub-page data. Styles that target no rows in the sub-page are
+#' dropped. Styles with `rows = "all"` are preserved as-is.
+#'
+#' @param cell_styles List of fr_cell_style objects.
+#' @param sub_rows Integer vector of absolute row indices in this sub-page.
+#' @return List of fr_cell_style objects with remapped row indices.
+#' @noRd
+remap_styles_for_subpage <- function(cell_styles, sub_rows) {
+  if (length(cell_styles) == 0L) return(cell_styles)
+
+  # Build a lookup: absolute index -> sub-page index
+  remap <- integer(max(sub_rows))
+  remap[sub_rows] <- seq_along(sub_rows)
+
+  out <- vector("list", length(cell_styles))
+  keep <- logical(length(cell_styles))
+
+  for (i in seq_along(cell_styles)) {
+    style <- cell_styles[[i]]
+
+    if (is.null(style$rows) || identical(style$rows, "all")) {
+      out[[i]] <- style
+      keep[i] <- TRUE
+      next
+    }
+
+    if (is.numeric(style$rows) || is.integer(style$rows)) {
+      # Remap absolute indices to sub-page indices
+      in_range <- style$rows[style$rows <= length(remap)]
+      new_rows <- remap[in_range]
+      new_rows <- new_rows[new_rows > 0L]
+
+      if (length(new_rows) == 0L) next
+
+      style$rows <- new_rows
+      out[[i]] <- style
+      keep[i] <- TRUE
+    } else {
+      # Unknown row type — keep as-is
+      out[[i]] <- style
+      keep[i] <- TRUE
+    }
+  }
+
+  out[keep]
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 1f. Indent-By Style Injection
 #
 # Translates fr_rows(indent_by = ..., group_by = ...) into cell_styles
 # so that detail rows get a left indent in the rendered output.
@@ -415,7 +475,7 @@ apply_indent_by <- function(spec) {
       is_blank <- rowSums(spec$data != "") == 0L
 
       # Identify group header rows: first non-blank row of each group
-      keys <- inject(paste(!!!spec$data[group_cols], sep = "\x1f"))
+      keys <- inject(paste(!!!spec$data[group_cols], sep = fr_env$group_sep))
       is_header <- c(TRUE, keys[-length(keys)] != keys[-1L])
 
       # Detail rows: not a header and not blank
@@ -485,7 +545,7 @@ build_keep_mask <- function(data, keep_cols, orphan_min = 3L, widow_min = 3L) {
   is_blank <- rowSums(data != "") == 0L
 
   # Build group key per row
-  keys <- inject(paste(!!!data[keep_cols], sep = "\x1f"))
+  keys <- inject(paste(!!!data[keep_cols], sep = fr_env$group_sep))
 
   mask <- rep(FALSE, nr)
 

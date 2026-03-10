@@ -176,8 +176,13 @@ os_default_fonts <- function() {
   } else if (os == "darwin") {
     list(mono = "Courier New", sans = "Helvetica",  serif = "Times New Roman")
   } else {
-    list(mono = "Liberation Mono", sans = "Liberation Sans",
-         serif = "Liberation Serif")
+    # Prefer Microsoft fonts if installed; fall back to Liberation
+    if (is_system_font_available("Courier New")) {
+      list(mono = "Courier New", sans = "Arial", serif = "Times New Roman")
+    } else {
+      list(mono = "Liberation Mono", sans = "Liberation Sans",
+           serif = "Liberation Serif")
+    }
   }
 }
 
@@ -761,7 +766,15 @@ hex_to_latex_color <- function(hex) {
 #' @noRd
 resolve_color <- function(color, arg = caller_arg(color), call = caller_env()) {
   if (is.null(color) || is.na(color)) return(NULL)
-  if (startsWith(color, "#")) return(toupper(color))
+  if (startsWith(color, "#")) {
+    if (!grepl("^#[0-9A-Fa-f]{6}$", color)) {
+      cli_abort(c(
+        "Invalid hex color {.val {color}}.",
+        "i" = "Hex colors must be 6-digit format: {.val #RRGGBB}."
+      ), arg = arg, call = call)
+    }
+    return(toupper(color))
+  }
   key <- tolower(color)
   named <- fr_env$named_colors[key]
   if (is.na(named)) {
@@ -910,6 +923,11 @@ fr_env$valign_to_latex <- c(
 # ── LaTeX spacing constants ──────────────────────────────────────────────
 fr_env$latex_leading_factor <- 1.15
 fr_env$latex_rowsep <- "0pt"
+
+# ── Group key separator ─────────────────────────────────────────────────
+# Used to build composite group keys when page_by/group_by has multiple columns.
+# Unit separator (U+001F) is safe because it never appears in data content.
+fr_env$group_sep <- "\x1f"
 
 # ── RTF rendering constants ────────────────────────────────────────────────
 fr_env$rtf_leading_factor    <- 1.4

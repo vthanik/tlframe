@@ -185,12 +185,7 @@ fr_rows <- function(spec, page_by = NULL,
                   "x" = "You supplied {.obj_type_friendly {x}}."),
                 call = call)
     }
-    bad <- setdiff(x, names(spec$data))
-    if (length(bad) > 0L) {
-      cli_abort("{.arg {arg}}: column{?s} not found in the data: {.val {bad}}.",
-                call = call)
-    }
-    x
+    validate_cols_exist(x, names(spec$data), arg = arg, call = call)
   }
 
   check_scalar_lgl(page_by_bold, arg = "page_by_bold", call = call)

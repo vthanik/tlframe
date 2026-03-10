@@ -130,6 +130,18 @@ resolve_rows_selector <- function(selector, data, call = caller_env()) {
     matched <- which(col_vec == selector$value)
   }
 
+  if (length(matched) == 0L) {
+    pattern_desc <- if (!is.null(selector$pattern)) {
+      paste0("pattern ", selector$pattern)
+    } else {
+      paste0("value ", selector$value)
+    }
+    cli_inform(c(
+      "i" = "{.fn fr_rows_matches}: no rows matched in column {.val {col}}.",
+      "i" = "Selector: {pattern_desc}."
+    ))
+  }
+
   as.integer(matched)
 }
 
