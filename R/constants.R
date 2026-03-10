@@ -139,6 +139,14 @@ is_system_font_available <- function(font_name) {
 #' @noRd
 resolve_latex_font <- function(font_name) {
 
+  # If font is a bundled Liberation font, always use the bundled path
+
+  # so fontspec can find it even without system-wide installation
+  if (font_name %in% fr_env$liberation_fallback) {
+    lib_path <- system.file("fonts", "liberation", package = "tlframe")
+    return(list(name = font_name, path = lib_path))
+  }
+
   if (is_system_font_available(font_name)) {
     return(list(name = font_name, path = NULL))
   }

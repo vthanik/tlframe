@@ -1,0 +1,32 @@
+# Auto detect text files and normalize line endings
+* text=auto
+
+# R source files
+*.R text
+*.Rmd text
+*.Rnw text
+*.Rproj text
+*.yml text
+*.yaml text
+*.md text
+*.Rd text
+
+# RTF reference files (keep as-is)
+*.rtf binary
+
+# Data files
+*.rda binary
+*.rds binary
+*.RData binary
+
+# Font files
+*.ttf binary
+*.otf binary
+
+# PDF
+*.pdf binary
+
+# XSD/XML (text)
+*.xsd text
+*.xml text
+*.xsl text

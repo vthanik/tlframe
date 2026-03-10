@@ -44,7 +44,10 @@ load("data/advs.rda")
 fmt_mean_sd <- function(x) sprintf("%.1f (%.2f)", mean(x, na.rm = TRUE), sd(x, na.rm = TRUE))
 fmt_median  <- function(x) sprintf("%.1f", median(x, na.rm = TRUE))
 fmt_minmax  <- function(x) sprintf("%.1f, %.1f", min(x, na.rm = TRUE), max(x, na.rm = TRUE))
-fmt_n_pct   <- function(n, denom) sprintf("%d (%.1f)", as.integer(n), 100 * n / denom)
+fmt_n_pct   <- function(n, denom) {
+  n <- as.integer(n)
+  if (n == 0L) "0" else sprintf("%d (%.1f)", n, 100 * n / denom)
+}
 fmt_ci      <- function(est, lo, hi) sprintf("%.1f (%.1f, %.1f)", est, lo, hi)
 fmt_hr_ci   <- function(hr, lo, hi) sprintf("%.3f (%.3f, %.3f)", hr, lo, hi)
 fmt_pval    <- function(p) {

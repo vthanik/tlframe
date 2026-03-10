@@ -589,11 +589,12 @@ test_that("is_system_font_available returns TRUE for Liberation fonts", {
   expect_true(is_system_font_available("Liberation Serif"))
 })
 
-test_that("resolve_latex_font returns system font when available", {
-  # Liberation fonts are always available (bundled)
+test_that("resolve_latex_font returns bundled path for Liberation fonts", {
+  # Liberation fonts always use the bundled path for fontspec Path= option
   result <- resolve_latex_font("Liberation Mono")
   expect_equal(result$name, "Liberation Mono")
-  expect_null(result$path)
+  expect_true(nzchar(result$path))
+  expect_true(dir.exists(result$path))
 })
 
 test_that("resolve_latex_font falls back for unavailable fonts", {

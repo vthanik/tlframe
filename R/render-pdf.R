@@ -44,16 +44,22 @@ render_pdf <- function(spec, page_groups, col_panels, path) {
     } else {
       "No log file found."
     }
+    # Escape braces in log output so cli doesn't interpret them as glue
+    safe_log <- gsub("{", "{{", fixed = TRUE,
+                     gsub("}", "}}", log_tail, fixed = TRUE))
     cli_abort(c(
       "XeLaTeX compilation failed.",
       "i" = "Source file: {.path {tex_path}}",
       "i" = "Last 20 lines of log:",
-      paste0("  ", log_tail)
+      paste0("  ", safe_log)
     ))
   }
 
-  # 5. Copy PDF to output path
-  file.copy(pdf_temp, path, overwrite = TRUE)
+  # 5. Copy PDF to output path (skip if already in place)
+  if (normalizePath(pdf_temp, mustWork = FALSE) !=
+      normalizePath(path, mustWork = FALSE)) {
+    file.copy(pdf_temp, path, overwrite = TRUE)
+  }
 
   # 6. Cleanup temp files (keep .tex for debugging if needed)
   exts <- c(".aux", ".log", ".out", ".toc")
