@@ -2,7 +2,7 @@ Package: tlframe
 Title: Clinical Tables, Figures, and Listings for Regulatory Submission
 Version: 0.1.0.9000
 Authors@R:
-    person("SColumn", , , "scolumn@example.com", role = c("aut", "cre"))
+    person("Vignesh", "Thanikachalam", email = "about.vignesh@gmail.com", role = c("aut", "cre"))
 Description: Produces regulatory-grade clinical trial tables, listings, and
     figures (TLFs) in RTF and PDF from a single specification. Designed for
     pharmaceutical industry workflows with support for paginated output,
@@ -12,8 +12,8 @@ Description: Produces regulatory-grade clinical trial tables, listings, and
     dependency — only lightweight infrastructure packages ('rlang', 'cli',
     'vctrs').
 License: MIT + file LICENSE
-URL: https://github.com/scolumn/tlframe
-BugReports: https://github.com/scolumn/tlframe/issues
+URL: https://github.com/vthanik/tlframe
+BugReports: https://github.com/vthanik/tlframe/issues
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
