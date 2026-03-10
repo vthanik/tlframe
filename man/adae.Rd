@@ -54,8 +54,8 @@ Contains one row per subject per adverse event. Used for:
 \itemize{
 \item \strong{AE by SOC/PT table} (Table 14.3.1): incidence by body system and
 preferred term, within treatment arm
-\item \strong{Overall AE summary} (GS_CSR_AE_T_001): subjects with TEAEs by
-seriousness, relatedness, severity, and action taken
+\item \strong{Overall AE summary}: subjects with TEAEs by seriousness,
+relatedness, severity, and action taken
 }
 
 All adverse events in this dataset are treatment-emergent (\code{TRTEMFL = "Y"}).

@@ -22,7 +22,7 @@
 #' mild-to-moderate Alzheimer's Disease.
 #'
 #' Contains one row per subject (N = 135). Used for:
-#' - **Demographics table** (Table 14.1.5): age, sex, race, BMI by treatment arm
+#' - **Demographics table** (Table 14.1.1): age, sex, race, BMI by treatment arm
 #' - **Disposition table** (Table 14.1.3): completion, discontinuation reasons
 #'
 #' Variable names follow the CDISC ADaM Implementation Guide v1.3.
@@ -94,8 +94,8 @@
 #' Contains one row per subject per adverse event. Used for:
 #' - **AE by SOC/PT table** (Table 14.3.1): incidence by body system and
 #'   preferred term, within treatment arm
-#' - **Overall AE summary** (GS_CSR_AE_T_001): subjects with TEAEs by
-#'   seriousness, relatedness, severity, and action taken
+#' - **Overall AE summary**: subjects with TEAEs by seriousness,
+#'   relatedness, severity, and action taken
 #'
 #' All adverse events in this dataset are treatment-emergent (`TRTEMFL = "Y"`).
 #' Gastrointestinal and nervous system events are dose-related, reflecting the
@@ -334,7 +334,7 @@
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-#' Demographics and Baseline Characteristics Table (Table 14.1.5)
+#' Demographics and Baseline Characteristics Table (Table 14.1.1)
 #'
 #' @description
 #' Pre-summarized demographics table in wide format, ready for use with
@@ -389,7 +389,7 @@
 "tbl_ae_soc"
 
 
-#' Overall Adverse Event Summary Table (GS_CSR_AE_T_001)
+#' Overall Adverse Event Summary Table
 #'
 #' @description
 #' Pre-summarized overall AE summary table showing counts and percentages of
@@ -397,8 +397,8 @@
 #' discontinuation, leading to death, and by maximum severity grade.
 #'
 #' Matches the pharma standard "Overall Summary of Treatment-Emergent Adverse
-#' Events" shell (GS_CSR_AE_T_001). Column order follows Celgene/BMS
-#' convention: active treatments first, placebo last.
+#' Events" shell. Column order follows industry convention: active treatments
+#' first, placebo last.
 #'
 #' @format A data frame with 10 rows and 5 columns:
 #' \describe{

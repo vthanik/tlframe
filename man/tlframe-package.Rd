@@ -57,13 +57,14 @@ only at \code{fr_render()}
 \seealso{
 Useful links:
 \itemize{
-  \item \url{https://github.com/scolumn/tlframe}
-  \item Report bugs at \url{https://github.com/scolumn/tlframe/issues}
+  \item \url{https://vthanik.github.io/tlframe/}
+  \item \url{https://github.com/vthanik/tlframe}
+  \item Report bugs at \url{https://github.com/vthanik/tlframe/issues}
 }
 
 }
 \author{
-\strong{Maintainer}: SColumn \email{scolumn@example.com}
+\strong{Maintainer}: Vignesh Thanikachalam \email{about.vignesh@gmail.com}
 
 }
 \keyword{internal}

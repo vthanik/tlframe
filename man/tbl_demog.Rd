@@ -3,7 +3,7 @@
 \docType{data}
 \name{tbl_demog}
 \alias{tbl_demog}
-\title{Demographics and Baseline Characteristics Table (Table 14.1.5)}
+\title{Demographics and Baseline Characteristics Table (Table 14.1.1)}
 \format{
 A data frame with columns:
 \describe{

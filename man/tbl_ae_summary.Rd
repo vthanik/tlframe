@@ -3,7 +3,7 @@
 \docType{data}
 \name{tbl_ae_summary}
 \alias{tbl_ae_summary}
-\title{Overall Adverse Event Summary Table (GS_CSR_AE_T_001)}
+\title{Overall Adverse Event Summary Table}
 \format{
 A data frame with 10 rows and 5 columns:
 \describe{
@@ -29,8 +29,8 @@ subjects with TEAEs by category: any TEAE, related, serious, leading to
 discontinuation, leading to death, and by maximum severity grade.
 
 Matches the pharma standard "Overall Summary of Treatment-Emergent Adverse
-Events" shell (GS_CSR_AE_T_001). Column order follows Celgene/BMS
-convention: active treatments first, placebo last.
+Events" shell. Column order follows industry convention: active treatments
+first, placebo last.
 }
 \examples{
 tbl_ae_summary

@@ -62,7 +62,7 @@ mild-to-moderate Alzheimer's Disease.
 
 Contains one row per subject (N = 135). Used for:
 \itemize{
-\item \strong{Demographics table} (Table 14.1.5): age, sex, race, BMI by treatment arm
+\item \strong{Demographics table} (Table 14.1.1): age, sex, race, BMI by treatment arm
 \item \strong{Disposition table} (Table 14.1.3): completion, discontinuation reasons
 }
 
