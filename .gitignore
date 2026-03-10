@@ -11,10 +11,17 @@
 
 # Generated verification output
 verify_compare/
+verify_compare.R
 
 # Research materials (local only)
 reference/
 screenshots/
+
+# Claude Code config (local only)
+.claude/
+
+# Presentation materials (local only)
+presentation/
 
 # Build artifacts
 *.tar.gz
