@@ -1,0 +1,597 @@
+# tlframe ![](reference/figures/logo.png)
+
+> Regulatory-grade clinical tables, listings, and figures in RTF and PDF
+> from a single specification.
+
+**tlframe** is an R package for pharmaceutical submissions. You describe
+the output once; tlframe renders both RTF and PDF — change the file
+extension, the output adapts.
+
+``` r
+tbl_demog |>
+  fr_table() |>
+  fr_titles("Table 14.1.1", "Demographics and Baseline Characteristics") |>
+  fr_cols(label = c(stat = "Statistic", placebo = "Placebo", low = "Low Dose",
+                    high = "High Dose", total = "Total")) |>
+  fr_header(bold = TRUE, bg = "#003366", fg = "white") |>
+  fr_pagehead(left = "Protocol TFRM-2024-001", right = "CONFIDENTIAL") |>
+  fr_pagefoot(left = "{program}", right = "Page {thepage} of {total_pages}") |>
+  fr_footnotes("Percentages based on N per treatment arm.") |>
+  fr_hlines("header") |>
+  fr_render("Table_14_1_1.rtf")  # Change to .pdf — same output, different format
+```
+
+## Why tlframe?
+
+The pharmaverse has excellent tools for data derivation (admiral),
+analysis (Tplyr, rtables, tern), and table decoration (docorator,
+r2rtf). **tlframe occupies a different position**: it is a native
+rendering engine that writes RTF control words directly (from the RTF
+1.9.1 spec) and generates LaTeX/tabularray natively, so both formats are
+first-class outputs.
+
+| Capability | tlframe |
+|----|----|
+| Native RTF rendering | Direct RTF 1.9.1 — no intermediate HTML or gt layer |
+| Native PDF rendering | Direct tabularray/XeLaTeX — no RMarkdown/Quarto pipeline |
+| Single spec, both formats | Same `fr_spec` object renders to `.rtf` or `.pdf` |
+| Group-aware pagination | Keeps groups together, repeats headers, adds continuation text |
+| Decimal alignment | 10-type stat display engine (n/%, mean (SD), CI, p-values, ranges) |
+| Page headers/footers | 3-slot layout with tokens: `{thepage}`, `{total_pages}`, `{program}` |
+| Inline markup | [`fr_super()`](https://vthanik.github.io/tlframe/reference/fr_super.md), [`fr_bold()`](https://vthanik.github.io/tlframe/reference/fr_bold.md), [`fr_italic()`](https://vthanik.github.io/tlframe/reference/fr_italic.md), [`fr_dagger()`](https://vthanik.github.io/tlframe/reference/fr_dagger.md) in any cell |
+| Dependencies | 7 imports — no dplyr, tidyr, purrr, or gt |
+
+## Installation
+
+``` r
+# Install from GitHub
+# install.packages("pak")
+pak::pak("vthanik/tlframe")
+```
+
+## Quick start
+
+tlframe ships with synthetic CDISC ADaM datasets so every example runs
+out of the box.
+
+### A table in 3 lines
+
+``` r
+library(tlframe)
+
+tbl_demog |> fr_table() |> fr_render(tempfile(fileext = ".rtf"))
+```
+
+### A submission-ready demographics table
+
+``` r
+spec <- tbl_demog |>
+  fr_table(group_by = "group") |>
+  fr_titles("Table 14.1.1", "Demographics and Baseline Characteristics",
+            "All Randomized Subjects") |>
+  fr_cols(label = c(stat = "Statistic", placebo = "Placebo (N=45)",
+                    low = "Low Dose (N=45)", high = "High Dose (N=45)",
+                    total = "Total (N=135)"),
+          align = c(stat = "left"),
+          width = c(stat = 2.0)) |>
+  fr_header(bold = TRUE) |>
+  fr_hlines("header") |>
+  fr_rows(indent_by = c("stat" = 0.25)) |>
+  fr_pagehead(left = "Protocol TFRM-2024-001",
+              center = "CONFIDENTIAL",
+              right = "Study TFRM-2024-001") |>
+  fr_pagefoot(left = "{program}",
+              right = "Page {thepage} of {total_pages}") |>
+  fr_footnotes("Percentages based on N per treatment arm.",
+               "Continuous variables summarized as Mean (SD).")
+
+# Render both formats from the same spec
+fr_render(spec, tempfile(fileext = ".rtf"))
+fr_render(spec, tempfile(fileext = ".pdf"))
+```
+
+### An AE table with SOC/PT grouping
+
+``` r
+tbl_ae_soc |>
+  fr_table(group_by = "soc", page_by = "soc") |>
+  fr_titles("Table 14.3.1",
+            "Adverse Events by System Organ Class and Preferred Term") |>
+  fr_rows(indent_by = c("pt" = 0.25), blank_after = "soc") |>
+  fr_header(bold = TRUE, n = list(placebo = 45, low = 45, high = 45)) |>
+  fr_hlines("header") |>
+  fr_render(tempfile(fileext = ".rtf"))
+```
+
+## Pipeline verbs
+
+Every verb takes an `fr_spec`, returns a modified `fr_spec`. Side
+effects only at
+[`fr_render()`](https://vthanik.github.io/tlframe/reference/fr_render.md).
+
+| Verb | Purpose |
+|----|----|
+| [`fr_table()`](https://vthanik.github.io/tlframe/reference/fr_table.md) | Entry point — creates spec from data |
+| [`fr_cols()`](https://vthanik.github.io/tlframe/reference/fr_cols.md) | Column labels, widths, alignment, selection |
+| [`fr_header()`](https://vthanik.github.io/tlframe/reference/fr_header.md) | Header styling, N-counts, alignment |
+| [`fr_titles()`](https://vthanik.github.io/tlframe/reference/fr_titles.md) | Table titles (1-4 lines) |
+| [`fr_footnotes()`](https://vthanik.github.io/tlframe/reference/fr_footnotes.md) | Footnotes with optional separator |
+| [`fr_rows()`](https://vthanik.github.io/tlframe/reference/fr_rows.md) | Row grouping, indentation, blank rows |
+| [`fr_page()`](https://vthanik.github.io/tlframe/reference/fr_page.md) | Paper size, orientation, margins, font |
+| [`fr_pagehead()`](https://vthanik.github.io/tlframe/reference/fr_pagehead.md) | 3-slot page header with tokens |
+| [`fr_pagefoot()`](https://vthanik.github.io/tlframe/reference/fr_pagefoot.md) | 3-slot page footer with tokens |
+| [`fr_hlines()`](https://vthanik.github.io/tlframe/reference/fr_hlines.md) / [`fr_vlines()`](https://vthanik.github.io/tlframe/reference/fr_vlines.md) | Horizontal/vertical rules |
+| [`fr_spans()`](https://vthanik.github.io/tlframe/reference/fr_spans.md) | Spanning column headers |
+| [`fr_style()`](https://vthanik.github.io/tlframe/reference/fr_style.md) | Cell-level conditional formatting |
+| [`fr_spacing()`](https://vthanik.github.io/tlframe/reference/fr_spacing.md) | Gaps between titles, headers, footnotes |
+| [`fr_render()`](https://vthanik.github.io/tlframe/reference/fr_render.md) | Render to RTF, PDF, or LaTeX |
+
+## Key features
+
+### Dual-format rendering
+
+``` r
+fr_render(spec, "output.rtf")  # Native RTF
+fr_render(spec, "output.pdf")  # Native PDF via XeLaTeX
+fr_render(spec, "output.tex")  # LaTeX source
+```
+
+### Automatic N-counts in headers
+
+``` r
+spec |> fr_header(n = list(placebo = 45, low = 45, high = 45),
+                  format = "{label}\n(N={n})")
+```
+
+### Page tokens
+
+``` r
+spec |> fr_pagehead(left = "Protocol XYZ", right = "CONFIDENTIAL") |>
+        fr_pagefoot(left = "{program}", right = "Page {thepage} of {total_pages}")
+```
+
+### Inline markup
+
+``` r
+# Works in titles, footnotes, and data cells
+spec |> fr_titles("Table 14.1.1{fr_super('a')}", "Demographics")
+spec |> fr_footnotes("{fr_super('a')} Post-hoc analysis")
+```
+
+### YAML configuration
+
+``` yaml
+# _tlframe.yml — company-wide defaults
+page:
+  orientation: landscape
+  font_family: Courier
+  font_size: 9
+header:
+  bold: true
+hlines: header
+```
+
+``` r
+fr_config("_tlframe.yml")  # Apply to all tables in session
+```
+
+## Built-in datasets
+
+| Dataset | Description |
+|----|----|
+| `adsl`, `adae`, `adtte`, `adcm`, `advs` | Synthetic CDISC ADaM datasets (135 subjects) |
+| `tbl_demog` | Demographics summary (ICH E3 Table 14.1.1) |
+| `tbl_ae_soc` | AE by SOC/PT (ICH E3 Table 14.3.1) |
+| `tbl_disp` | Subject disposition (ICH E3 Table 14.1.4) |
+| `tbl_tte` | Time-to-event summary (ICH E3 Table 14.2.1) |
+| `tbl_cm` | Concomitant medications (ICH E3 Table 14.4.1) |
+| `tbl_vs` | Vital signs (ICH E3 Table 14.3.6) |
+
+## Architecture
+
+tlframe writes output directly — no intermediate HTML, gt, or huxtable
+layer:
+
+    fr_spec ──► finalize_spec() ──► RTF backend ──► .rtf file
+                                   └► LaTeX backend ──► .tex ──► XeLaTeX ──► .pdf
+
+- **RTF**: Writes RTF 1.9.1 control words directly. Cell-level
+  formatting, decimal alignment tabs, `\trkeep` group protection.
+- **PDF**: Generates tabularray LaTeX, compiles with XeLaTeX. Bundled
+  Liberation fonts for Linux/Docker environments without Microsoft
+  fonts.
+- **Font metrics**: Real Adobe Font Metrics (AFM) for 12 font variants —
+  accurate column width estimation without rendering.
+
+## Related packages
+
+tlframe is designed to complement the pharmaverse ecosystem:
+
+- **[admiral](https://pharmaverse.github.io/admiral/)** — ADaM dataset
+  creation
+- **[Tplyr](https://atorus-research.github.io/Tplyr/)** /
+  **[rtables](https://insightsengineering.github.io/rtables/)** —
+  Analysis table summarization (upstream of tlframe)
+- **[r2rtf](https://merck.github.io/r2rtf/)** — RTF-focused table
+  rendering
+- **[docorator](https://gsk-biostatistics.github.io/docorator/)** —
+  gt-based document decoration
+
+## License
+
+MIT
+
+# Package index
+
+## Pipeline Entry Points
+
+Every tlframe pipeline starts here.
+[`fr_table()`](https://vthanik.github.io/tlframe/reference/fr_table.md)
+creates a spec object from a data frame — the immutable canvas that
+every subsequent verb decorates.
+[`fr_listing()`](https://vthanik.github.io/tlframe/reference/fr_listing.md)
+and
+[`fr_figure()`](https://vthanik.github.io/tlframe/reference/fr_figure.md)
+create specs for patient listings and embedded figures respectively. All
+three return an `fr_spec` that flows through the same pipeline verbs.
+
+- [`fr_table()`](https://vthanik.github.io/tlframe/reference/fr_table.md)
+  : Start a tlframe Table Pipeline
+- [`fr_listing()`](https://vthanik.github.io/tlframe/reference/fr_listing.md)
+  : Start a tlframe Listing Pipeline
+- [`fr_figure()`](https://vthanik.github.io/tlframe/reference/fr_figure.md)
+  : Start a tlframe Figure Pipeline
+
+## Column Configuration
+
+Columns are the structural backbone of every table.
+[`fr_cols()`](https://vthanik.github.io/tlframe/reference/fr_cols.md)
+controls labels, widths, alignment, visibility, and stub designation for
+all columns at once.
+[`fr_col()`](https://vthanik.github.io/tlframe/reference/fr_col.md) is
+the constructor for individual column specs — pass it as a named
+argument to
+[`fr_cols()`](https://vthanik.github.io/tlframe/reference/fr_cols.md).
+Width modes include fixed inches, percentages, `"auto"` (AFM font
+metrics), `"fit"` (content-based), and `"equal"` (uniform distribution).
+
+- [`fr_cols()`](https://vthanik.github.io/tlframe/reference/fr_cols.md)
+  : Configure Column Display
+- [`fr_col()`](https://vthanik.github.io/tlframe/reference/fr_col.md) :
+  Define a Column Specification
+
+## Titles and Footnotes
+
+Regulatory tables require precise title and footnote formatting.
+[`fr_titles()`](https://vthanik.github.io/tlframe/reference/fr_titles.md)
+accepts 1–4 title lines (center-aligned by default, configurable per
+line).
+[`fr_footnotes()`](https://vthanik.github.io/tlframe/reference/fr_footnotes.md)
+adds footnotes with placement control — repeat on every page or appear
+only on the last page (PDF). Both support `{fr_super()}` and other
+inline markup for superscript reference marks.
+
+- [`fr_titles()`](https://vthanik.github.io/tlframe/reference/fr_titles.md)
+  : Set Table Titles
+- [`fr_footnotes()`](https://vthanik.github.io/tlframe/reference/fr_footnotes.md)
+  : Set Table Footnotes
+
+## Header Presentation
+
+The column header row sits between titles and data.
+[`fr_header()`](https://vthanik.github.io/tlframe/reference/fr_header.md)
+controls bold, alignment, background/foreground colors, and automatic
+N-count labels via a `format` template (e.g., `"{name}\n(N={n})"`).
+N-counts support four forms — scalar, named vector, per-group list, and
+`"auto"`.
+[`fr_spans()`](https://vthanik.github.io/tlframe/reference/fr_spans.md)
+adds spanning headers that group columns under a shared label, with
+tidyselect support for column selection.
+
+- [`fr_header()`](https://vthanik.github.io/tlframe/reference/fr_header.md)
+  : Configure Column Header Presentation
+- [`fr_spans()`](https://vthanik.github.io/tlframe/reference/fr_spans.md)
+  : Add Spanning Column Headers
+
+## Page Layout
+
+Page-level settings that control the physical output.
+[`fr_page()`](https://vthanik.github.io/tlframe/reference/fr_page.md)
+sets paper size (letter/A4/legal), orientation (landscape/portrait),
+margins, font family (Courier New/Arial/Times New Roman), and base font
+size.
+[`fr_pagehead()`](https://vthanik.github.io/tlframe/reference/fr_pagehead.md)
+and
+[`fr_pagefoot()`](https://vthanik.github.io/tlframe/reference/fr_pagefoot.md)
+define 3-slot running headers and footers with token substitution —
+`{thepage}`, `{total_pages}`, `{program}`, and `{datetime}` resolve
+automatically at render time.
+[`fr_spacing()`](https://vthanik.github.io/tlframe/reference/fr_spacing.md)
+controls the gaps between titles, headers, and footnotes.
+
+- [`fr_page()`](https://vthanik.github.io/tlframe/reference/fr_page.md)
+  : Set Page Layout Options
+- [`fr_pagehead()`](https://vthanik.github.io/tlframe/reference/fr_pagehead.md)
+  : Set Running Page Header
+- [`fr_pagefoot()`](https://vthanik.github.io/tlframe/reference/fr_pagefoot.md)
+  : Set Running Page Footer
+- [`fr_spacing()`](https://vthanik.github.io/tlframe/reference/fr_spacing.md)
+  : Control Spacing Between Table Sections
+
+## Row Organization
+
+Row-level behavior that controls how data flows across pages.
+[`fr_rows()`](https://vthanik.github.io/tlframe/reference/fr_rows.md)
+handles five concerns — `group_by` (keeps related rows together for
+pagination), `page_by` (splits data into separate page sections),
+`indent_by` (nested row labels), `blank_after` (visual separators
+between groups), and `sort_by` (row ordering).
+[`fr_rows_matches()`](https://vthanik.github.io/tlframe/reference/fr_rows_matches.md)
+creates data-driven row selectors for use in
+[`fr_row_style()`](https://vthanik.github.io/tlframe/reference/fr_row_style.md)
+— match rows by exact value or regex pattern instead of hard-coding row
+numbers.
+
+- [`fr_rows()`](https://vthanik.github.io/tlframe/reference/fr_rows.md)
+  : Configure Row Grouping and Pagination
+- [`fr_rows_matches()`](https://vthanik.github.io/tlframe/reference/fr_rows_matches.md)
+  : Select Rows by Column Value or Pattern
+
+## Rules and Borders
+
+Horizontal and vertical lines define the visual structure of regulatory
+tables.
+[`fr_hlines()`](https://vthanik.github.io/tlframe/reference/fr_hlines.md)
+accepts preset names (`"header"`, `"box"`, `"all"`, `"section"`) or
+custom rule objects for precise placement.
+[`fr_vlines()`](https://vthanik.github.io/tlframe/reference/fr_vlines.md)
+works identically for vertical borders.
+[`fr_grid()`](https://vthanik.github.io/tlframe/reference/fr_grid.md) is
+a convenience shortcut that sets both horizontal and vertical rules in
+one call. Line weight, color, and position are all configurable per
+rule.
+
+- [`fr_hlines()`](https://vthanik.github.io/tlframe/reference/fr_hlines.md)
+  : Apply Horizontal Rules
+- [`fr_vlines()`](https://vthanik.github.io/tlframe/reference/fr_vlines.md)
+  : Apply Vertical Rules
+- [`fr_grid()`](https://vthanik.github.io/tlframe/reference/fr_grid.md)
+  : Apply Horizontal and Vertical Rules Together
+
+## Cell Styling
+
+Conditional formatting for individual cells, rows, or columns. Three
+constructors target different scopes —
+[`fr_style()`](https://vthanik.github.io/tlframe/reference/fr_style.md)
+(cell-level),
+[`fr_row_style()`](https://vthanik.github.io/tlframe/reference/fr_row_style.md)
+(row-level),
+[`fr_col_style()`](https://vthanik.github.io/tlframe/reference/fr_col_style.md)
+(column-level) — and
+[`fr_styles()`](https://vthanik.github.io/tlframe/reference/fr_styles.md)
+applies them to a spec. Later styles override earlier ones; narrower
+scopes win (cell \> row \> column). All `cols` parameters accept
+tidyselect expressions (`starts_with()`, `contains()`, `matches()`,
+etc.) for pattern-based column targeting.
+[`fr_style_if()`](https://vthanik.github.io/tlframe/reference/fr_style_if.md)
+adds data-driven conditional formatting (e.g., bold every “Total” row,
+red text for p \< 0.05).
+[`fr_style_explain()`](https://vthanik.github.io/tlframe/reference/fr_style_explain.md)
+is a diagnostic tool that shows exactly which style layers affect a
+specific cell.
+
+### Style Constructors
+
+Create style objects — standalone, reusable, composable.
+
+- [`fr_style()`](https://vthanik.github.io/tlframe/reference/fr_style.md)
+  : Define a Cell Style Override
+- [`fr_row_style()`](https://vthanik.github.io/tlframe/reference/fr_row_style.md)
+  : Define a Row Style Override
+- [`fr_col_style()`](https://vthanik.github.io/tlframe/reference/fr_col_style.md)
+  : Define a Column Style Override
+- [`fr_style_if()`](https://vthanik.github.io/tlframe/reference/fr_style_if.md)
+  : Create a Conditional Style Override
+
+### Application and Diagnostics
+
+Apply style objects to a spec and inspect resolution.
+
+- [`fr_styles()`](https://vthanik.github.io/tlframe/reference/fr_styles.md)
+  : Apply Style Overrides to a Table
+- [`fr_style_explain()`](https://vthanik.github.io/tlframe/reference/fr_style_explain.md)
+  : Explain Style Resolution for a Cell
+
+## Inline Markup
+
+Rich text formatting that works in any string — titles, footnotes,
+column labels, and data cells. Markup functions produce invisible
+sentinel tokens that survive
+[`paste()`](https://rdrr.io/r/base/paste.html),
+[`sprintf()`](https://rdrr.io/r/base/sprintf.html), and `glue()`
+operations, then resolve to the correct backend syntax at render time
+(RTF control words or LaTeX commands). Use inside `glue`-style curly
+braces: `"P{fr_super('a')}-value"`.
+
+### Text Formatting
+
+- [`fr_super()`](https://vthanik.github.io/tlframe/reference/fr_super.md)
+  : Superscript Markup
+- [`fr_sub()`](https://vthanik.github.io/tlframe/reference/fr_sub.md) :
+  Subscript Markup
+- [`fr_bold()`](https://vthanik.github.io/tlframe/reference/fr_bold.md)
+  : Bold Markup
+- [`fr_italic()`](https://vthanik.github.io/tlframe/reference/fr_italic.md)
+  : Italic Markup
+- [`fr_underline()`](https://vthanik.github.io/tlframe/reference/fr_underline.md)
+  : Underline Markup
+- [`fr_newline()`](https://vthanik.github.io/tlframe/reference/fr_newline.md)
+  : Line Break Within a Text Element
+
+### Symbols
+
+- [`fr_dagger()`](https://vthanik.github.io/tlframe/reference/fr_dagger.md)
+  : Dagger Symbol
+- [`fr_ddagger()`](https://vthanik.github.io/tlframe/reference/fr_ddagger.md)
+  : Double Dagger Symbol
+- [`fr_emdash()`](https://vthanik.github.io/tlframe/reference/fr_emdash.md)
+  : Em Dash
+- [`fr_endash()`](https://vthanik.github.io/tlframe/reference/fr_endash.md)
+  : En Dash
+- [`fr_unicode()`](https://vthanik.github.io/tlframe/reference/fr_unicode.md)
+  : Unicode Character by Codepoint
+
+## Theme and Configuration
+
+Three-tier defaults system for standardizing output across a study or
+company. **Tier 1 — YAML config**: `fr_config("_tlframe.yml")` loads
+company-wide defaults from a file (page layout, rules, spacing). **Tier
+2 — Session theme**:
+[`fr_theme_set()`](https://vthanik.github.io/tlframe/reference/fr_theme.md)
+applies study-level defaults that persist for the R session. **Tier 3 —
+Per-table verbs**: individual pipeline calls override everything. Each
+tier is optional; later tiers always win.
+
+### Session Theme
+
+Study-level defaults that apply to every table in the session.
+
+- [`fr_theme()`](https://vthanik.github.io/tlframe/reference/fr_theme.md)
+  : Set or Update Study-Level Table Theme
+- [`fr_theme_get()`](https://vthanik.github.io/tlframe/reference/fr_theme_get.md)
+  : Get the Current Study-Level Table Theme
+- [`fr_theme_reset()`](https://vthanik.github.io/tlframe/reference/fr_theme_reset.md)
+  : Reset the Study-Level Table Theme
+
+### YAML Configuration
+
+File-based defaults for company-wide standardization.
+
+- [`fr_config()`](https://vthanik.github.io/tlframe/reference/fr_config.md)
+  : Load Configuration from a YAML File
+- [`fr_config_get()`](https://vthanik.github.io/tlframe/reference/fr_config_get.md)
+  : Get the Current Configuration
+- [`fr_config_reset()`](https://vthanik.github.io/tlframe/reference/fr_config_reset.md)
+  : Reset Configuration
+
+## Recipes
+
+Reusable pipeline fragments that capture a sequence of verb calls. A
+recipe is a list of deferred function calls — create it once, apply it
+to any spec with
+[`fr_apply()`](https://vthanik.github.io/tlframe/reference/fr_apply.md).
+Recipes compose: layer a company recipe, a study recipe, and a
+table-type recipe to build standardized output with minimal per-table
+code. Recipes can be saved to `.rds` files and shared across programs.
+
+- [`fr_recipe()`](https://vthanik.github.io/tlframe/reference/fr_recipe.md)
+  : Create a Reusable Table Recipe
+- [`fr_apply()`](https://vthanik.github.io/tlframe/reference/fr_apply.md)
+  : Apply a Recipe to a Spec
+- [`c(`*`<fr_recipe>`*`)`](https://vthanik.github.io/tlframe/reference/c.fr_recipe.md)
+  : Combine Recipes
+
+## Rendering
+
+The final step — produce output files from a finalized spec.
+[`fr_render()`](https://vthanik.github.io/tlframe/reference/fr_render.md)
+dispatches to the appropriate backend based on the file extension
+(`.rtf`, `.pdf`, `.tex`). The RTF backend writes RTF 1.9.1 control words
+directly. The PDF backend generates tabularray LaTeX and compiles with
+XeLaTeX (two passes for correct page numbers). Custom backends can be
+registered with
+[`fr_register_backend()`](https://vthanik.github.io/tlframe/reference/fr_register_backend.md)
+for additional output formats.
+
+- [`fr_render()`](https://vthanik.github.io/tlframe/reference/fr_render.md)
+  : Render a Table to File
+- [`fr_backends()`](https://vthanik.github.io/tlframe/reference/fr_backends.md)
+  : List Registered Render Backends
+- [`fr_register_backend()`](https://vthanik.github.io/tlframe/reference/fr_register_backend.md)
+  : Register a Custom Render Backend
+
+## Validation and Inspection
+
+Pre-render checks and programmatic access to spec internals.
+[`fr_validate()`](https://vthanik.github.io/tlframe/reference/fr_validate.md)
+runs a comprehensive check suite (column references, width feasibility,
+rule targets, style consistency) and reports issues before you spend
+time rendering. The `fr_get_*()` family extracts specific components
+from a spec for programmatic QC — compare column widths, verify title
+text, or assert footnote counts in automated test scripts.
+
+- [`fr_validate()`](https://vthanik.github.io/tlframe/reference/fr_validate.md)
+  : Validate a Table Specification Before Rendering
+- [`fr_get_data()`](https://vthanik.github.io/tlframe/reference/fr_get_data.md)
+  : Get the Data Frame from a Spec
+- [`fr_get_columns()`](https://vthanik.github.io/tlframe/reference/fr_get_columns.md)
+  : Get Column Specifications from a Spec
+- [`fr_get_col()`](https://vthanik.github.io/tlframe/reference/fr_get_col.md)
+  : Get a Single Column Specification
+- [`fr_get_titles()`](https://vthanik.github.io/tlframe/reference/fr_get_titles.md)
+  : Get Titles from a Spec
+- [`fr_get_footnotes()`](https://vthanik.github.io/tlframe/reference/fr_get_footnotes.md)
+  : Get Footnotes from a Spec
+- [`fr_get_page()`](https://vthanik.github.io/tlframe/reference/fr_get_page.md)
+  : Get Page Configuration from a Spec
+- [`fr_get_rules()`](https://vthanik.github.io/tlframe/reference/fr_get_rules.md)
+  : Get Rules from a Spec
+- [`fr_get_styles()`](https://vthanik.github.io/tlframe/reference/fr_get_styles.md)
+  : Get Cell Styles from a Spec
+
+## Built-in Datasets
+
+Synthetic CDISC ADaM datasets from study TFRM-2024-001 (135 subjects, 3
+treatment arms). Every example in the documentation runs against these
+datasets — no external data required. The `adsl`/`adae`/`adtte`/
+`adcm`/`advs` datasets follow ADaM structure conventions. The `tbl_*`
+datasets are pre-summarized analysis results ready for direct rendering
+— demographics, AE tables, disposition, time-to-event, concomitant
+medications, and vital signs.
+
+### ADaM Source Datasets
+
+- [`adsl`](https://vthanik.github.io/tlframe/reference/adsl.md) :
+  Subject Level Analysis Dataset (ADSL)
+- [`adae`](https://vthanik.github.io/tlframe/reference/adae.md) :
+  Adverse Events Analysis Dataset (ADAE)
+- [`adtte`](https://vthanik.github.io/tlframe/reference/adtte.md) : Time
+  to Event Analysis Dataset (ADTTE)
+- [`adcm`](https://vthanik.github.io/tlframe/reference/adcm.md) :
+  Concomitant Medications Analysis Dataset (ADCM)
+- [`advs`](https://vthanik.github.io/tlframe/reference/advs.md) : Vital
+  Signs Analysis Dataset (ADVS)
+
+### Pre-Summarized TFL-Ready Tables
+
+- [`tbl_demog`](https://vthanik.github.io/tlframe/reference/tbl_demog.md)
+  : Demographics and Baseline Characteristics Table (Table 14.1.1)
+- [`tbl_ae_soc`](https://vthanik.github.io/tlframe/reference/tbl_ae_soc.md)
+  : Adverse Events by System Organ Class Table (Table 14.3.1)
+- [`tbl_ae_summary`](https://vthanik.github.io/tlframe/reference/tbl_ae_summary.md)
+  : Overall Adverse Event Summary Table
+- [`tbl_disp`](https://vthanik.github.io/tlframe/reference/tbl_disp.md)
+  : Subject Disposition Table (Table 14.1.3)
+- [`tbl_tte`](https://vthanik.github.io/tlframe/reference/tbl_tte.md) :
+  Time-to-Event Summary Table (Table 14.2.1.1)
+- [`tbl_cm`](https://vthanik.github.io/tlframe/reference/tbl_cm.md) :
+  Concomitant Medications Table (Table 14.4.1)
+- [`tbl_vs`](https://vthanik.github.io/tlframe/reference/tbl_vs.md) :
+  Vital Signs Change from Baseline Table (Table 14.3.5.1)
+
+# Articles
+
+### Foundations
+
+- [The Pharma Programmer's
+  Handbook](https://vthanik.github.io/tlframe/articles/tlframe.md):
+
+### Advanced
+
+- [Study-Level Automation & Deep
+  Features](https://vthanik.github.io/tlframe/articles/advanced-features.md):
+
+### Internals
+
+- [Architecture & Custom
+  Backends](https://vthanik.github.io/tlframe/articles/extending-tlframe.md):
