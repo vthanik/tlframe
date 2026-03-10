@@ -28,6 +28,7 @@ presentation/
 *.Rcheck/
 /doc/
 /Meta/
+docs/
 
 # Vignette artifacts
 vignettes/*.html
