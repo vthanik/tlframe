@@ -1,0 +1,183 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// tlframe — Custom pkgdown theme
+// Precision pharma aesthetic: sharp corners, generous whitespace,
+// serif headings for authority, gradient code blocks
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── Navbar ──────────────────────────────────────────────────────────────────
+
+.navbar {
+  border-bottom: 3px solid rgba(0, 0, 0, 0.15);
+  letter-spacing: 0.02em;
+}
+
+.navbar-brand {
+  font-weight: 700;
+  font-size: 1.25rem;
+  letter-spacing: 0.03em;
+}
+
+// ── Headings — tinted toward primary ────────────────────────────────────────
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+h1 { font-weight: 800; }
+
+// Subtle bottom rule on h2 section headers in reference pages
+.page-header h1 {
+  border-bottom: 2px solid var(--bs-primary);
+  padding-bottom: 0.5rem;
+  display: inline-block;
+}
+
+// ── Code blocks — subtle gradient (inspired by tidyverse) ───────────────────
+
+[data-bs-theme="light"] {
+  pre:not(.sourceCode) {
+    background-image: linear-gradient(160deg, #f8f9fb 0%, #eef1f6 100%);
+    border: 1px solid #e2e6ed;
+    border-radius: 0;
+  }
+
+  pre.sourceCode {
+    background-image: linear-gradient(160deg, #f7f8fa 0%, #edf0f5 100%);
+    border: 1px solid #dfe3ea;
+    border-radius: 0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  }
+
+  // Inline code
+  code:not(.sourceCode) {
+    background-color: #f0f3f7;
+    border-radius: 0;
+    padding: 0.15em 0.35em;
+    font-size: 0.88em;
+    color: #1a3a5c;
+  }
+}
+
+[data-bs-theme="dark"] {
+  pre:not(.sourceCode),
+  pre.sourceCode {
+    background-image: linear-gradient(160deg, #1e2430 0%, #252b38 100%);
+    border: 1px solid #333a4a;
+    border-radius: 0;
+  }
+
+  code:not(.sourceCode) {
+    background-color: #2a3040;
+    border-radius: 0;
+    color: #b8cce0;
+  }
+}
+
+// ── Sidebar — uppercase reference guide style ───────────────────────────────
+
+.sidebar h2,
+.sidebar .h2 {
+  text-transform: uppercase;
+  letter-spacing: 0.12rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  opacity: 0.85;
+  margin-top: 1.5rem;
+}
+
+// ── Reference page — section titles ─────────────────────────────────────────
+
+.section h2 {
+  margin-top: 2.5rem;
+  padding-top: 1rem;
+}
+
+// Reference subtitle styling
+.section h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  opacity: 0.8;
+  text-transform: uppercase;
+  letter-spacing: 0.08rem;
+  margin-top: 2rem;
+}
+
+// ── Home page ───────────────────────────────────────────────────────────────
+
+.template-home .page-header {
+  border-bottom: 1px solid rgba(0, 61, 107, 0.12);
+  padding-bottom: 2rem;
+  margin-bottom: 2rem;
+}
+
+// Description paragraph on home
+.template-home .lead {
+  font-size: 1.15rem;
+  line-height: 1.7;
+  max-width: 48rem;
+}
+
+// ── Function reference cards ────────────────────────────────────────────────
+
+.card {
+  border-radius: 0;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.card:hover {
+  box-shadow: 0 2px 12px rgba(0, 61, 107, 0.1);
+  border-color: rgba(0, 61, 107, 0.2);
+}
+
+// ── Tables — clean pharma look ──────────────────────────────────────────────
+
+table {
+  border-collapse: collapse;
+}
+
+table th {
+  text-transform: uppercase;
+  font-size: 0.82rem;
+  letter-spacing: 0.06rem;
+  font-weight: 700;
+}
+
+// ── Links — dotted underline (bslib pattern) ────────────────────────────────
+
+.contents a:not(.btn):not(.nav-link):not(.navbar-brand):not(.dropdown-item) {
+  text-decoration: underline dotted;
+  text-underline-offset: 0.2em;
+  text-decoration-thickness: 1px;
+}
+
+.contents a:not(.btn):not(.nav-link):not(.navbar-brand):not(.dropdown-item):hover {
+  text-decoration: underline solid;
+}
+
+// ── Footer ──────────────────────────────────────────────────────────────────
+
+footer {
+  border-top: 2px solid var(--bs-primary);
+  padding-top: 1.5rem;
+  margin-top: 3rem;
+  font-size: 0.88rem;
+  letter-spacing: 0.01em;
+}
+
+// ── General spacing and typography ──────────────────────────────────────────
+
+.contents {
+  max-width: 52rem;
+}
+
+.contents p {
+  line-height: 1.75;
+}
+
+// Parameter descriptions in reference
+dt {
+  font-weight: 600;
+  color: var(--bs-primary);
+}

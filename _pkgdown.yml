@@ -4,15 +4,28 @@ template:
   bootstrap: 5
   light-switch: true
   bslib:
-    primary: "#003366"
-    navbar-bg: "#003366"
-    font_scale: 1.0
+    primary: "#1B4D6E"
+    navbar-bg: "#0F2D44"
+    fg: "#1A1F2E"
+    bg: "#FAFBFC"
+    info: "#E3EEF6"
+    success: "#1E6B45"
+    danger: "#8B1A1A"
+    font_scale: 1.15
+    border-radius: 0
+    btn-border-radius: 2px
     base_font:
-      google: "Inter"
+      google:
+        family: "Source Sans Pro"
+        wght: [300, 400, 600, 700]
+        ital: [0, 1]
     heading_font:
-      google: "Inter"
+      google:
+        family: "Playfair Display"
+        wght: [400, 700, 800]
     code_font:
       google: "JetBrains Mono"
+    pkgdown-nav-height: 72px
 
 home:
   title: "tlframe — Regulatory-Grade Clinical Tables in R"
