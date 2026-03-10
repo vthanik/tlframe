@@ -177,92 +177,73 @@ test_that("group_by alone does NOT auto-insert blank rows", {
 
 
 
-test_that("split_at_decimal splits at dot", {
-  res <- split_at_decimal("168.0")
-  expect_equal(res$before, "168")
-  expect_equal(res$after, ".0")
+# ── Decimal alignment (tests for R/decimal.R) ────────────────────────────────
+
+test_that("detect_separator finds ' - ' in range values", {
+  vals <- c("11.1 - 18.2", "5.0 - 9.3", "123.4 - 200.1")
+  expect_equal(detect_separator(vals), " - ")
 })
 
-test_that("split_at_decimal splits at space when no dot", {
-  res <- split_at_decimal("28 (62%)")
-  expect_equal(res$before, "28")
-  expect_equal(res$after, " (62%)")
+test_that("detect_separator finds ', ' in comma-separated values", {
+  vals <- c("55.0, 88.0", "1.2, 3.4")
+  expect_equal(detect_separator(vals), ", ")
 })
 
-test_that("split_at_decimal splits at dash (not leading)", {
-  res <- split_at_decimal("41-82")
-  expect_equal(res$before, "41")
-  expect_equal(res$after, "-82")
+test_that("detect_separator returns NULL when no separator dominates", {
+  vals <- c("168.0", "45", "1")
+  expect_null(detect_separator(vals))
 })
 
-test_that("split_at_decimal preserves leading negative", {
-  # Leading dash should NOT split — whole string stays as "before"
-  res <- split_at_decimal("-3")
-  expect_equal(res$before, "-3")
-  expect_equal(res$after, "")
+test_that("split_at_separator splits at detected separator", {
+  vals <- c("11.1 - 18.2", "5.0 - 9.3")
+  res <- split_at_separator(vals, " - ")
+  expect_equal(res$left, c("11.1", "5.0"))
+  expect_equal(res$right, c("18.2", "9.3"))
 })
 
-test_that("split_at_decimal prefers dot over dash", {
-  res <- split_at_decimal("-3.2")
-  expect_equal(res$before, "-3")
-  expect_equal(res$after, ".2")
+test_that("split_at_separator handles missing separator in some cells", {
+  vals <- c("11.1 - 18.2", "N/A", "5.0 - 9.3")
+  res <- split_at_separator(vals, " - ")
+  expect_equal(res$left, c("11.1", "N/A", "5.0"))
+  expect_equal(res$right, c("18.2", "", "9.3"))
 })
 
-test_that("split_at_decimal prefers space when dot is after space (pct pattern)", {
-  # "28 (62.2%)" — dot at pos 7, space at pos 3 → dot is inside parens
-  res <- split_at_decimal("28 (62.2%)")
-  expect_equal(res$before, "28")
-  expect_equal(res$after, " (62.2%)")
+test_that("split_at_separator with NULL separator returns all-left", {
+  vals <- c("11.1", "5.0")
+  res <- split_at_separator(vals, NULL)
+  expect_equal(res$left, vals)
+  expect_equal(res$right, c("", ""))
 })
 
-test_that("split_at_decimal prefers dot when dot is before space", {
-  # "62.3 (10.14)" — dot at pos 3, space at pos 5 → dot is the decimal
-  res <- split_at_decimal("62.3 (10.14)")
-  expect_equal(res$before, "62")
-  expect_equal(res$after, ".3 (10.14)")
+test_that("compute_decimal_geometry returns sub-cell widths", {
+  vals <- c("11.1", "5.0", "123.4")
+  geom <- compute_decimal_geometry(vals, 2880L, "Courier New", 9)
+  expect_true(geom$sub1_width > 0L)
+  expect_true(geom$max_left > 0L)
+  expect_equal(length(geom$left_parts), 3L)
 })
 
-test_that("split_at_decimal handles CI pattern (dot before space)", {
-  # "0.8 (-1.2, 2.8)" — dot at pos 2, space at pos 4 → standard decimal
-  res <- split_at_decimal("0.8 (-1.2, 2.8)")
-  expect_equal(res$before, "0")
-  expect_equal(res$after, ".8 (-1.2, 2.8)")
+test_that("compute_decimal_geometry with separator produces two halves", {
+  vals <- c("11.1 - 18.2", "5.0 - 9.3")
+  geom <- compute_decimal_geometry(vals, 2880L, "Courier New", 9)
+  expect_equal(geom$separator, " - ")
+  expect_equal(geom$left_parts, c("11.1", "5.0"))
+  expect_equal(geom$right_parts, c("18.2", "9.3"))
 })
 
-test_that("compute_decimal_before_twips returns positive width from content", {
-  data <- data.frame(
-    a = c("168.0", "45", "1"),
-    stringsAsFactors = FALSE
-  )
-  cols <- list(a = fr_col("A", width = 1.0, align = "decimal"))
-  cols$a$id <- "a"
-  page <- new_fr_page()
-
-  grid <- build_cell_grid(data, cols, list(), page)
-  result <- compute_decimal_before_twips(data, cols, grid, page$font_family, page$font_size)
-
-  # Should be positive and equal to the width of the widest "before" part ("168")
-  expect_true(result[["a"]] > 0L)
-  before_w <- measure_text_width_twips("168", page$font_family, page$font_size)
-  expect_equal(result[["a"]], as.integer(before_w))
+test_that("compute_all_decimal_geometry returns NULL for non-decimal specs", {
+  spec <- data.frame(a = "x", stringsAsFactors = FALSE) |> fr_table()
+  spec <- finalize_spec(spec)
+  expect_null(spec$decimal_geometry)
 })
 
-
-test_that("compute_decimal_before_twips returns NA for non-decimal columns", {
-  data <- data.frame(a = "hello", b = "1.5", stringsAsFactors = FALSE)
-  cols <- list(
-    a = fr_col("A", width = 1.0, align = "left"),
-    b = fr_col("B", width = 1.0, align = "decimal")
-  )
-  cols$a$id <- "a"
-  cols$b$id <- "b"
-  page <- new_fr_page()
-
-  grid <- build_cell_grid(data, cols, list(), page)
-  result <- compute_decimal_before_twips(data, cols, grid, page$font_family, page$font_size)
-
-  expect_true(is.na(result[["a"]]))
-  expect_false(is.na(result[["b"]]))
+test_that("compute_all_decimal_geometry pre-computes for decimal columns", {
+  spec <- data.frame(a = c("12.3", "4.56"), stringsAsFactors = FALSE) |>
+    fr_table() |>
+    fr_cols(a = fr_col("A", align = "decimal", width = 2))
+  spec <- finalize_spec(spec)
+  expect_true("a" %in% names(spec$decimal_geometry))
+  expect_true(spec$decimal_geometry$a$sub1_width > 0L)
 })
 
 
@@ -1221,21 +1202,8 @@ test_that("latex_encode_unicode_char passes through unknown unicode", {
 })
 
 
-# ── compute_decimal_before_pt ────────────────────────────────────────────────
 
-test_that("compute_decimal_before_pt returns twips / 20", {
-  data <- data.frame(a = c("168.0", "45"), stringsAsFactors = FALSE)
-  cols <- list(a = fr_col("A", width = 1.0, align = "decimal"))
-  cols$a$id <- "a"
-  page <- new_fr_page()
 
-  grid <- build_cell_grid(data, cols, list(), page)
-  twips <- compute_decimal_before_twips(data, cols, grid,
-                                         page$font_family, page$font_size)
-  pts <- compute_decimal_before_pt(data, cols, grid,
-                                    page$font_family, page$font_size)
-  expect_equal(pts[["a"]], twips[["a"]] / 20)
-})
 
 
 # ── collect_colors ───────────────────────────────────────────────────────────

@@ -199,10 +199,9 @@ test_that("row_height_twips respects array_stretch", {
   expect_gt(h15, h1)
 })
 
-test_that("row_height_twips_exact returns negative value", {
-  h <- row_height_twips_exact(9)
-  expect_lt(h, 0L)
-  expect_equal(h, -row_height_twips(9))
+test_that("row_height_twips returns positive at-least value", {
+  h <- row_height_twips(9)
+  expect_gt(h, 0L)
 })
 
 test_that("baseline_skip_twips uses 1.2 ratio", {

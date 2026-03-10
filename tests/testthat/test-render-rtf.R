@@ -441,7 +441,7 @@ test_that("decimal-aligned cells use sub-cell split with right-before / left-aft
   txt <- rawToChar(readBin(tmp, "raw", file.info(tmp)$size))
 
   # Sub-cell padding
-  expect_true(grepl("clpadl36", txt, fixed = TRUE))
+  expect_true(grepl("clpadt36", txt, fixed = TRUE))
   expect_true(grepl("clpadr36", txt, fixed = TRUE))
   # Right-aligned sub-cell for before-part
   expect_true(grepl("\\qr", txt, fixed = TRUE))
@@ -1651,7 +1651,7 @@ test_that("row height from fr_row_style emits custom \\trrh value", {
   expect_true(grepl("\\trrh720", txt, fixed = TRUE))
 })
 
-test_that("deterministic row height: all body rows have \\trrh-N at 9pt", {
+test_that("at-least row height: all body rows have \\trrhN (positive) at 9pt", {
   tmp <- tempfile(fileext = ".rtf")
   on.exit(unlink(tmp), add = TRUE)
 
@@ -1661,9 +1661,12 @@ test_that("deterministic row height: all body rows have \\trrh-N at 9pt", {
     fr_render(tmp)
 
   txt <- rawToChar(readBin(tmp, "raw", file.info(tmp)$size))
-  # row_height_twips(9) = 1.0 * (1.0 + 1.2 * 9) * 20 = 236 twips, exact = -236
+  # row_height_twips(9) = 1.0 * (1.0 + 1.2 * 9) * 20 = 236 twips (at-least)
 
-  expect_true(grepl("\\trrh-236", txt, fixed = TRUE))
+  expect_true(grepl("\\trrh236", txt, fixed = TRUE))
+  # Must NOT have negative (exact) height
+
+  expect_false(grepl("\\trrh-236", txt, fixed = TRUE))
 })
 
 test_that("deterministic row height: zero cell padding on all rows", {

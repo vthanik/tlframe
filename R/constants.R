@@ -900,8 +900,8 @@ fr_env$valign_to_latex <- c(
 #' tabularray border linestyle names
 #' @noRd
 # ── LaTeX spacing constants ──────────────────────────────────────────────
-fr_env$latex_leading_factor <- 1.2
-fr_env$latex_rowsep <- "0.5pt"
+fr_env$latex_leading_factor <- 1.15
+fr_env$latex_rowsep <- "0pt"
 
 # ── RTF rendering constants ────────────────────────────────────────────────
 fr_env$rtf_leading_factor    <- 1.4

@@ -365,6 +365,10 @@ finalize_spec <- function(spec) {
   spec <- finalize_columns(spec)
   spec <- finalize_labels(spec)
   spec <- finalize_rows(spec)
+
+  # Pre-compute decimal alignment geometry (used by both RTF and LaTeX)
+  spec$decimal_geometry <- compute_all_decimal_geometry(spec)
+
   spec
 }
 
@@ -760,7 +764,12 @@ prepare_pages <- function(spec) {
 
   lapply(unique_keys, function(k) {
     mask <- keys == k
-    list(data = spec$data[mask, , drop = FALSE], group_label = k)
+    group_data <- spec$data[mask, , drop = FALSE]
+    list(
+      data = group_data,
+      group_label = k,
+      label_overrides = resolve_group_labels(spec, group_data, k)
+    )
   })
 }
 

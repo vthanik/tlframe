@@ -58,10 +58,10 @@ render_latex <- function(spec, page_groups, col_panels, path) {
       borders <- resolve_borders(spec$rules, nrow(group$data),
                                  length(vis_columns), nrow_header)
 
-      # Per-group header label overrides (per-group / function / auto N-counts)
-      label_overrides <- resolve_group_labels(
-        spec, group$data, group$group_label
-      )
+      # Per-group header label overrides (pre-computed in prepare_pages,
+      # or computed here for single-group specs without page_by)
+      label_overrides <- group$label_overrides %||%
+        resolve_group_labels(spec, group$data, group$group_label)
 
       # Build cell grid
       cell_grid <- build_cell_grid(group$data, vis_columns,
@@ -733,11 +733,6 @@ latex_table <- function(spec, data, columns, cell_grid, borders,
   lines <- c(lines, latex_col_header_row(spec, columns,
                                           label_overrides = label_overrides))
 
-  # Decimal alignment widths for makebox positioning
-  decimal_widths_pt <- compute_decimal_before_pt(
-    data, columns, cell_grid, spec$page$font_family, spec$page$font_size
-  )
-
   # Keep-together mask for orphan/widow control
   keep_mask <- build_keep_mask(
     data, spec$body$group_by,
@@ -745,8 +740,9 @@ latex_table <- function(spec, data, columns, cell_grid, borders,
     widow_min  = spec$page$widow_min  %||% fr_env$default_widow_min
   )
 
-  # Body rows
-  lines <- c(lines, latex_body_rows(data, columns, cell_grid, decimal_widths_pt,
+  # Body rows (uses pre-computed decimal geometry from spec)
+  lines <- c(lines, latex_body_rows(data, columns, cell_grid,
+                                     dec_geom = spec$decimal_geometry,
                                      keep_mask = keep_mask))
 
   lines <- c(lines, "\\end{longtblr}")
@@ -1042,7 +1038,7 @@ latex_col_header_row <- function(spec, columns, label_overrides = NULL) {
 #'   row (emit `\\\\*` instead of `\\\\`).
 #' @noRd
 latex_body_rows <- function(data, columns, cell_grid,
-                            decimal_widths_pt = NULL,
+                            dec_geom = NULL,
                             keep_mask = NULL) {
   nr <- nrow(data)
   if (nr == 0L) return(character(0))
@@ -1051,11 +1047,7 @@ latex_body_rows <- function(data, columns, cell_grid,
   nc <- length(col_names)
 
   # Pre-compute which columns are decimal-aligned
-  if (is.null(decimal_widths_pt)) {
-    is_decimal <- rep(FALSE, nc)
-  } else {
-    is_decimal <- !is.na(decimal_widths_pt)
-  }
+  is_decimal <- col_names %in% names(dec_geom %||% list())
 
   lines <- character(nr)
   for (i in seq_len(nr)) {
@@ -1072,18 +1064,22 @@ latex_body_rows <- function(data, columns, cell_grid,
       cell_indent <- cell_grid$indent[grid_row]
 
       if (is_decimal[j]) {
-        # Decimal alignment via \makebox
+        # Decimal alignment via two right-aligned makebox sub-cells (centered)
         trimmed <- trimws(content)
         if (!nzchar(trimmed)) {
           cells[j] <- ""
           next
         }
-        parts <- split_at_decimal(trimmed)
-        # Escape each part separately (split before escape)
-        before_esc <- latex_escape_and_resolve(parts$before)
-        after_esc  <- latex_escape_and_resolve(parts$after)
-        w <- round(decimal_widths_pt[j], 1)
-        cells[j] <- paste0("\\makebox[", w, "pt][r]{", before_esc, "}", after_esc)
+        geom <- dec_geom[[col_names[j]]]
+        left_esc  <- latex_escape_and_resolve(geom$left_parts[i])
+        right_esc <- latex_escape_and_resolve(geom$right_parts[i])
+        w1 <- round(geom$sub1_width / 20, 1)  # twips → points
+        col_width_twips <- inches_to_twips(columns[[j]]$width)
+        w2 <- round((col_width_twips - geom$sub1_width) / 20, 1)
+        cells[j] <- paste0(
+          "\\makebox[", w1, "pt][r]{", left_esc, "}",
+          "\\makebox[", w2, "pt][r]{", right_esc, "}"
+        )
       } else {
         # Standard cell handling
         # Preserve leading whitespace: convert leading spaces to \hspace

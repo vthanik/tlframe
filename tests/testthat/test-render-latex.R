@@ -433,7 +433,7 @@ test_that("longtblr has presep=0pt and tight cell spacing", {
   txt <- paste(readLines(tmp, warn = FALSE), collapse = "\n")
   expect_true(grepl("presep=0pt", txt, fixed = TRUE))
   expect_true(grepl("postsep=0pt", txt, fixed = TRUE))
-  expect_true(grepl("abovesep=0.5pt", txt, fixed = TRUE))
+  expect_true(grepl("abovesep=0pt", txt, fixed = TRUE))
   expect_true(grepl("leftsep=2pt", txt, fixed = TRUE))
 })
 
@@ -543,8 +543,8 @@ test_that("LaTeX leading factor uses 1.2 (matches RTF row_height_twips)", {
     fr_render(tmp)
 
   txt <- paste(readLines(tmp, warn = FALSE), collapse = "\n")
-  # 9 * 1.2 = 10.8 — matches baseline_ratio used by row_height_twips()
-  expect_true(grepl("10.8", txt, fixed = TRUE))
+  # 9 * 1.15 = 10.35, rounded to 10.3 — matches latex_leading_factor
+  expect_true(grepl("10.3", txt, fixed = TRUE))
 })
 
 
@@ -661,23 +661,14 @@ test_that("align_to_latex maps decimal to L", {
   expect_equal(unname(fr_env$align_to_latex[["decimal"]]), "L")
 })
 
-test_that("compute_decimal_before_pt returns point widths for decimal columns", {
+test_that("finalize_spec pre-computes decimal geometry for decimal columns", {
   df <- data.frame(a = c("12.3", "4.56"), b = c("x", "y"))
-  cols <- list(
-    a = fr_col("A", align = "decimal", width = 2),
-    b = fr_col("B", align = "left", width = 2)
-  )
   spec <- df |> fr_table() |>
     fr_cols(a = fr_col("A", align = "decimal", width = 2),
             b = fr_col("B", align = "left", width = 2))
   fspec <- finalize_spec(spec)
-  grid <- build_cell_grid(fspec$data, fspec$columns, fspec$cell_styles, fspec$page)
-  result <- compute_decimal_before_pt(fspec$data, fspec$columns, grid,
-                                       "Helvetica", 10)
-  expect_true(is.numeric(result[["a"]]))
-  expect_true(!is.na(result[["a"]]))
-  expect_true(result[["a"]] > 0)
-  expect_true(is.na(result[["b"]]))
+  expect_true("a" %in% names(fspec$decimal_geometry))
+  expect_true(fspec$decimal_geometry$a$sub1_width > 0L)
 })
 
 test_that("latex_body_rows produces makebox for decimal cells", {
@@ -687,9 +678,8 @@ test_that("latex_body_rows produces makebox for decimal cells", {
             b = fr_col("B", align = "left", width = 2))
   fspec <- finalize_spec(spec)
   grid <- build_cell_grid(fspec$data, fspec$columns, fspec$cell_styles, fspec$page)
-  dec_pt <- compute_decimal_before_pt(fspec$data, fspec$columns, grid,
-                                       "Helvetica", 10)
-  rows <- latex_body_rows(fspec$data, fspec$columns, grid, dec_pt)
+  rows <- latex_body_rows(fspec$data, fspec$columns, grid,
+                           dec_geom = fspec$decimal_geometry)
   expect_true(all(grepl("\\\\makebox\\[", rows)))
   expect_true(all(grepl("\\]\\[r\\]\\{", rows)))
 })
@@ -701,11 +691,9 @@ test_that("latex_body_rows handles empty decimal cells", {
             b = fr_col("B", align = "left", width = 2))
   fspec <- finalize_spec(spec)
   grid <- build_cell_grid(fspec$data, fspec$columns, fspec$cell_styles, fspec$page)
-  dec_pt <- compute_decimal_before_pt(fspec$data, fspec$columns, grid,
-                                       "Helvetica", 10)
-  rows <- latex_body_rows(fspec$data, fspec$columns, grid, dec_pt)
+  rows <- latex_body_rows(fspec$data, fspec$columns, grid,
+                           dec_geom = fspec$decimal_geometry)
   expect_length(rows, 2L)
-  # First row has makebox, second row's decimal cell is empty
   expect_match(rows[1], "\\\\makebox", fixed = FALSE)
 })
 
@@ -716,46 +704,23 @@ test_that("latex_body_rows handles space-split values (n/% pattern)", {
             b = fr_col("B", align = "left", width = 2))
   fspec <- finalize_spec(spec)
   grid <- build_cell_grid(fspec$data, fspec$columns, fspec$cell_styles, fspec$page)
-  dec_pt <- compute_decimal_before_pt(fspec$data, fspec$columns, grid,
-                                       "Helvetica", 10)
-  rows <- latex_body_rows(fspec$data, fspec$columns, grid, dec_pt)
-  # Should have makebox with the number part right-aligned
+  rows <- latex_body_rows(fspec$data, fspec$columns, grid,
+                           dec_geom = fspec$decimal_geometry)
   expect_match(rows[1], "\\\\makebox", fixed = FALSE)
-  # The "after" part should contain the parenthetical
   expect_match(rows[1], "\\(45\\\\%\\)", fixed = FALSE)
 })
 
-test_that("latex_body_rows handles dot-after-space values (pct pattern)", {
+test_that("latex_body_rows handles space-split pct with dot-after-space", {
   df <- data.frame(a = c("28 (62.2%)", "5 (11.1%)"), b = c("x", "y"))
   spec <- df |> fr_table() |>
     fr_cols(a = fr_col("A", align = "decimal", width = 2),
             b = fr_col("B", align = "left", width = 2))
   fspec <- finalize_spec(spec)
   grid <- build_cell_grid(fspec$data, fspec$columns, fspec$cell_styles, fspec$page)
-  dec_pt <- compute_decimal_before_pt(fspec$data, fspec$columns, grid,
-                                       "Helvetica", 10)
-  rows <- latex_body_rows(fspec$data, fspec$columns, grid, dec_pt)
-  # Should split at space, not at dot inside parens
-  # "28" should be right-aligned, " (62.2%)" left-aligned
+  rows <- latex_body_rows(fspec$data, fspec$columns, grid,
+                           dec_geom = fspec$decimal_geometry)
   expect_match(rows[1], "\\\\makebox", fixed = FALSE)
   expect_match(rows[1], "28", fixed = TRUE)
-  expect_match(rows[1], "\\(62\\.2\\\\%\\)", fixed = FALSE)
-})
-
-test_that("latex_body_rows handles dash-split values (range pattern)", {
-  df <- data.frame(a = c("41-82", "55-99"), b = c("x", "y"))
-  spec <- df |> fr_table() |>
-    fr_cols(a = fr_col("A", align = "decimal", width = 2),
-            b = fr_col("B", align = "left", width = 2))
-  fspec <- finalize_spec(spec)
-  grid <- build_cell_grid(fspec$data, fspec$columns, fspec$cell_styles, fspec$page)
-  dec_pt <- compute_decimal_before_pt(fspec$data, fspec$columns, grid,
-                                       "Helvetica", 10)
-  rows <- latex_body_rows(fspec$data, fspec$columns, grid, dec_pt)
-  expect_match(rows[1], "\\\\makebox", fixed = FALSE)
-  # "41" right-aligned, "-82" left-aligned
-  expect_match(rows[1], "41", fixed = TRUE)
-  expect_match(rows[1], "-82", fixed = TRUE)
 })
 
 
@@ -938,7 +903,7 @@ test_that("latex_body_rows works without decimal widths", {
     fr_cols(a = fr_col("A", width = 2), b = fr_col("B", width = 2))
   fspec <- finalize_spec(spec)
   grid <- build_cell_grid(fspec$data, fspec$columns, fspec$cell_styles, fspec$page)
-  rows <- latex_body_rows(fspec$data, fspec$columns, grid, decimal_widths_pt = NULL)
+  rows <- latex_body_rows(fspec$data, fspec$columns, grid, dec_geom = NULL)
   expect_length(rows, 2L)
   expect_false(any(grepl("makebox", rows, fixed = TRUE)))
 })

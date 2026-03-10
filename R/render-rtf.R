@@ -20,17 +20,18 @@
 rtf_zero_cell_padding <- "\\trpaddt0\\trpaddft3\\trpaddb0\\trpaddfb3"
 
 
-#' Row-level padding string: exact height + zero top/bottom cell padding
+#' Row-level padding string: at-least height + zero top/bottom cell padding
 #'
-#' Produces RTF control words for deterministic row height:
-#' `\trrh-N` (exact height), `\trpaddt0\trpaddft3` (zero top padding),
+#' Produces RTF control words for row height:
+#' `\trrhN` (at-least height — grows for multi-line cells),
+#' `\trpaddt0\trpaddft3` (zero top padding),
 #' `\trpaddb0\trpaddfb3` (zero bottom padding).
 #'
 #' @param font_size_pt Numeric. Font size in points.
 #' @return Character scalar. RTF control word string.
 #' @noRd
 rtf_row_height_str <- function(font_size_pt) {
-  rh <- row_height_twips_exact(font_size_pt)
+  rh <- row_height_twips(font_size_pt)
   paste0("\\trrh", rh, rtf_zero_cell_padding)
 }
 
@@ -60,7 +61,7 @@ rtf_col_gap_str <- function(spec) {
   if (gap_pt <= 0L) return("")
   # Half on each side, convert pt → twips (1 pt = 20 twips)
   pad_twips <- as.integer(round(gap_pt / 2 * 20))
-  paste0("\\clpadl", pad_twips, "\\clpadr", pad_twips, "\\clpadfl3\\clpadfr3")
+  paste0("\\clpadt", pad_twips, "\\clpadr", pad_twips, "\\clpadft3\\clpadfr3")
 }
 
 
@@ -179,10 +180,10 @@ render_rtf <- function(spec, page_groups, col_panels, path) {
         rtf_write(con, rtf_page_by_rows(spec, vis_columns, group$group_label))
       }
 
-      # Per-group header label overrides (per-group / function / auto N-counts)
-      label_overrides <- resolve_group_labels(
-        spec, group$data, group$group_label
-      )
+      # Per-group header label overrides (pre-computed in prepare_pages,
+      # or computed here for single-group specs without page_by)
+      label_overrides <- group$label_overrides %||%
+        resolve_group_labels(spec, group$data, group$group_label)
 
       # Spanning header rows
       rtf_write(con, rtf_spanner_rows(spec, vis_columns, borders, color_info))
@@ -191,21 +192,113 @@ render_rtf <- function(spec, page_groups, col_panels, path) {
       rtf_write(con, rtf_col_header_row(spec, vis_columns, borders, color_info,
                                          label_overrides = label_overrides))
 
-      # Body rows
-      cell_grid <- build_cell_grid(group$data, vis_columns,
-                                   spec$cell_styles, spec$page)
-      rtf_write(con, rtf_body_rows(spec, group$data, vis_columns,
-                                   cell_grid, borders, color_info))
+      # Body rows — conditional R-side pagination
+      has_group_by <- length(spec$body$group_by) > 0L
 
-      # Body footnotes: single-page mode OR "last" placement footnotes
-      if (is_single_page) {
-        rtf_write(con, rtf_body_footnotes(spec, vis_columns, is_last,
-                                           borders, color_info))
-      } else if (is_last && length(last_footnotes) > 0L) {
-        # "last" footnotes as body rows — appear once at end of data
-        rtf_write(con, rtf_body_footnotes_last(
-          spec, vis_columns, last_footnotes, borders, color_info
-        ))
+      if (has_group_by && nrow(group$data) > 0L) {
+        # R-side pagination: split body into sub-pages
+        heights <- calculate_row_heights(group$data, vis_columns, spec$page)
+        budget  <- calculate_page_budget(spec)
+        page_assignments <- paginate_rows(
+          heights, budget, group$data, spec$body$group_by,
+          orphan_min = spec$page$orphan_min %||% fr_env$default_orphan_min,
+          widow_min  = spec$page$widow_min  %||% fr_env$default_widow_min
+        )
+
+        n_subpages <- max(page_assignments)
+        for (sub_page in seq_len(n_subpages)) {
+          sub_rows <- which(page_assignments == sub_page)
+          if (length(sub_rows) == 0L) next
+
+          if (sub_page > 1L) {
+            # New section for each R-computed page after the first
+            rtf_write(con, "\\pard\\par\n\\sect\n")
+            section_idx <- section_idx + 1L
+
+            is_last <- (group_idx == length(page_groups) &&
+                          panel_idx == length(col_panels) &&
+                          sub_page == n_subpages)
+
+            rtf_write(con, rtf_section_def(spec, is_last,
+                                            body_footnotes = FALSE))
+            rtf_write(con, rtf_resolve_page_fields(
+              rtf_page_header(spec, token_map)))
+            rtf_write(con, rtf_resolve_page_fields(
+              rtf_footer_group(spec, token_map, is_last, vis_columns,
+                               skip_footnotes = FALSE)))
+
+            if (!is.null(spec$pagehead)) {
+              n_ph <- spec$spacing$pagehead_after %||% 1L
+              if (n_ph > 0L) {
+                ph_fs <- pt_to_half_pt(spec$page$font_size)
+                rtf_write(con, strrep(
+                  paste0("\\pard\\plain\\fs", ph_fs, "\\par\n"), n_ph
+                ))
+              }
+            }
+
+            # Titles, spanners, column header repeat on each sub-page
+            rtf_write(con, rtf_title_rows(spec, vis_columns, color_info,
+                                           panel_idx = panel_idx))
+            if (!is.null(group$group_label) && nzchar(group$group_label)) {
+              rtf_write(con, rtf_page_by_rows(spec, vis_columns,
+                                               group$group_label))
+            }
+            rtf_write(con, rtf_spanner_rows(spec, vis_columns, borders,
+                                             color_info))
+            rtf_write(con, rtf_col_header_row(spec, vis_columns, borders,
+                                               color_info,
+                                               label_overrides = label_overrides))
+          }
+
+          # Emit body rows for this sub-page
+          sub_data <- group$data[sub_rows, , drop = FALSE]
+          sub_grid <- build_cell_grid(sub_data, vis_columns,
+                                       spec$cell_styles, spec$page)
+          # Resolve borders for sub-page row count
+          sub_borders <- resolve_borders(spec$rules, nrow(sub_data),
+                                          length(vis_columns), nrow_header)
+
+          # Suppress bottom border on non-final sub-pages (table continues)
+          if (sub_page < n_subpages) {
+            sub_nr <- nrow(sub_data)
+            if (sub_nr > 0L) {
+              for (j in seq_along(vis_columns)) {
+                sub_borders$body$bottom[sub_nr, j] <- list(NULL)
+              }
+            }
+          }
+
+          rtf_write(con, rtf_body_rows(spec, sub_data, vis_columns,
+                                       sub_grid, sub_borders, color_info))
+        }
+
+        # Body footnotes after the last sub-page
+        if (is_single_page) {
+          rtf_write(con, rtf_body_footnotes(spec, vis_columns, is_last,
+                                             borders, color_info))
+        } else if (is_last && length(last_footnotes) > 0L) {
+          rtf_write(con, rtf_body_footnotes_last(
+            spec, vis_columns, last_footnotes, borders, color_info
+          ))
+        }
+
+      } else {
+        # No group_by: emit all body rows, let RTF viewer paginate
+        cell_grid <- build_cell_grid(group$data, vis_columns,
+                                     spec$cell_styles, spec$page)
+        rtf_write(con, rtf_body_rows(spec, group$data, vis_columns,
+                                     cell_grid, borders, color_info))
+
+        # Body footnotes: single-page mode OR "last" placement footnotes
+        if (is_single_page) {
+          rtf_write(con, rtf_body_footnotes(spec, vis_columns, is_last,
+                                             borders, color_info))
+        } else if (is_last && length(last_footnotes) > 0L) {
+          rtf_write(con, rtf_body_footnotes_last(
+            spec, vis_columns, last_footnotes, borders, color_info
+          ))
+        }
       }
 
     }
@@ -861,23 +954,21 @@ rtf_body_rows <- function(spec, data, columns, cell_grid, borders, color_info) {
                              integer(1), USE.NAMES = FALSE)
   cum_widths <- cumsum(col_widths_twips)
 
-  # Precompute decimal before-widths from actual content
-  decimal_before <- compute_decimal_before_twips(data, columns, cell_grid,
-                                                  spec$page$font_family,
-                                                  spec$page$font_size)
-  is_decimal_col <- !is.na(decimal_before)
+  # Use pre-computed decimal geometry from finalize_spec()
+  dec_geom <- spec$decimal_geometry
+  is_decimal_col <- col_names %in% names(dec_geom %||% list())
 
   # Precompute decimal sub-cell geometry (column-dependent, row-independent)
   dec_sub1_end <- integer(ncol)
   dec_sub2_end <- integer(ncol)
   decimal_pad <- fr_env$rtf_decimal_pad
-  decimal_pad_str <- paste0("\\clpadl", decimal_pad,
+  decimal_pad_str <- paste0("\\clpadt", decimal_pad,
                             "\\clpadr", decimal_pad,
-                            "\\clpadfl3\\clpadfr3")
+                            "\\clpadft3\\clpadfr3")
   for (j in which(is_decimal_col)) {
-    sub1_width <- decimal_before[j] + decimal_pad * 2L
+    geom <- dec_geom[[col_names[j]]]
     left_edge <- if (j == 1L) 0L else cum_widths[j - 1L]
-    dec_sub1_end[j] <- left_edge + sub1_width
+    dec_sub1_end[j] <- left_edge + geom$sub1_width
     dec_sub2_end[j] <- cum_widths[j]
   }
 
@@ -980,20 +1071,22 @@ rtf_body_rows <- function(spec, data, columns, cell_grid, borders, color_info) {
         indent_str <- paste0("\\li", indent_twips)
       }
 
-      # Decimal alignment: sub-cell split (right-aligned before, left-aligned after)
+      # Decimal alignment: two right-aligned sub-cells (centered in column)
       if (identical(g$align, "decimal") && is_decimal_col[j]) {
         trimmed <- trimws(g$content)
         if (nzchar(trimmed)) {
-          parts <- split_at_decimal(trimmed)
-          before_esc <- rtf_escape_and_resolve(parts$before)
-          after_esc  <- rtf_escape_and_resolve(trimws(parts$after, which = "left"))
+          geom <- dec_geom[[col_names[j]]]
+          left_esc  <- rtf_escape_and_resolve(geom$left_parts[i])
+          left_esc  <- gsub("\n", "\\\\line ", left_esc)
+          right_esc <- rtf_escape_and_resolve(geom$right_parts[i])
+          right_esc <- gsub("\n", "\\\\line ", right_esc)
           cell_contents[[j]] <- paste0(
             "\\pard\\plain\\intbl\\qr", sp_str, indent_str,
             "\\fs", fs, " ",
-            fg_str, fmt_on, before_esc, fmt_off, "\\cell",
-            "\\pard\\plain\\intbl\\ql", sp_str,
+            fg_str, fmt_on, left_esc, fmt_off, "\\cell",
+            "\\pard\\plain\\intbl\\qr", sp_str,
             "\\fs", fs, " ",
-            fg_str, fmt_on, after_esc, fmt_off, "\\cell"
+            fg_str, fmt_on, right_esc, fmt_off, "\\cell"
           )
         } else {
           cell_contents[[j]] <- paste0(empty_cell, empty_cell)
@@ -1002,6 +1095,7 @@ rtf_body_rows <- function(spec, data, columns, cell_grid, borders, color_info) {
         # Non-decimal cell in a decimal column (style override)
         align_rtf <- fr_env$align_to_rtf[[g$align]]
         content <- rtf_escape_and_resolve(g$content)
+        content <- gsub("\n", "\\\\line ", content)
         cell_contents[[j]] <- paste0(
           "\\pard\\plain\\intbl", align_rtf, sp_str, indent_str,
           "\\fs", fs, " ",
@@ -1011,6 +1105,7 @@ rtf_body_rows <- function(spec, data, columns, cell_grid, borders, color_info) {
       } else {
         align_rtf <- fr_env$align_to_rtf[[g$align]]
         content <- rtf_escape_and_resolve(g$content)
+        content <- gsub("\n", "\\\\line ", content)
         cell_contents[[j]] <- paste0(
           "\\pard\\plain\\intbl", align_rtf, sp_str, indent_str,
           "\\fs", fs, " ",

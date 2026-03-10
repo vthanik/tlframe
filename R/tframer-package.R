@@ -55,7 +55,7 @@
 #' @import rlang
 #' @import cli
 #' @importFrom glue glue
-#' @importFrom stringi stri_replace_all_fixed stri_detect_regex stri_count_fixed
+#' @importFrom stringi stri_replace_all_fixed stri_detect_regex stri_count_fixed stri_detect_fixed stri_locate_first_fixed stri_sub stri_wrap
 #' @importFrom tools file_ext
 #' @importFrom vctrs vec_cast
 #' @importFrom yaml read_yaml

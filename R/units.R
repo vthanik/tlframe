@@ -43,8 +43,8 @@ pt_to_twips <- function(pt) as.integer(round(pt * 20))
 # Single line spacing in Word = 1.0 * baselineskip = 1.2 * font_size
 # This matches the LaTeX convention exactly.
 #
-# For pharma tables we use "exact" row height (negative \trrh) to get
-# deterministic pagination. The formula:
+# For pharma tables we use "at-least" row height (positive \trrh) so
+# multi-line cells grow naturally. The formula:
 #
 #   row_height = array_stretch * (extra_row_height + baseline_skip)
 #   baseline_skip = 1.2 * font_size
@@ -75,20 +75,6 @@ row_height_twips <- function(font_size_pt,
   baseline_skip_pt <- fr_env$baseline_ratio * font_size_pt
   height_pt <- array_stretch * (extra_row_height_pt + baseline_skip_pt)
   pt_to_twips(height_pt)
-}
-
-
-#' Calculate exact row height for RTF \\trrh (negative = exact)
-#'
-#' For deterministic pagination in pharma tables, use exact heights.
-#' RTF spec: negative \\trrh means "exact height, even if content is taller".
-#'
-#' @return Integer. Negative value for RTF \\trrh (exact height).
-#' @noRd
-row_height_twips_exact <- function(font_size_pt,
-                                    array_stretch = 1.0,
-                                    extra_row_height_pt = 1.0) {
-  -row_height_twips(font_size_pt, array_stretch, extra_row_height_pt)
 }
 
 
