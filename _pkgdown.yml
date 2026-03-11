@@ -198,6 +198,7 @@ reference:
       Reusable pipeline fragments. Create once, apply to any spec.
     contents:
       - fr_recipe
+      - c.fr_recipe
       - fr_apply
 
   - title: "Rendering"
