@@ -108,12 +108,20 @@ Stub columns (repeated in every panel) are designated via
 columns or the first column.}
 
 \item{.n}{Bulk N-counts applied across columns and spanning groups.
-\strong{All forms match by display label} (case-insensitive), never by
-data column name. Accepts:
+Names are matched \strong{case-insensitively} using a two-step lookup:
+first by \strong{column display label}, then by \strong{data column name} as
+fallback. This means you can use either form:
 \itemize{
-\item \strong{Named numeric vector} — names = display labels matched
-case-insensitively to column labels AND group names.
-Example: \code{c("Placebo" = 45, "Zomerane 50 mg" = 44)}.
+\item \code{c("Placebo" = 45)} — matches by label
+\item \code{c(placebo = 45)} — matches by column name (no label repetition)
+}
+
+Accepts:
+\itemize{
+\item \strong{Named numeric vector} — names = display labels or column names,
+matched case-insensitively to column labels first, then column
+names. Also matches spanning group names.
+Example: \code{c(placebo = 45, zom_50mg = 44)}.
 \item \strong{Data frame (2-column)} — column 1 = display labels,
 column 2 = counts. Same N on every page.
 Example: \code{data.frame(trt = c("Placebo", "Zom 50mg"), n = c(45, 44))}.

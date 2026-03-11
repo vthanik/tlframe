@@ -80,12 +80,18 @@
 #'   * `"preserve"` — keep leading spaces as literal characters.
 #'   * `NULL` — same as `"indent"`.
 #' @param .n Bulk N-counts applied across columns and spanning groups.
-#'   **All forms match by display label** (case-insensitive), never by
-#'   data column name. Accepts:
+#'   Names are matched **case-insensitively** using a two-step lookup:
+#'   first by **column display label**, then by **data column name** as
+#'   fallback. This means you can use either form:
+#'   * `c("Placebo" = 45)` — matches by label
+#'   * `c(placebo = 45)` — matches by column name (no label repetition)
 #'
-#'   * **Named numeric vector** — names = display labels matched
-#'     case-insensitively to column labels AND group names.
-#'     Example: `c("Placebo" = 45, "Zomerane 50 mg" = 44)`.
+#'   Accepts:
+#'
+#'   * **Named numeric vector** — names = display labels or column names,
+#'     matched case-insensitively to column labels first, then column
+#'     names. Also matches spanning group names.
+#'     Example: `c(placebo = 45, zom_50mg = 44)`.
 #'
 #'   * **Data frame (2-column)** — column 1 = display labels,
 #'     column 2 = counts. Same N on every page.

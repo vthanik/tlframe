@@ -803,7 +803,10 @@ parse_df_n_counts <- function(df, spec) {
 #' Only matches direct column labels. For spanner label matching, use
 #' `match_trt_to_spans()`.
 #'
-#' @param trt_counts Named numeric vector (e.g. `c("Placebo" = 45)`).
+#' @param trt_counts Named numeric vector. Names can be either display labels
+#'   (e.g. `c("Placebo" = 45)`) or data column names (e.g. `c(placebo = 45)`).
+#'   Label match is tried first; column name match is the fallback. Both are
+#'   case-insensitive.
 #' @param columns Named list of `fr_col` objects.
 #' @return Named integer vector keyed by column name.
 #' @noRd

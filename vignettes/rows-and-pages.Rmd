@@ -1,0 +1,214 @@
+---
+title: "Rows & Page Layout"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Rows & Page Layout}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+library(tlframe)
+```
+
+`fr_rows()` controls how data flows across pages. `fr_page()`,
+`fr_pagehead()`, and `fr_pagefoot()` control the physical page.
+
+## page_by: separate pages per parameter
+
+```{r pageby}
+vs_wk24 <- tbl_vs[tbl_vs$timepoint == "Week 24",
+                   c("param", "statistic", "placebo_value",
+                     "zom_50mg_value", "zom_100mg_value")]
+spec <- vs_wk24 |>
+  fr_table() |>
+  fr_cols(param = fr_col(visible = FALSE)) |>
+  fr_rows(page_by = "param", page_by_bold = TRUE)
+```
+
+Each unique value of `param` gets its own page section. The label appears
+as a bold header above each section.
+
+> **SAS:** `BY param;` in PROC REPORT with `#BYVAL` in titles.
+
+## group_by and blank_after
+
+```{r groupby}
+spec <- tbl_demog |>
+  fr_table() |>
+  fr_cols(group = fr_col(visible = FALSE)) |>
+  fr_rows(group_by = "group", blank_after = "group")
+```
+
+`group_by` keeps groups together during pagination. `blank_after` inserts
+an empty row after each group.
+
+**Note:** `group_by` auto-implies `blank_after` on the same column, so
+you usually only need `group_by`:
+
+```{r groupby-auto}
+spec <- tbl_demog |>
+  fr_table() |>
+  fr_cols(group = fr_col(visible = FALSE)) |>
+  fr_rows(group_by = "group")
+```
+
+## indent_by: SOC/PT hierarchies
+
+```{r indent}
+spec <- tbl_ae_soc |>
+  fr_table() |>
+  fr_cols(
+    soc      = fr_col(visible = FALSE),
+    pt       = fr_col("SOC / Preferred Term", width = 3.0),
+    row_type = fr_col(visible = FALSE)
+  ) |>
+  fr_rows(group_by = "soc", indent_by = "pt")
+```
+
+`indent_by` indents the named column's values by 2 characters beneath the
+group header. SOC terms appear flush-left; PTs are indented.
+
+> **SAS:** `DEFINE pt / DISPLAY INDENT=2;` with `ORDER=INTERNAL` on SOC.
+
+## Combining row features
+
+```{r rows-combined}
+spec <- tbl_ae_soc |>
+  fr_table() |>
+  fr_cols(
+    soc      = fr_col(visible = FALSE),
+    pt       = fr_col("SOC / PT", width = 3.0),
+    row_type = fr_col(visible = FALSE),
+    placebo  = fr_col("Placebo"),
+    zom_50mg = fr_col("Zomerane 50mg"),
+    zom_100mg = fr_col("Zomerane 100mg"),
+    total    = fr_col("Total"),
+    .n = c(placebo = 45, zom_50mg = 45, zom_100mg = 45, total = 135),
+    .n_format = "{label}\n(N={n})"
+  ) |>
+  fr_header(bold = TRUE, align = "center") |>
+  fr_rows(group_by = "soc", indent_by = "pt") |>
+  fr_hlines("header")
+```
+
+## sort_by and repeat_cols
+
+For listings, `sort_by` controls row order and `repeat_cols` suppresses
+repeated values:
+
+```{r sort-repeat}
+ae_list <- adae[1:20, c("USUBJID", "ARM", "AEDECOD", "AESEV")]
+spec <- ae_list |>
+  fr_listing() |>
+  fr_rows(sort_by = c("ARM", "USUBJID"),
+          repeat_cols = "ARM") |>
+  fr_hlines("header")
+```
+
+`repeat_cols` only prints the value when it changes (like `NOREPEAT` in SAS).
+
+## Page configuration
+
+```{r page}
+spec <- tbl_demog |>
+  fr_table() |>
+  fr_page(
+    orientation = "landscape",
+    paper       = "letter",
+    font_family = "Courier New",
+    font_size   = 9,
+    margins     = c(top = 1.0, right = 0.75, bottom = 1.0, left = 0.75)
+  )
+pg <- fr_get_page(spec)
+pg$orientation
+```
+
+These are the package defaults --- you only need `fr_page()` when overriding.
+
+### Margin formats
+
+| Format | Meaning |
+|--------|---------|
+| `margins = 1.0` | All four margins = 1 inch |
+| `margins = c(1.0, 0.75)` | Top/bottom = 1, left/right = 0.75 |
+| `margins = c(1.0, 0.75, 1.0, 0.75)` | Top, right, bottom, left |
+| `margins = list(top = 1, ...)` | Named list |
+
+## Running headers and footers
+
+```{r pagehead}
+spec <- tbl_demog |>
+  fr_table() |>
+  fr_pagehead(
+    left  = "Protocol TFRM-2024-001",
+    right = "CONFIDENTIAL"
+  ) |>
+  fr_pagefoot(
+    left   = "{program}",
+    center = "{datetime}",
+    right  = "Page {thepage} of {total_pages}"
+  )
+```
+
+### Built-in tokens
+
+| Token | Value |
+|-------|-------|
+| `{thepage}` | Current page number |
+| `{total_pages}` | Total page count |
+| `{program}` | Source file name |
+| `{datetime}` | Render timestamp |
+
+### Custom tokens
+
+```{r tokens}
+spec <- tbl_demog |>
+  fr_table() |>
+  fr_page(tokens = list(study = "TFRM-2024-001", cutoff = "15MAR2025")) |>
+  fr_pagefoot(left = "Study: {study}", right = "Cutoff: {cutoff}")
+```
+
+> **SAS:** `TITLE j=l "Protocol..." j=r "CONFIDENTIAL";` and
+> `FOOTNOTE j=l "&_SASPROGRAMFILE" j=r "Page ^{thispage} of ^{lastpage}";`
+
+## ICH E3 compliance mapping
+
+| ICH E3 Requirement | tlframe Feature |
+|--------------------|-----------------|
+| Study ID on every page | `fr_pagehead(left = "Study TFRM-2024-001")` |
+| Table number and title | `fr_titles("Table 14.1.1", "Demographics...")` |
+| Population label | Third title line |
+| Treatment arm N-counts | `fr_cols(.n = ..., .n_format = ...)` |
+| Page numbering | `fr_pagefoot(right = "Page {thepage} of {total_pages}")` |
+| Program name | `fr_pagefoot(left = "{program}")` |
+| Continuation label | `fr_page(continuation = "(continued)")` |
+| Footnotes/abbreviations | `fr_footnotes(...)` |
+
+## Continuation text
+
+For multi-page tables, `continuation` appends text to titles on page 2+:
+
+```{r continuation}
+spec <- tbl_ae_soc |>
+  fr_table() |>
+  fr_titles("Table 14.3.1", "TEAEs by SOC and Preferred Term") |>
+  fr_page(continuation = "(continued)")
+```
+
+## Section spacing
+
+`fr_spacing()` controls blank lines between structural sections:
+
+```{r spacing}
+spec <- tbl_demog |>
+  fr_table() |>
+  fr_spacing(
+    titles_after     = 1,
+    footnotes_before = 1,
+    pagehead_after   = 0,
+    pagefoot_before  = 0,
+    page_by_after    = 1
+  )
+```
