@@ -158,20 +158,37 @@ parse_pct_width <- function(x, arg = caller_arg(x), call = caller_env()) {
 #' Validate n and format parameters for fr_header()
 #'
 #' Validates the three supported N-count forms: named numeric vector,
-#' named list of named numeric vectors, and function.
+#' named list of named numeric vectors, and data frame (2-col or 3-col).
 #'
-#' @param n N-count specification (numeric, list, function, or NULL).
+#' @param n N-count specification (numeric, list, data frame, or NULL).
 #' @param format Optional glue format string for N-count labels.
 #' @param call Caller environment for error reporting.
 #' @noRd
 validate_n_param <- function(n, format = NULL, call = caller_env()) {
   if (!is.null(n)) {
-    if (is.function(n)) {
-      # Function form: validated at call time (must return named numeric or df)
+    if (is.data.frame(n)) {
+      # Data frame form: 2-col (global) or 3-col (per-group)
+      # Must check BEFORE is.list() since data frames are lists
+      if (ncol(n) < 2L || ncol(n) > 3L) {
+        cli_abort(
+          c("{.arg n} as a data frame must have 2 or 3 columns.",
+            "x" = "You supplied {ncol(n)} column{?s}.",
+            "i" = "2-col: treatment + count (global). 3-col: page_by + treatment + count (per-group)."),
+          call = call
+        )
+      }
+      count_col <- ncol(n)
+      if (!is.numeric(n[[count_col]])) {
+        cli_abort(
+          c("Last column of {.arg n} data frame must be numeric (counts).",
+            "x" = "Column {.val {names(n)[count_col]}} is {.cls {class(n[[count_col]])}}."),
+          call = call
+        )
+      }
     } else if (is.numeric(n)) {
       if (is.null(names(n))) {
         cli_abort(
-          c("{.arg n} must be a named numeric vector, a named list, or a function.",
+          c("{.arg n} must be a named numeric vector, a named list, or a data frame.",
             "x" = "You supplied an unnamed numeric vector.",
             "i" = "Example: {.code c(placebo = 45, zom_50mg = 45)}."),
           call = call
@@ -197,7 +214,7 @@ validate_n_param <- function(n, format = NULL, call = caller_env()) {
       }
     } else {
       cli_abort(
-        c("{.arg n} must be a named numeric vector, a named list, or a function.",
+        c("{.arg n} must be a named numeric vector, a named list, or a data frame.",
           "x" = "You supplied {.obj_type_friendly {n}}.",
           "i" = "See {.fun fr_header} docs for N-count examples."),
         call = call

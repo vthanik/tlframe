@@ -638,8 +638,10 @@ test_that("resolve_group_labels handles per-group list n", {
   spec <- suppressWarnings(tlframe:::finalize_spec(spec))
 
   result <- tlframe:::resolve_group_labels(spec, spec$data, "GroupX")
-  expect_true("a" %in% names(result))
-  expect_true(grepl("N=30", result["a"]))
+  # Now returns list(columns, spans)
+  expect_true(is.list(result))
+  expect_true("a" %in% names(result$columns))
+  expect_true(grepl("N=30", result$columns["a"]))
 })
 
 test_that("resolve_group_labels returns NULL for unknown group in list n", {
@@ -652,30 +654,24 @@ test_that("resolve_group_labels returns NULL for unknown group in list n", {
   expect_null(result)
 })
 
-test_that("resolve_group_labels handles function n returning named vector", {
-  # Function returning named vector → resolved globally in finalize_labels
+test_that("resolve_group_labels handles 2-col df n resolved globally", {
+  # 2-col data frame → resolved globally in finalize_labels
   spec <- data.frame(trt1 = 1, trt2 = 2) |>
     fr_table() |>
-    fr_cols(trt1 = fr_col("Treatment 1"), trt2 = fr_col("Treatment 2"))
+    fr_cols(trt1 = fr_col("Treatment 1"), trt2 = fr_col("Treatment 2")) |>
+    fr_header(
+      n = data.frame(trt = c("Treatment 1", "Treatment 2"), n = c(40L, 35L)),
+      format = "{label}\n(N={n})"
+    )
 
-  spec$header$n <- function(d) c(trt1 = 40L, trt2 = 35L)
-  spec$header$format <- "{label}\n(N={n})"
   spec <- tlframe:::finalize_spec(spec)
 
-  # Named vector return → already resolved globally, resolve_group_labels returns NULL
+  # 2-col df → already resolved globally, resolve_group_labels returns NULL
   result <- tlframe:::resolve_group_labels(spec, spec$data, "SomeGroup")
   expect_null(result)
 
   # Labels should be resolved globally
   expect_true(grepl("N=40", spec$columns$trt1$label))
-})
-
-test_that("finalize_spec errors when function n returns wrong type", {
-  spec <- data.frame(a = 1) |> fr_table()
-  spec$header$n <- function(d) "bad"
-  spec$header$format <- "{label}\n(N={n})"
-
-  expect_error(tlframe:::finalize_spec(spec), "named numeric")
 })
 
 
@@ -699,6 +695,106 @@ test_that("match_trt_to_columns is case-insensitive", {
   counts <- c("placebo" = 45L)
   result <- tlframe:::match_trt_to_columns(counts, columns)
   expect_equal(result[["col_a"]], 45L)
+})
+
+test_that("match_trt_to_columns only matches column labels (not spanners)", {
+  # Columns have sub-labels, not treatment names
+  columns <- list(
+    pt     = fr_col("Parameter"),
+    bl_pbo = fr_col("Baseline"),
+    val_pbo = fr_col("Value"),
+    cfb_pbo = fr_col("CFB")
+  )
+  counts <- c("Placebo" = 45L)
+  result <- tlframe:::match_trt_to_columns(counts, columns)
+  # No column label matches "Placebo" → empty result
+
+  expect_length(result, 0L)
+})
+
+test_that("match_trt_to_columns works for direct column label match", {
+  columns <- list(col_a = fr_col("Placebo"), col_b = fr_col("Active"))
+  counts <- c("Placebo" = 45L, "Active" = 44L)
+  result <- tlframe:::match_trt_to_columns(counts, columns)
+  expect_equal(result[["col_a"]], 45L)
+  expect_equal(result[["col_b"]], 44L)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# match_trt_to_spans()
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("match_trt_to_spans matches treatment labels to spanner labels", {
+  columns <- list(
+    bl_pbo = fr_col("Baseline"),
+    val_pbo = fr_col("Value"),
+    bl_act = fr_col("Baseline"),
+    val_act = fr_col("Value")
+  )
+  spans <- list(
+    list(label = "Placebo", columns = c("bl_pbo", "val_pbo"), level = 1L),
+    list(label = "Active", columns = c("bl_act", "val_act"), level = 1L)
+  )
+  counts <- c("Placebo" = 45L, "Active" = 44L)
+  result <- tlframe:::match_trt_to_spans(counts, columns, spans)
+  # Keyed by span label
+  expect_equal(result[["Placebo"]], 45L)
+  expect_equal(result[["Active"]], 44L)
+})
+
+test_that("match_trt_to_spans skips treatments that match column labels", {
+  columns <- list(
+    col_a = fr_col("Placebo"),
+    col_b = fr_col("Value")
+  )
+  spans <- list(
+    list(label = "Placebo", columns = c("col_b"), level = 1L)
+  )
+  counts <- c("Placebo" = 45L)
+  result <- tlframe:::match_trt_to_spans(counts, columns, spans)
+  # "Placebo" matches a column label → skipped for span matching
+  expect_length(result, 0L)
+})
+
+test_that("match_trt_to_spans is case-insensitive", {
+  columns <- list(bl = fr_col("Baseline"))
+  spans <- list(
+    list(label = "PLACEBO", columns = c("bl"), level = 1L)
+  )
+  counts <- c("placebo" = 45L)
+  result <- tlframe:::match_trt_to_spans(counts, columns, spans)
+  expect_equal(result[["PLACEBO"]], 45L)
+})
+
+test_that("match_trt_to_spans returns empty when no spans", {
+  columns <- list(col_a = fr_col("A"))
+  counts <- c("Test" = 10L)
+  result <- tlframe:::match_trt_to_spans(counts, columns, list())
+  expect_length(result, 0L)
+})
+
+test_that("mixed column + spanner N-count matching works together", {
+  columns <- list(
+    pt     = fr_col("Parameter"),
+    bl_pbo = fr_col("Baseline"),
+    val_pbo = fr_col("Value"),
+    total  = fr_col("Total")
+  )
+  spans <- list(
+    list(label = "Placebo", columns = c("bl_pbo", "val_pbo"), level = 1L)
+  )
+  counts <- c("Placebo" = 45L, "Total" = 100L)
+
+  col_result <- tlframe:::match_trt_to_columns(counts, columns)
+  span_result <- tlframe:::match_trt_to_spans(counts, columns, spans)
+
+  # "Total" matches column label directly
+  expect_equal(col_result[["total"]], 100L)
+  # "Placebo" matches spanner
+  expect_equal(span_result[["Placebo"]], 45L)
+  # "Placebo" should NOT be in column result
+  expect_false("bl_pbo" %in% names(col_result))
 })
 
 

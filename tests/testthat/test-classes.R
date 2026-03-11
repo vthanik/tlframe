@@ -588,6 +588,16 @@ test_that("check_fr_col errors on non-fr_col", {
   expect_error(check_fr_col("col"), class = "rlang_error")
 })
 
+test_that("fr_col accepts spaces parameter", {
+  col_indent <- fr_col("A", spaces = "indent")
+  expect_equal(col_indent$spaces, "indent")
+  col_preserve <- fr_col("A", spaces = "preserve")
+  expect_equal(col_preserve$spaces, "preserve")
+  col_null <- fr_col("A")
+  expect_null(col_null$spaces)
+  expect_error(fr_col("A", spaces = "invalid"), class = "rlang_error")
+})
+
 
 test_that("print.fr_spec shows dimensions and orientation", {
   spec <- data.frame(a = 1:3, b = letters[1:3]) |>
@@ -629,7 +639,7 @@ test_that("check_non_negative_int rejects invalid inputs", {
 
 test_that("validate_n_param accepts valid n forms", {
   expect_silent(validate_n_param(n = c(a = 10, b = 20)))
-  expect_silent(validate_n_param(n = function(d) c(a = 1)))
+  expect_silent(validate_n_param(n = data.frame(trt = "A", n = 10L)))
   expect_silent(validate_n_param(n = list(grp1 = c(a = 10))))
   expect_silent(validate_n_param(n = NULL))
 })

@@ -43,27 +43,16 @@
 #'     Example: `list("Blood Pressure" = c(placebo = 42, zom_50mg = 40),
 #'                     "Heart Rate" = c(placebo = 45, zom_50mg = 44))`.
 #'
-#'   * **Function** — called **once** with the full `spec$data` during
-#'     `finalize_spec()`. Must accept one argument (the data frame) and
-#'     return either:
+#'   * **Data frame** — pre-computed N-counts from ADSL or external source.
 #'
 #'     \describe{
-#'       \item{**Named numeric vector**}{Treatment names → counts.
-#'         Names are matched to column display labels (case-insensitive).
-#'         Same N on every page (global).
-#'         Example return: `c("Placebo" = 45, "Zomerane 50mg" = 44)`.}
-#'       \item{**2-column data frame**}{Column 1 = treatment labels,
-#'         column 2 = counts (numeric). Same N on every page (global).
-#'         Equivalent to a named vector.}
-#'       \item{**3-column data frame**}{Column 1 = page\_by group values,
-#'         column 2 = treatment labels, column 3 = counts (numeric).
-#'         Different N per page\_by group — tlframe slices per group at
-#'         render time.}
+#'       \item{**2-column**}{Column 1 = treatment display labels,
+#'         column 2 = counts (numeric). Labels matched case-insensitively
+#'         to column and spanner labels. Same N on every page.}
+#'       \item{**3-column**}{Column 1 = page\_by group values,
+#'         column 2 = treatment display labels, column 3 = counts.
+#'         Different N per page\_by group.}
 #'     }
-#'
-#'     For external data (e.g. ADSL), capture via closure:
-#'     `\(d) adsl |> ...` (the `d` argument receives `spec$data` but
-#'     can be ignored in favour of the captured external data).
 #'
 #' @param format A [glue][glue::glue]-style format string for N-count
 #'   labels. Available tokens: `{label}` (column display label) and
@@ -97,9 +86,8 @@
 #'   `finalize_spec()`. All page groups share the same labels.
 #' * **Named list** — resolved per page group in the render loop.
 #'   Each group gets its own header labels via a label override map.
-#' * **Function** — called once during `finalize_spec()`. The return
-#'   type determines global (named vector or 2-col df) vs per-group
-#'   (3-col df) resolution.
+#' * **Data frame** — 2-col resolved globally during `finalize_spec()`.
+#'   3-col resolved per page group in the render loop.
 #'
 #' The `{label}` token in `format` expands to the column's resolved label
 #' (from `fr_col(label = ...)` or auto-generated). This means
@@ -150,51 +138,39 @@
 #'     format = "{label}\n(N={n})"
 #'   )
 #'
-#' ## ── Function N-count — named vector return (global) ───────────────────────
+#' ## ── Data frame N-count — 2-col (global) ────────────────────────────────────
 #'
-#' tbl_demog |>
-#'   fr_table() |>
-#'   fr_header(
-#'     n = \(d) c(placebo = nrow(d[d$characteristic == "n", ]),
-#'                zom_50mg = nrow(d[d$characteristic == "n", ])),
-#'     format = "{label}\n(N={n})"
-#'   )
-#'
-#' ## ── Function N-count — 2-col data frame return (global) ──────────────────
-#'
-#' # Function receives spec$data, returns data frame with treatment + count.
-#' # Treatment labels are matched to column labels (case-insensitive).
+#' # Pre-computed from ADSL — pass directly, no function wrapper needed
+#' adsl_n <- data.frame(
+#'   trt = c("Zomerane 50 mg", "Placebo"),
+#'   n   = c(45L, 45L)
+#' )
 #' tbl_demog |>
 #'   fr_table() |>
 #'   fr_cols(
 #'     zom_50mg = fr_col("Zomerane 50 mg"),
 #'     placebo  = fr_col("Placebo")
 #'   ) |>
-#'   fr_header(
-#'     n = \(d) data.frame(
-#'       trt = c("Zomerane 50 mg", "Placebo"),
-#'       n   = c(45L, 45L)
-#'     ),
-#'     format = "{label}\n(N={n})"
-#'   )
+#'   fr_header(n = adsl_n, format = "{label}\n(N={n})")
 #'
-#' ## ── Function N-count using closure for external data ─────────────────────
+#' ## ── Data frame N-count — 3-col (per-group with page_by) ───────────────────
 #'
-#' # Capture external dataset via closure — d argument is ignored
-#' \donttest{
-#' if (requireNamespace("dplyr", quietly = TRUE)) {
-#'   tbl_vs |>
-#'     fr_table() |>
-#'     fr_rows(page_by = "param") |>
-#'     fr_header(
-#'       n = \(d) advs |>
-#'         dplyr::filter(SAFFL == "Y") |>
-#'         dplyr::group_by(PARAM, TRTA) |>
-#'         dplyr::summarise(n = dplyr::n_distinct(USUBJID), .groups = "drop"),
-#'       format = "{label}\n(N={n})"
-#'     )
-#' }
-#' }
+#' # Different N per page_by group — column 1 matches page_by values
+#' vs_n <- data.frame(
+#'   param = c("Systolic BP (mmHg)", "Systolic BP (mmHg)",
+#'             "Heart Rate (bpm)",   "Heart Rate (bpm)"),
+#'   trt   = c("Placebo", "Zomerane 50 mg",
+#'             "Placebo", "Zomerane 50 mg"),
+#'   n     = c(45L, 44L, 42L, 40L)
+#' )
+#' tbl_vs |>
+#'   fr_table() |>
+#'   fr_rows(page_by = "param") |>
+#'   fr_cols(
+#'     placebo  = fr_col("Placebo"),
+#'     zom_50mg = fr_col("Zomerane 50 mg")
+#'   ) |>
+#'   fr_header(n = vs_n, format = "{label}\n(N={n})")
 #'
 #' ## ── Header background colour (hex or CSS named colour) ──────────────────
 #'
@@ -236,7 +212,7 @@ fr_header <- function(spec, align = NULL, valign = NULL,
   if (!is.null(fg)) fg <- resolve_color(fg, call = call)
   if (!is.null(repeat_on_page)) check_scalar_lgl(repeat_on_page, arg = "repeat_on_page", call = call)
 
-  # Validate N-count parameters (3 forms: named numeric, named list, function)
+  # Validate N-count parameters (3 forms: named numeric, named list, data frame)
   validate_n_param(n = n, format = format, call = call)
 
   # Preserve existing spans — fr_header replaces everything else

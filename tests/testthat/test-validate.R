@@ -300,8 +300,12 @@ test_that("validate_n_param accepts named list with named numeric entries", {
   )))
 })
 
-test_that("validate_n_param accepts function form", {
-  expect_silent(validate_n_param(n = function(d) c(a = 1)))
+test_that("validate_n_param accepts 2-col data frame", {
+  expect_silent(validate_n_param(n = data.frame(trt = "A", n = 10L)))
+})
+
+test_that("validate_n_param rejects function form", {
+  expect_error(validate_n_param(n = function(d) c(a = 1)), "named numeric")
 })
 
 test_that("validate_n_param errors on unsupported type (logical)", {
