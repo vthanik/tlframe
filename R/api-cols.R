@@ -11,9 +11,10 @@
 #'
 #' @description
 #'
-#' Configures the display label, width, alignment, and visibility of one or
-#' more table columns. `fr_cols()` owns column **structure**; [fr_header()]
-#' owns header **presentation** (alignment, valign, N-counts, bold, colours).
+#' Configures the display label, width, alignment, visibility, N-counts, and
+#' spanning groups for table columns. `fr_cols()` is the **single source of
+#' truth** for all column structure; [fr_header()] owns header
+#' **presentation** only (bold, colours, font size).
 #'
 #' Columns not explicitly named here receive auto-generated defaults: the
 #' column name as the label (optionally transformed by `.label_fn`),
@@ -21,10 +22,6 @@
 #' everything else → `"left"`), and width from `.width`.
 #'
 #' Calling `fr_cols()` again **replaces** the entire column configuration.
-#'
-#' For N-count header labels (e.g. `"Placebo\\n(N=45)"`), header alignment,
-#' or header vertical alignment, use [fr_header()] which is
-#' order-independent with `fr_cols()`.
 #'
 #' @param spec An `fr_spec` object from [fr_table()].
 #' @param ... Column specifications. Can be provided in two ways:
@@ -75,6 +72,44 @@
 #'   * `~ tools::toTitleCase(gsub("_", " ", .x))` — title case.
 #'   * `toupper` — all caps.
 #'
+#' @param .spaces How to handle leading spaces in cell data for all columns
+#'   that do not have an explicit `spaces` set in [fr_col()]. One of:
+#'   * `"indent"` (default) — convert leading spaces to paragraph-level
+#'     indent. The indent width is measured from the page font metrics,
+#'     so it renders correctly in both proportional and monospace fonts.
+#'   * `"preserve"` — keep leading spaces as literal characters.
+#'   * `NULL` — same as `"indent"`.
+#' @param .n Bulk N-counts applied across columns and spanning groups.
+#'   **All forms match by display label** (case-insensitive), never by
+#'   data column name. Accepts:
+#'
+#'   * **Named numeric vector** — names = display labels matched
+#'     case-insensitively to column labels AND group names.
+#'     Example: `c("Placebo" = 45, "Zomerane 50 mg" = 44)`.
+#'
+#'   * **Data frame (2-column)** — column 1 = display labels,
+#'     column 2 = counts. Same N on every page.
+#'     Example: `data.frame(trt = c("Placebo", "Zom 50mg"), n = c(45, 44))`.
+#'
+#'   * **Data frame (3-column)** — column 1 = page\_by group values,
+#'     column 2 = display labels, column 3 = counts. Different N per
+#'     page\_by group.
+#'
+#'   * **Named list** — keys = page\_by group values, values = named
+#'     numeric vectors (names = display labels).
+#'     Example: `list("Systolic BP" = c("Placebo" = 42, "Zom" = 40))`.
+#'
+#'   **Auto-routing**: when a label matches a `group` name (spanning
+#'   header), N goes on the span. When it matches a column label, N goes
+#'   on the column. Group matches take priority (no double-apply).
+#'
+#'   Per-column `fr_col(n = ...)` always takes highest priority.
+#'
+#' @param .n_format A [glue][glue::glue]-style format string for N-count
+#'   labels. Available tokens: `{label}` (column display label) and
+#'   `{n}` (count). Default `NULL` inherits from config YAML
+#'   `columns.n_format` or theme. Example: `"{label}\\n(N={n})"`.
+#'
 #' @param .split Logical or `NULL`. Column splitting for wide tables that
 #'   exceed the printable page width:
 #'   * `NULL` (default) — no splitting. All columns on one page.
@@ -109,7 +144,8 @@
 #'
 #' @section Label resolution order:
 #' Column labels are resolved in this priority (highest wins):
-#' 1. [fr_header()] `n` / `format` — dynamic label with N counts.
+#' 1. N-count formatting (`fr_col(n=)` or `.n` + `.n_format`) — dynamic
+#'    label with N counts, applied at render time.
 #' 2. Explicit `fr_col(label = ...)` in `...` arguments.
 #' 3. `.list` — programmatic label map.
 #' 4. `.label_fn` — transform function applied to the column name.
@@ -133,20 +169,66 @@
 #'   transform and override specific columns as needed.
 #'
 #' @examples
-#' ## ── Relabel + set widths + right-align (most common pattern) ─────────────
+#' ## ── Per-column N-counts (80% case) ───────────────────────────────────────
 #'
 #' tbl_demog |>
 #'   fr_table() |>
 #'   fr_cols(
-#'     characteristic = fr_col("Characteristic",          width = 2.5),
-#'     zom_50mg       = fr_col("Zomerane 50 mg",          width = 1.5, align = "right"),
-#'     zom_100mg      = fr_col("Zomerane 100 mg",         width = 1.5, align = "right"),
-#'     placebo        = fr_col("Placebo",                  width = 1.5, align = "right"),
-#'     total          = fr_col("All Subjects",             width = 1.5, align = "right")
+#'     characteristic = fr_col("Characteristic", width = 2.5),
+#'     zom_50mg       = fr_col("Zomerane 50 mg",  n = 45),
+#'     zom_100mg      = fr_col("Zomerane 100 mg", n = 45),
+#'     placebo        = fr_col("Placebo",          n = 45),
+#'     total          = fr_col("Total",            n = 135),
+#'     .n_format = "{label}\n(N={n})"
 #'   ) |>
-#'   fr_header(
-#'     n = c(zom_50mg = 45, zom_100mg = 45, placebo = 45, total = 135),
-#'     format = "{label}\n(N={n})"
+#'   fr_header(bold = TRUE, align = "center")
+#'
+#' ## ── Bulk N from a data frame ─────────────────────────────────────────────
+#'
+#' adsl_n <- data.frame(
+#'   trt = c("Placebo", "Zomerane 50 mg", "Zomerane 100 mg", "Total"),
+#'   n   = c(45L, 45L, 45L, 135L)
+#' )
+#' tbl_demog |>
+#'   fr_table() |>
+#'   fr_cols(
+#'     characteristic = fr_col("Characteristic", width = 2.5),
+#'     placebo        = fr_col("Placebo"),
+#'     zom_50mg       = fr_col("Zomerane 50 mg"),
+#'     zom_100mg      = fr_col("Zomerane 100 mg"),
+#'     total          = fr_col("Total"),
+#'     .n = adsl_n,
+#'     .n_format = "{label}\n(N={n})"
+#'   )
+#'
+#' ## ── Spanning groups via group= ───────────────────────────────────────────
+#'
+#' tbl_demog |>
+#'   fr_table() |>
+#'   fr_cols(
+#'     characteristic = fr_col("Characteristic", width = 2.5),
+#'     zom_50mg       = fr_col("50 mg",  group = "Zomerane"),
+#'     zom_100mg      = fr_col("100 mg", group = "Zomerane"),
+#'     placebo        = fr_col("Placebo"),
+#'     total          = fr_col("Total")
+#'   )
+#'
+#' ## ── Bulk N auto-routes to spans and columns ──────────────────────────────
+#'
+#' n_df <- data.frame(
+#'   trt = c("Zomerane", "Placebo", "Total"),
+#'   n   = c(90L, 45L, 135L)
+#' )
+#' tbl_demog |>
+#'   fr_table() |>
+#'   fr_cols(
+#'     characteristic = fr_col("Characteristic", width = 2.5),
+#'     zom_50mg       = fr_col("50 mg",  group = "Zomerane"),
+#'     zom_100mg      = fr_col("100 mg", group = "Zomerane"),
+#'     placebo        = fr_col("Placebo"),
+#'     total          = fr_col("Total"),
+#'     .n = n_df,
+#'     .n_format = "{label}\n(N={n})"
 #'   )
 #'
 #' ## ── Auto-width: let the engine calculate ─────────────────────────────────
@@ -212,32 +294,34 @@
 #'   fr_table() |>
 #'   fr_cols(.list = labels_vec)
 #'
-#' ## ── N-count formatting via fr_header ────────────────────────────────────
+#' ## ── Leading spaces → paragraph-level indent (default) ──────────────────
 #'
+#' # tbl_demog has leading spaces ("  Mean (SD)", "  <65", etc.)
+#' # Default .spaces = "indent" converts them to real paragraph indent
 #' tbl_demog |>
 #'   fr_table() |>
 #'   fr_cols(
 #'     characteristic = fr_col("Characteristic", width = 2.5),
-#'     zom_50mg       = fr_col("Zomerane 50 mg", align = "right"),
-#'     placebo        = fr_col("Placebo", align = "right")
-#'   ) |>
-#'   fr_header(
-#'     n = c(zom_50mg = 45, placebo = 45),
-#'     format = "{label}\n(N={n})"
+#'     .spaces = "indent"
 #'   )
 #'
-#' ## ── Combine auto-width + label transform ─────────────────────────────────
+#' ## ── Preserve leading spaces as literal characters ─────────────────────
+#'
+#' # Use "preserve" for pre-formatted content with exact spacing
+#' tbl_demog |>
+#'   fr_table() |>
+#'   fr_cols(
+#'     characteristic = fr_col("Characteristic", width = 2.5),
+#'     .spaces = "preserve"
+#'   )
+#'
+#' ## ── Per-column override: preserve one column, indent the rest ─────────
 #'
 #' tbl_demog |>
 #'   fr_table() |>
 #'   fr_cols(
-#'     characteristic = fr_col("Characteristic"),
-#'     .width = "auto",
-#'     .label_fn = ~ tools::toTitleCase(gsub("_", " ", .x))
-#'   ) |>
-#'   fr_header(
-#'     n = c(zom_50mg = 45, zom_100mg = 45, placebo = 45, total = 135),
-#'     format = "{label}\n(N={n})"
+#'     characteristic = fr_col("Characteristic", width = 2.5, spaces = "preserve"),
+#'     .spaces = "indent"
 #'   )
 #'
 #' ## ── Column splitting: split + fit to fill page ─────────────────────────
@@ -258,12 +342,13 @@
 #'   fr_cols(.split = TRUE)
 #'
 #' @seealso [fr_col()] for the column spec constructor, [fr_header()] for
-#'   N-count labels and header styling, [fr_spans()] for spanning group
-#'   headers, [fr_rows()] for pagination.
+#'   header presentation (bold, colours, alignment), [fr_spans()] for
+#'   advanced multi-level spanning headers, [fr_rows()] for pagination.
 #'
 #' @export
 fr_cols <- function(spec, ..., .list = NULL, .width = NULL, .align = NULL,
-                       .label_fn = NULL, .split = NULL) {
+                       .label_fn = NULL, .spaces = NULL, .split = NULL,
+                       .n = NULL, .n_format = NULL) {
   call <- caller_env()
   check_fr_spec(spec, call = call)
 
@@ -271,6 +356,12 @@ fr_cols <- function(spec, ..., .list = NULL, .width = NULL, .align = NULL,
   if (!is.null(.split)) {
     check_scalar_lgl(.split, arg = ".split", call = call)
     spec$columns_meta$split <- .split
+  }
+
+  # Validate .spaces: NULL, "indent", or "preserve"
+  if (!is.null(.spaces)) {
+    .spaces <- match_arg_fr(.spaces, fr_env$valid_spaces, call = call)
+    spec$columns_meta$spaces <- .spaces
   }
 
   # Validate .width: NULL, numeric, "auto", "equal", "fit", or "N%"
@@ -383,6 +474,17 @@ fr_cols <- function(spec, ..., .list = NULL, .width = NULL, .align = NULL,
                                          page           = spec$page)
 
   spec$columns_meta$width_mode <- width_mode
+
+  # Validate and store N-count parameters
+  if (!is.null(.n)) {
+    validate_n_param(n = .n, format = .n_format, call = call)
+    spec$columns_meta$n <- .n
+  }
+  if (!is.null(.n_format)) {
+    check_scalar_chr(.n_format, arg = ".n_format", call = call)
+    spec$columns_meta$n_format <- .n_format
+  }
+
   spec
 }
 

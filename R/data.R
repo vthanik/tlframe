@@ -269,7 +269,7 @@
 #' missing parameters to create **natural N variation** across vital sign
 #' groups --- exactly the scenario that per-group N-count headers address.
 #'
-#' Designed as the source for [fr_header()] `n = function(...)` closures
+#' Designed as the source for [fr_cols()] `.n` data frame parameter
 #' when the display table ([tbl_vs]) is pre-summarized.
 #'
 #' @format A data frame with approximately 1900 rows and 12 variables:
@@ -313,19 +313,18 @@
 #'   tapply(USUBJID, list(PARAM, TRTA), function(x) length(unique(x)))
 #' )
 #'
-#' # Use as N-count source via closure
+#' # Use as N-count source via data frame
+#' vs_n <- aggregate(
+#'   USUBJID ~ PARAM + TRTA, data = advs[advs$AVISIT == "Baseline", ],
+#'   FUN = function(x) length(unique(x))
+#' )
+#' names(vs_n) <- c("param", "trt", "n")
 #' tbl_vs |>
 #'   fr_table() |>
 #'   fr_rows(page_by = "param") |>
-#'   fr_header(
-#'     n = \(d) aggregate(
-#'       USUBJID ~ PARAM + TRTA, data = advs[advs$AVISIT == "Baseline", ],
-#'       FUN = function(x) length(unique(x))
-#'     ),
-#'     format = "{label}\n(N={n})"
-#'   )
+#'   fr_cols(.n = vs_n, .n_format = "{label}\n(N={n})")
 #'
-#' @seealso [tbl_vs] for the pre-summarized display table, [fr_header()]
+#' @seealso [tbl_vs] for the pre-summarized display table, [fr_cols()]
 #'   for N-count formatting.
 "advs"
 
@@ -428,7 +427,7 @@
 #'     placebo   = fr_col("Placebo"),
 #'     total     = fr_col("Total")
 #'   ) |>
-#'   fr_header(n = c(zom_50mg = 45, zom_100mg = 45, placebo = 45, total = 135))
+#'   fr_header(bold = TRUE, align = "center")
 "tbl_ae_summary"
 
 
@@ -542,10 +541,10 @@
 #'
 #' Designed to demonstrate advanced tlframe features: `page_by` for
 #' per-parameter pages, [fr_spans()] for two-level spanning headers,
-#' [fr_header()] with `n = function(...)` for per-group N-counts, and
+#' [fr_cols()] with `.n` data frame for per-group N-counts, and
 #' `fr_cols(.split = TRUE)` for wide layouts.
 #'
-#' Pair with [advs] via a closure in [fr_header()] `n = \(d) ...` to get
+#' Pair with [advs] via a data frame in [fr_cols()] `.n` to get
 #' per-parameter N-counts in column headers.
 #'
 #' @format A data frame with 60 rows and 12 variables:

@@ -21,13 +21,14 @@ page:
 
 columns:
   split: false
+  spaces: indent
+  n_format: ~
 
 header:
   align: ~
   valign: bottom
   bold: false
   span_gap: true
-  n_format: "{label}\n(N={n})"
 
 pagehead:
   left: ~

@@ -181,11 +181,23 @@ render_rtf <- function(spec, page_groups, col_panels, path) {
 
       # Per-group header label overrides (pre-computed in prepare_pages,
       # or computed here for single-group specs without page_by)
-      label_overrides <- group$label_overrides %||%
-        resolve_group_labels(spec, group$data, group$group_label)
+      if (!is.null(group$label_overrides) || !is.null(group$span_overrides)) {
+        label_overrides <- group$label_overrides
+        span_overrides <- group$span_overrides
+      } else {
+        resolved <- resolve_group_labels(spec, group$data, group$group_label)
+        if (is.list(resolved)) {
+          label_overrides <- resolved$columns
+          span_overrides <- resolved$spans
+        } else {
+          label_overrides <- resolved
+          span_overrides <- NULL
+        }
+      }
 
       # Spanning header rows
-      rtf_write(con, rtf_spanner_rows(spec, vis_columns, borders, color_info))
+      rtf_write(con, rtf_spanner_rows(spec, vis_columns, borders, color_info,
+                                        span_overrides = span_overrides))
 
       # Column header row
       rtf_write(con, rtf_col_header_row(spec, vis_columns, borders, color_info,
@@ -244,7 +256,8 @@ render_rtf <- function(spec, page_groups, col_panels, path) {
                                                group$group_label))
             }
             rtf_write(con, rtf_spanner_rows(spec, vis_columns, borders,
-                                             color_info))
+                                             color_info,
+                                             span_overrides = span_overrides))
             rtf_write(con, rtf_col_header_row(spec, vis_columns, borders,
                                                color_info,
                                                label_overrides = label_overrides))
@@ -780,7 +793,8 @@ rtf_page_by_rows <- function(spec, columns, group_label) {
 
 #' RTF spanner (spanning header) rows
 #' @noRd
-rtf_spanner_rows <- function(spec, columns, borders, color_info) {
+rtf_spanner_rows <- function(spec, columns, borders, color_info,
+                              span_overrides = NULL) {
   spans <- spec$header$spans
   if (length(spans) == 0L) return("")
 
@@ -839,7 +853,13 @@ rtf_spanner_rows <- function(spec, columns, borders, color_info) {
           border_str <- rtf_cell_border_string(borders$header, 1L, k, color_info)
           cell_defs <- c(cell_defs, paste0(border_str, span_border, pad_str, "\\clmrg\\cellx", cum_widths[k]))
         }
-        content <- rtf_escape_and_resolve(matching_span$label)
+        span_label <- matching_span$label
+        if (!is.null(span_overrides)) {
+          ov <- span_overrides[matching_span$label]
+          if (!is.na(ov)) span_label <- ov
+        }
+        content <- rtf_escape_and_resolve(span_label)
+        content <- gsub("\n", "\\\\line ", content)
         cell_contents <- c(cell_contents,
                            paste0("\\pard\\intbl\\qc", sp_str, "\\fs", fs, " ",
                                   content, "\\cell"))

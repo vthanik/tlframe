@@ -409,13 +409,13 @@ test_that("apply_config applies header span_gap", {
   fr_config_reset()
 })
 
-test_that("apply_config applies header n_format", {
+test_that("apply_config applies header n_format to columns_meta", {
   fr_config_reset()
   fr_env$config <- list(header = list(
     n_format = "{label} [N={n}]"
   ))
   spec <- data.frame(a = 1) |> fr_table()
-  expect_equal(spec$header$format, "{label} [N={n}]")
+  expect_equal(spec$columns_meta$n_format, "{label} [N={n}]")
   fr_config_reset()
 })
 

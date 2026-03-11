@@ -264,7 +264,13 @@ apply_fr_theme <- function(spec) {
     c("titles_after", "footnotes_before", "pagehead_after",
       "pagefoot_before", "page_by_after"))
 
-  # Column split/stub defaults (from theme)
+  # Column spaces/split/stub/n_format defaults (from theme)
+  if (!is.null(setup[["spaces"]])) {
+    spec$columns_meta$spaces <- setup[["spaces"]]
+  }
+  if (!is.null(setup[["n_format"]])) {
+    spec$columns_meta$n_format <- setup[["n_format"]]
+  }
   if (!is.null(setup[["split"]])) {
     spec$columns_meta$split <- setup[["split"]]
   }

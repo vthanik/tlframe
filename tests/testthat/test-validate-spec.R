@@ -143,17 +143,17 @@ test_that("fr_validate passes with valid stub column", {
 })
 
 
-# ── Check 4: N-count names match column specs ──────────────────────────────
+# ── Check 4: N-count names match column specs (now on columns_meta) ────────
 
 test_that("fr_validate warns when N-count names don't match columns", {
   spec <- tbl_demog |> fr_table()
-  spec$header$n <- c(nonexistent = 50L)
+  spec$columns_meta$n <- c(nonexistent = 50L)
   expect_warning(fr_validate(spec), "N-count")
 })
 
 test_that("fr_validate strict errors when N-count names don't match columns", {
   spec <- tbl_demog |> fr_table()
-  spec$header$n <- c(nonexistent = 50L)
+  spec$columns_meta$n <- c(nonexistent = 50L)
   expect_error(fr_validate(spec, strict = TRUE), "validation issue")
 })
 
@@ -161,7 +161,7 @@ test_that("fr_validate passes with valid N-count names matching data columns", {
   spec <- tbl_demog |> fr_table()
   cols <- names(tbl_demog)
   n_vec <- setNames(rep(50L, 2), cols[2:3])
-  spec$header$n <- n_vec
+  spec$columns_meta$n <- n_vec
   expect_invisible(fr_validate(spec))
 })
 
@@ -169,20 +169,19 @@ test_that("fr_validate passes with valid N-count names matching column specs", {
   spec <- tbl_demog |> fr_table() |> fr_cols()
   col_names <- names(spec$columns)
   n_vec <- setNames(rep(50L, 2), col_names[1:2])
-  spec$header$n <- n_vec
+  spec$columns_meta$n <- n_vec
   expect_invisible(fr_validate(spec))
 })
 
 test_that("fr_validate skips N-count check for non-numeric or unnamed n", {
-  # Function form — should not trigger the named-numeric check
-
+  # List form — should not trigger the named-numeric check
   spec <- tbl_demog |> fr_table()
-  spec$header$n <- function(data, group) 50L
+  spec$columns_meta$n <- list("GroupA" = c("Placebo" = 42))
   expect_invisible(fr_validate(spec))
 
   # Unnamed numeric — also skipped
   spec2 <- tbl_demog |> fr_table()
-  spec2$header$n <- 50L
+  spec2$columns_meta$n <- 50L
   expect_invisible(fr_validate(spec2))
 })
 

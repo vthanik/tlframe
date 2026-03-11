@@ -10,7 +10,10 @@ fr_col(
   align = NULL,
   header_align = NULL,
   visible = NULL,
-  stub = FALSE
+  stub = FALSE,
+  spaces = NULL,
+  n = NULL,
+  group = NULL
 )
 }
 \arguments{
@@ -79,17 +82,55 @@ Stub columns are typically row-label or parameter columns that
 provide context for each panel. When \code{.split} is enabled but no
 columns have \code{stub = TRUE}, stubs are auto-inferred from
 \code{group_by}/\code{indent_by} columns or the first column.}
+
+\item{spaces}{How to handle leading spaces in cell data. One of:
+\itemize{
+\item \code{"indent"} — convert leading spaces to paragraph-level indent
+(RTF \verb{\\li}, LaTeX \verb{\\leftskip}). All lines (including wrapped)
+maintain the same indent. This is the correct approach for
+proportional fonts and pharma SOC/PT hierarchies.
+\item \code{"preserve"} — keep leading spaces as literal characters. Use
+for pre-formatted content where exact spacing must be retained.
+\item \code{NULL} (default) — inherits from the \code{.spaces} argument of
+\code{\link[=fr_cols]{fr_cols()}}, which defaults to \code{"indent"}.
+}}
+
+\item{n}{Per-column subject count. A non-negative integer scalar
+(e.g. \code{n = 45}). Formatted into the column label at render time
+using the \code{.n_format} template from \code{\link[=fr_cols]{fr_cols()}}. Takes \strong{highest
+priority} in N-count resolution — overrides bulk \code{.n} from
+\code{\link[=fr_cols]{fr_cols()}}. Use for the common case where you know each column's
+N at definition time. \code{NULL} (default) means no per-column N.}
+
+\item{group}{Character scalar. Assigns this column to a \strong{spanning
+header group}. All columns sharing the same \code{group} value get an
+auto-generated span at level 1, ordered by first column appearance.
+This replaces \code{\link[=fr_spans]{fr_spans()}} for the 90\\% case — define your column
+structure and grouping in one place.
+
+Rules:
+\itemize{
+\item Single-column groups create single-column sub-headers.
+\item Explicit \code{\link[=fr_spans]{fr_spans()}} at the same label overrides the auto-span.
+\item \code{\link[=fr_spans]{fr_spans()}} at \code{.level = 2L} adds higher-level spans above.
+\item \code{NULL} (default) means no spanning group.
+}}
 }
 \value{
 An S3 object of class \code{fr_col} with components \code{id}, \code{label},
-\code{width}, \code{align}, \code{header_align}, \code{visible}, and \code{stub}.
+\code{width}, \code{align}, \code{header_align}, \code{visible}, \code{stub}, \code{spaces}, \code{n},
+and \code{group}.
 }
 \description{
 Defines the display properties of a single table column: its label, width,
-alignment, and visibility. Used inside \code{\link[=fr_cols]{fr_cols()}} as a named argument
-to configure individual columns. Columns not explicitly configured receive
-auto-generated defaults from the \code{.width}, \code{.align}, and \code{.label_fn}
-arguments of \code{\link[=fr_cols]{fr_cols()}}.
+alignment, visibility, N-count, and spanning group. Used inside \code{\link[=fr_cols]{fr_cols()}}
+as a named argument to configure individual columns. Columns not explicitly
+configured receive auto-generated defaults from the \code{.width}, \code{.align}, and
+\code{.label_fn} arguments of \code{\link[=fr_cols]{fr_cols()}}.
+
+\code{fr_col()} is the \strong{single source of truth} for column structure. Labels,
+widths, alignment, N-counts, and spanning groups are all defined here.
+\code{\link[=fr_header]{fr_header()}} is purely for header \emph{presentation} (bold, colours, font).
 }
 \section{Width guidelines}{
 
@@ -118,6 +159,34 @@ Standard pharma house styles (Roche, Novartis, Pfizer TFL guides):
 }
 }
 
+\section{N-count precedence}{
+
+When multiple N-count sources are present, the highest-priority
+source wins (no double-apply):\tabular{ll}{
+   Priority \tab Source \cr
+   1 (highest) \tab \code{fr_col(n = 45)} — per-column scalar \cr
+   2 \tab \code{fr_cols(.n = c("Placebo" = 45))} — bulk named vector \cr
+   3 \tab \code{fr_cols(.n = data.frame(...))} — data frame form \cr
+   4 (lowest) \tab \code{fr_cols(.n = list(...))} — named list form \cr
+}
+}
+
+\section{Spanning groups}{
+
+The \code{group} parameter provides inline spanning — no separate
+\code{\link[=fr_spans]{fr_spans()}} call needed. Columns with the same \code{group} value are
+grouped under a single spanning header:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{fr_cols(
+  stat      = fr_col("Statistic", width = 1.5),
+  pbo_base  = fr_col("Baseline", group = "Placebo"),
+  pbo_val   = fr_col("Value",    group = "Placebo"),
+  drg_base  = fr_col("Baseline", group = "Zomerane"),
+  drg_val   = fr_col("Value",    group = "Zomerane")
+)
+}\if{html}{\out{</div>}}
+}
+
 \examples{
 ## ── Fixed width with explicit alignment ──────────────────────────────────
 
@@ -130,6 +199,14 @@ fr_col("Parameter", width = "25\%")
 ## ── Centered header over right-aligned body ──────────────────────────────
 
 fr_col("Zomerane 50mg", width = 1.5, align = "right", header_align = "center")
+
+## ── Per-column N-count ───────────────────────────────────────────────────
+
+fr_col("Placebo", n = 45)
+
+## ── N-count + spanning group ─────────────────────────────────────────────
+
+fr_col("Baseline", group = "Placebo")
 
 ## ── Percentage width in a pipeline ───────────────────────────────────────
 
@@ -163,29 +240,43 @@ fr_col(visible = FALSE)
 
 fr_col("Parameter", width = 2.5, stub = TRUE)
 
-## ── Footnote marker in column header ─────────────────────────────────────
-
-fr_col("Placebo{fr_super('a')}\n(N=45)", width = 1.5, align = "right")
-
-## ── Inside a full fr_cols call ──────────────────────────────────────────
+## ── Spanning group: columns grouped under one header ─────────────────────
 
 tbl_demog |>
   fr_table() |>
   fr_cols(
     characteristic = fr_col("Characteristic", width = 2.5),
-    zom_50mg       = fr_col("Zomerane 50 mg", width = 1.5, align = "right"),
-    placebo        = fr_col("Placebo",         width = 1.5, align = "right"),
-    group          = fr_col(visible = FALSE)
-  ) |>
-  fr_header(
-    n = c(zom_50mg = 45, placebo = 45),
-    format = "{label}\n(N={n})"
+    zom_50mg       = fr_col("50 mg",  group = "Zomerane"),
+    zom_100mg      = fr_col("100 mg", group = "Zomerane"),
+    placebo        = fr_col("Placebo"),
+    total          = fr_col("Total")
   )
+
+## ── Per-column N-counts in a pipeline ────────────────────────────────────
+
+tbl_demog |>
+  fr_table() |>
+  fr_cols(
+    characteristic = fr_col("Characteristic", width = 2.5),
+    zom_50mg       = fr_col("Zomerane 50 mg", n = 45),
+    placebo        = fr_col("Placebo",         n = 45),
+    .n_format = "{label}\n(N={n})"
+  )
+
+## ── Spaces: preserve leading spaces as literal characters ──────────────
+
+fr_col("Statistic", spaces = "preserve")
+
+## ── Spaces: explicit indent mode (default, but can be stated) ─────────
+
+fr_col("Characteristic", width = 2.5, spaces = "indent")
 
 }
 \seealso{
 \code{\link[=fr_cols]{fr_cols()}} to apply column specs to a table (including
-\code{.split} for column splitting),
-\code{\link[=fr_header]{fr_header()}} for N-count labels and header styling,
+\code{.n}, \code{.n_format}, and \code{.split} for N-counts, formatting, and
+column splitting),
+\code{\link[=fr_header]{fr_header()}} for header presentation (bold, colours, alignment),
+\code{\link[=fr_spans]{fr_spans()}} for advanced multi-level spanning headers,
 \code{\link[=fr_super]{fr_super()}}, \code{\link[=fr_bold]{fr_bold()}}, \code{\link[=fr_italic]{fr_italic()}} for inline markup in labels.
 }

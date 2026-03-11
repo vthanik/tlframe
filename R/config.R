@@ -86,6 +86,10 @@ find_config <- function(dir = getwd()) {
 #'   font_size: 9
 #'   col_gap: 4
 #'
+#' columns:
+#'   split: false           # column splitting for wide tables
+#'   spaces: indent         # indent | preserve — leading space handling
+#'
 #' header:
 #'   align: ~               # inherit from column (user decides)
 #'   valign: bottom
@@ -340,6 +344,19 @@ apply_config <- function(spec) {
     if (!is.null(columns_cfg$stub) && is.character(columns_cfg$stub)) {
       spec$columns_meta$stub <- columns_cfg$stub
     }
+    if (!is.null(columns_cfg$spaces) && is.character(columns_cfg$spaces)) {
+      spaces_val <- tryCatch(
+        match_arg_fr(columns_cfg$spaces, fr_env$valid_spaces),
+        error = function(e) {
+          cli_warn("Config {.field columns.spaces} ignored: {conditionMessage(e)}")
+          NULL
+        }
+      )
+      if (!is.null(spaces_val)) spec$columns_meta$spaces <- spaces_val
+    }
+    if (!is.null(columns_cfg$n_format) && is.character(columns_cfg$n_format)) {
+      spec$columns_meta$n_format <- columns_cfg$n_format
+    }
   }
 
   # Header defaults (stored on spec$header for render-time use)
@@ -349,8 +366,10 @@ apply_config <- function(spec) {
     if (!is.null(header_cfg$valign))    spec$header$valign    <- header_cfg$valign
     if (!is.null(header_cfg$bold))      spec$header$bold      <- header_cfg$bold
     if (!is.null(header_cfg$span_gap))  spec$header$span_gap  <- header_cfg$span_gap
-    if (!is.null(header_cfg$n_format))  spec$header$format    <- header_cfg$n_format
-    if (!is.null(header_cfg$format))    spec$header$format    <- header_cfg$format
+    # n_format in header section → route to columns_meta for backward compat
+    if (!is.null(header_cfg$n_format) && is.null(spec$columns_meta$n_format)) {
+      spec$columns_meta$n_format <- header_cfg$n_format
+    }
   }
 
   # Pagehead

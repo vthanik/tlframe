@@ -144,6 +144,45 @@ test_that("last group without trailing blank paginates correctly", {
   expect_equal(max(pages), 1L)
 })
 
+test_that("trailing blank at page boundary stays with its group", {
+  # 2 groups of 8 rows, budget=10. Group A fits (8), trailing blank deferred.
+  # Blank is assigned to current page (belongs to previous group) before
+
+  # checking if next group fits. Group B doesn't fit → new page.
+  # The blank stays on page 1 with group A.
+  df <- data.frame(
+    grp = c(rep("A", 8), "", rep("B", 8)),
+    val = c(paste0("a", 1:8), "", paste0("b", 1:8)),
+    stringsAsFactors = FALSE
+  )
+  heights <- rep(1L, nrow(df))
+  pages <- paginate_rows(heights, 10L, df, "grp")
+  # Group A on page 1
+  expect_true(all(pages[1:8] == 1L))
+  # Blank row (9) stays with group A on page 1
+  expect_equal(pages[9], 1L)
+  # Group B on page 2
+  expect_true(all(pages[10:17] == 2L))
+})
+
+test_that("final blank after last group gets page 0 (excluded)", {
+  # 2 groups: 5+5 data rows, blank between AND after last group
+  df <- data.frame(
+    grp = c(rep("A", 5), "", rep("B", 5), ""),
+    val = c(paste0("a", 1:5), "", paste0("b", 1:5), ""),
+    stringsAsFactors = FALSE
+  )
+  heights <- rep(1L, nrow(df))
+  pages <- paginate_rows(heights, 20L, df, "grp")
+  # All data rows on page 1
+  expect_true(all(pages[1:5] == 1L))
+  expect_true(all(pages[7:11] == 1L))
+  # Blank between groups included (Branch 1 fit)
+  expect_equal(pages[6], 1L)
+  # Final trailing blank — page 0
+  expect_equal(pages[12], 0L)
+})
+
 test_that("RTF render with group_by produces multiple sections", {
   tmp <- tempfile(fileext = ".rtf")
   on.exit(unlink(tmp), add = TRUE)

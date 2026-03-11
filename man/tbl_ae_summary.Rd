@@ -45,6 +45,6 @@ spec <- tbl_ae_summary |>
     placebo   = fr_col("Placebo"),
     total     = fr_col("Total")
   ) |>
-  fr_header(n = c(zom_50mg = 45, zom_100mg = 45, placebo = 45, total = 135))
+  fr_header(bold = TRUE, align = "center")
 }
 \keyword{datasets}

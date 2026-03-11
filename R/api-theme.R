@@ -35,6 +35,10 @@
 #'   unchanged. See [fr_page()] for details.
 #' @param font_family Font family name. `NULL` leaves unchanged.
 #' @param font_size Font size in points. `NULL` leaves unchanged.
+#' @param spaces How to handle leading spaces in cell data. One of
+#'   `"indent"` (convert to paragraph-level indent) or `"preserve"`
+#'   (keep literal spaces). `NULL` leaves unchanged. See [fr_cols()]
+#'   `.spaces` parameter for details.
 #' @param split Logical. `TRUE` to enable column splitting for wide tables,
 #'   `FALSE` to disable. `NULL` leaves unchanged. See [fr_cols()] `.split`
 #'   parameter for details.
@@ -55,6 +59,10 @@
 #' @param spacing Named list with `titles_after`, `footnotes_before`,
 #'   `pagehead_after`, `pagefoot_before`, `page_by_after` (integer
 #'   blank lines). `NULL` leaves unchanged. See [fr_spacing()].
+#' @param n_format A [glue][glue::glue]-style format string for N-count
+#'   labels. Applied to all tables that use `fr_col(n = ...)` or
+#'   `fr_cols(.n = ...)` without an explicit `.n_format`. Available
+#'   tokens: `{label}` and `{n}`. `NULL` leaves unchanged.
 #' @param header Named list of header defaults. Currently supports:
 #'   * `span_gap` — Logical. Insert gap columns between adjacent spans
 #'     (default `TRUE`). See [fr_header()] for details.
@@ -128,6 +136,15 @@
 #' )
 #' fr_theme_get()$spacing   # check the spacing settings
 #'
+#' ## ── Theme with leading-space handling ────────────────────────────────────
+#'
+#' fr_theme_reset()
+#' fr_theme(spaces = "indent")   # default: leading spaces → paragraph indent
+#' fr_theme_get()$spaces         # "indent"
+#'
+#' fr_theme(spaces = "preserve") # keep leading spaces as literal characters
+#' fr_theme_get()$spaces         # "preserve"
+#'
 #' ## ── Theme with footnote_separator ────────────────────────────────────────
 #'
 #' fr_theme_reset()
@@ -154,16 +171,22 @@
 fr_theme <- function(orientation = NULL, paper = NULL,
                      margins = NULL, col_gap = NULL,
                      font_family = NULL, font_size = NULL,
+                     spaces = NULL,
                      split = NULL, stub = NULL,
                      pagehead = NULL, pagefoot = NULL, tokens = NULL,
                      hlines = NULL, vlines = NULL,
-                     spacing = NULL, header = NULL,
+                     spacing = NULL, n_format = NULL,
+                     header = NULL,
                      footnote_separator = NULL) {
   call <- caller_env()
 
   if (!is.null(font_size))          check_positive_num(font_size, arg = "font_size", call = call)
   if (!is.null(col_gap))            check_non_negative_int(col_gap, arg = "col_gap", call = call)
   if (!is.null(footnote_separator)) check_scalar_lgl(footnote_separator, arg = "footnote_separator", call = call)
+  if (!is.null(n_format)) check_scalar_chr(n_format, arg = "n_format", call = call)
+  if (!is.null(spaces)) {
+    spaces <- match_arg_fr(spaces, fr_env$valid_spaces, call = call)
+  }
   if (!is.null(split)) {
     check_scalar_lgl(split, arg = "split", call = call)
   }
@@ -193,6 +216,7 @@ fr_theme <- function(orientation = NULL, paper = NULL,
   if (!is.null(paper))              theme[["paper"]]              <- paper
   if (!is.null(margins))            theme[["margins"]]            <- margins
   if (!is.null(col_gap))            theme[["col_gap"]]            <- col_gap
+  if (!is.null(spaces))             theme[["spaces"]]             <- spaces
   if (!is.null(split))              theme[["split"]]              <- split
   if (!is.null(stub))               theme[["stub"]]               <- stub
   if (!is.null(font_family))        theme[["font_family"]]        <- font_family
@@ -204,6 +228,7 @@ fr_theme <- function(orientation = NULL, paper = NULL,
   if (!is.null(vlines))             theme[["vlines"]]             <- vlines
   if (!is.null(spacing))            theme[["spacing"]]            <- spacing
   if (!is.null(header))             theme[["header"]]             <- header
+  if (!is.null(n_format))           theme[["n_format"]]           <- n_format
   if (!is.null(footnote_separator)) theme[["footnote_separator"]] <- footnote_separator
 
   fr_env$theme <- theme

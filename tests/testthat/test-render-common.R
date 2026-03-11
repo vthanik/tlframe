@@ -1296,6 +1296,81 @@ test_that("apply_indent_by handles empty data", {
 })
 
 
+# ── apply_leading_indent ─────────────────────────────────────────────────────
+
+test_that("apply_leading_indent strips spaces and creates indent styles", {
+  spec <- new_fr_spec(data.frame(
+    a = c("  indented", "normal", "   deep"),
+    stringsAsFactors = FALSE
+  ))
+  spec$columns <- build_default_columns(spec$data, list(), NULL, "auto",
+                                         NULL, NULL, NULL, spec$page)
+  spec$columns_meta$spaces <- "indent"
+  result <- apply_leading_indent(spec)
+  # Data should have spaces stripped
+
+  expect_equal(result$data$a[1], "indented")
+  expect_equal(result$data$a[2], "normal")
+  expect_equal(result$data$a[3], "deep")
+  # Should have 2 indent levels (2 spaces and 3 spaces)
+  expect_length(result$cell_styles, 2L)
+  expect_true(result$cell_styles[[1]]$indent > 0)
+  expect_true(result$cell_styles[[2]]$indent > result$cell_styles[[1]]$indent)
+})
+
+test_that("apply_leading_indent skips preserve mode columns", {
+  spec <- new_fr_spec(data.frame(
+    a = c("  indented", "normal"),
+    stringsAsFactors = FALSE
+  ))
+  spec$columns <- build_default_columns(spec$data, list(), NULL, "auto",
+                                         NULL, NULL, NULL, spec$page)
+  spec$columns$a$spaces <- "preserve"
+  spec$columns_meta$spaces <- "indent"
+  result <- apply_leading_indent(spec)
+  # Data should NOT have spaces stripped
+  expect_equal(result$data$a[1], "  indented")
+  expect_length(result$cell_styles, 0L)
+})
+
+test_that("apply_leading_indent skips columns with no leading spaces", {
+  spec <- new_fr_spec(data.frame(
+    a = c("no spaces", "here"),
+    stringsAsFactors = FALSE
+  ))
+  spec$columns <- build_default_columns(spec$data, list(), NULL, "auto",
+                                         NULL, NULL, NULL, spec$page)
+  spec$columns_meta$spaces <- "indent"
+  result <- apply_leading_indent(spec)
+  expect_length(result$cell_styles, 0L)
+})
+
+test_that("apply_leading_indent handles empty data", {
+  spec <- new_fr_spec(data.frame(
+    a = character(0),
+    stringsAsFactors = FALSE
+  ))
+  spec$columns <- build_default_columns(spec$data, list(), NULL, "auto",
+                                         NULL, NULL, NULL, spec$page)
+  spec$columns_meta$spaces <- "indent"
+  result <- apply_leading_indent(spec)
+  expect_length(result$cell_styles, 0L)
+})
+
+test_that("apply_leading_indent global preserve mode skips all columns", {
+  spec <- new_fr_spec(data.frame(
+    a = c("  indented", "normal"),
+    stringsAsFactors = FALSE
+  ))
+  spec$columns <- build_default_columns(spec$data, list(), NULL, "auto",
+                                         NULL, NULL, NULL, spec$page)
+  spec$columns_meta$spaces <- "preserve"
+  result <- apply_leading_indent(spec)
+  expect_equal(result$data$a[1], "  indented")
+  expect_length(result$cell_styles, 0L)
+})
+
+
 # ── resolve_borders: vlines ──────────────────────────────────────────────────
 
 test_that("resolve_borders handles vline preset 'all'", {

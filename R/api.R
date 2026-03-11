@@ -45,8 +45,8 @@
 #'   fr_table()                        # start
 #'   |> fr_titles(...)                 # titles above the table
 #'   |> fr_footnotes(...)              # footnotes below
-#'   |> fr_cols(col = fr_col(...))     # column widths / labels
-#'   |> fr_header(n = ..., format = .) # N-count labels / header styling
+#'   |> fr_cols(col = fr_col(...), .n = ...) # columns / N-counts
+#'   |> fr_header(bold = TRUE, align = .)   # header presentation
 #'   |> fr_spans(...)                  # spanning headers
 #'   |> fr_rows(page_by = ...)         # pagination / grouping
 #'   |> fr_page(orientation = ...)     # page layout

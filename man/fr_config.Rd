@@ -54,6 +54,10 @@ page:
   font_size: 9
   col_gap: 4
 
+columns:
+  split: false           # column splitting for wide tables
+  spaces: indent         # indent | preserve — leading space handling
+
 header:
   align: ~               # inherit from column (user decides)
   valign: bottom

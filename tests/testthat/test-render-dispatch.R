@@ -338,10 +338,10 @@ test_that("finalize_spec resolves global numeric N-counts in header labels", {
   ) |>
     fr_table() |>
     fr_cols(
-      trt1 = fr_col("Treatment A"),
-      trt2 = fr_col("Treatment B")
-    ) |>
-    fr_header(n = c(trt1 = 50, trt2 = 48), format = "{label}\n(N={n})")
+      trt1 = fr_col("Treatment A", n = 50L),
+      trt2 = fr_col("Treatment B", n = 48L),
+      .n_format = "{label}\n(N={n})"
+    )
 
   result <- tlframe:::finalize_spec(spec)
   expect_equal(result$columns$trt1$label, "Treatment A\n(N=50)")
@@ -593,26 +593,26 @@ test_that("fit_panel_widths preserves proportional ratios", {
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# resolve_header_labels() — edge cases
+# finalize_labels() — edge cases
 # ══════════════════════════════════════════════════════════════════════════════
 
-test_that("resolve_header_labels skips non-numeric n (per-group)", {
+test_that("finalize_labels skips non-numeric .n (per-group list)", {
   spec <- data.frame(a = 1, b = 2) |> fr_table()
-  spec$header$n <- list(grp1 = c(a = 10), grp2 = c(a = 20))
-  spec$header$format <- "{label}\n(N={n})"
+  spec$columns_meta$n <- list(grp1 = c("a" = 10), grp2 = c("a" = 20))
+  spec$columns_meta$n_format <- "{label}\n(N={n})"
 
-  result <- tlframe:::resolve_header_labels(spec)
-  # Per-group n is not resolved here — labels should be unchanged
+  result <- suppressWarnings(tlframe:::finalize_spec(spec))
+  # Per-group list n is not resolved globally — labels should be unchanged
   expect_false(grepl("N=", result$columns$a$label %||% "a"))
 })
 
-test_that("resolve_header_labels handles missing columns in n gracefully", {
+test_that("finalize_labels handles unmatched .n labels gracefully", {
   spec <- data.frame(a = 1) |> fr_table()
-  spec$header$n <- c(nonexistent = 50)
-  spec$header$format <- "{label}\n(N={n})"
+  spec$columns_meta$n <- c("nonexistent" = 50)
+  spec$columns_meta$n_format <- "{label}\n(N={n})"
 
   # Should not error, just skip the non-matching column
-  result <- tlframe:::resolve_header_labels(spec)
+  result <- tlframe:::finalize_spec(spec)
   expect_true(inherits(result, "fr_spec"))
 })
 
@@ -628,13 +628,15 @@ test_that("resolve_group_labels returns NULL when no format set", {
   expect_null(result)
 })
 
-test_that("resolve_group_labels handles per-group list n", {
+test_that("resolve_group_labels handles per-group list .n", {
   spec <- data.frame(a = 1, b = 2) |>
     fr_table() |>
-    fr_cols(a = fr_col("Col A"), b = fr_col("Col B"))
-
-  spec$header$n <- list("GroupX" = c(a = 30, b = 25))
-  spec$header$format <- "{label}\n(N={n})"
+    fr_cols(
+      a = fr_col("Col A"),
+      b = fr_col("Col B"),
+      .n = list("GroupX" = c("Col A" = 30, "Col B" = 25)),
+      .n_format = "{label}\n(N={n})"
+    )
   spec <- suppressWarnings(tlframe:::finalize_spec(spec))
 
   result <- tlframe:::resolve_group_labels(spec, spec$data, "GroupX")
@@ -644,24 +646,25 @@ test_that("resolve_group_labels handles per-group list n", {
   expect_true(grepl("N=30", result$columns["a"]))
 })
 
-test_that("resolve_group_labels returns NULL for unknown group in list n", {
+test_that("resolve_group_labels returns NULL for unknown group in list .n", {
   spec <- data.frame(a = 1) |> fr_table()
-  spec$header$n <- list("GroupA" = c(a = 10))
-  spec$header$format <- "{label}\n(N={n})"
+  spec$columns_meta$n <- list("GroupA" = c("a" = 10))
+  spec$columns_meta$n_format <- "{label}\n(N={n})"
   spec <- suppressWarnings(tlframe:::finalize_spec(spec))
 
   result <- tlframe:::resolve_group_labels(spec, spec$data, "UnknownGroup")
   expect_null(result)
 })
 
-test_that("resolve_group_labels handles 2-col df n resolved globally", {
+test_that("resolve_group_labels handles 2-col df .n resolved globally", {
   # 2-col data frame → resolved globally in finalize_labels
   spec <- data.frame(trt1 = 1, trt2 = 2) |>
     fr_table() |>
-    fr_cols(trt1 = fr_col("Treatment 1"), trt2 = fr_col("Treatment 2")) |>
-    fr_header(
-      n = data.frame(trt = c("Treatment 1", "Treatment 2"), n = c(40L, 35L)),
-      format = "{label}\n(N={n})"
+    fr_cols(
+      trt1 = fr_col("Treatment 1"),
+      trt2 = fr_col("Treatment 2"),
+      .n = data.frame(trt = c("Treatment 1", "Treatment 2"), n = c(40L, 35L)),
+      .n_format = "{label}\n(N={n})"
     )
 
   spec <- tlframe:::finalize_spec(spec)

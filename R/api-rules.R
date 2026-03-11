@@ -3,6 +3,33 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Internal helpers for rule filtering
+# ──────────────────────────────────────────────────────────────────────────────
+
+#' Keep only vertical rules (filter out horizontal rules and optionally boxes)
+#' @param rules List of rule objects.
+#' @param keep_box Logical. Whether to keep fr_rule_box objects.
+#' @noRd
+keep_vertical_rules <- function(rules, keep_box = TRUE) {
+  Filter(function(r) {
+    if (inherits(r, "fr_rule_box")) return(keep_box)
+    inherits(r, "fr_vline_spec") ||
+      (inherits(r, "fr_rule") && identical(r$direction, "vertical"))
+  }, rules)
+}
+
+#' Keep only horizontal rules and boxes (filter out vertical rules)
+#' @param rules List of rule objects.
+#' @noRd
+keep_horizontal_rules <- function(rules) {
+  Filter(function(r) {
+    !inherits(r, "fr_rule") || r$direction == "horizontal" ||
+      inherits(r, "fr_rule_box")
+  }, rules)
+}
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # fr_hlines — Horizontal rule presets and custom rules
 # ══════════════════════════════════════════════════════════════════════════════
@@ -137,11 +164,7 @@ fr_hlines <- function(spec, preset = "header",
   preset <- match_arg_fr(preset, names(fr_env$hline_presets), call = call)
 
   if (identical(preset, "void")) {
-    # Remove only horizontal rules; keep vertical rules (fr_vline_spec or fr_rule_box)
-    spec$rules <- Filter(function(r) {
-      inherits(r, "fr_vline_spec") || inherits(r, "fr_rule_box") ||
-        (inherits(r, "fr_rule") && identical(r$direction, "vertical"))
-    }, spec$rules)
+    spec$rules <- keep_vertical_rules(spec$rules, keep_box = TRUE)
     return(spec)
   }
 
@@ -172,11 +195,7 @@ fr_hlines <- function(spec, preset = "header",
   # Replace all horizontal rules; preserve only vertical rules
   # Exclude fr_rule_box to prevent accumulation on repeated calls
   is_box <- identical(rule_defs, "box")
-  existing_vlines <- Filter(function(r) {
-    if (inherits(r, "fr_rule_box")) return(!is_box)
-    inherits(r, "fr_vline_spec") ||
-      (inherits(r, "fr_rule") && identical(r$direction, "vertical"))
-  }, spec$rules)
+  existing_vlines <- keep_vertical_rules(spec$rules, keep_box = !is_box)
   spec$rules <- c(existing_vlines, new_rules)
   spec
 }
@@ -300,10 +319,7 @@ fr_vlines <- function(spec, preset = "box", cols = NULL,
   preset <- match_arg_fr(preset, valid_vline_presets, call = call)
 
   # Remove existing vertical rules
-  existing_hlines <- Filter(function(r) {
-    !inherits(r, "fr_rule") || r$direction == "horizontal" ||
-      inherits(r, "fr_rule_box")
-  }, spec$rules)
+  existing_hlines <- keep_horizontal_rules(spec$rules)
 
   if (identical(preset, "void") && is.null(cols)) {
     spec$rules <- existing_hlines

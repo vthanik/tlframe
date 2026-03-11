@@ -143,8 +143,8 @@ fr_validate <- function(spec, strict = FALSE) {
     }
   }
 
-  # 4. N-count names match column specs
-  n_counts <- spec$header$n
+  # 4. N-count names match column specs (from columns_meta)
+  n_counts <- spec$columns_meta$n
   if (is.numeric(n_counts) && !is.null(names(n_counts))) {
     col_names <- if (length(spec$columns) > 0L) names(spec$columns) else data_names
     bad <- setdiff(names(n_counts), col_names)

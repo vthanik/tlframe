@@ -235,10 +235,14 @@ is_fr_pct <- function(x) inherits(x, "fr_pct")
 #' @description
 #'
 #' Defines the display properties of a single table column: its label, width,
-#' alignment, and visibility. Used inside [fr_cols()] as a named argument
-#' to configure individual columns. Columns not explicitly configured receive
-#' auto-generated defaults from the `.width`, `.align`, and `.label_fn`
-#' arguments of [fr_cols()].
+#' alignment, visibility, N-count, and spanning group. Used inside [fr_cols()]
+#' as a named argument to configure individual columns. Columns not explicitly
+#' configured receive auto-generated defaults from the `.width`, `.align`, and
+#' `.label_fn` arguments of [fr_cols()].
+#'
+#' `fr_col()` is the **single source of truth** for column structure. Labels,
+#' widths, alignment, N-counts, and spanning groups are all defined here.
+#' [fr_header()] is purely for header *presentation* (bold, colours, font).
 #'
 #' @param label Character scalar. Display label shown in the column header.
 #'   Supports `{fr_*()}` inline markup (e.g. `"{fr_super('a')}"` for
@@ -294,9 +298,36 @@ is_fr_pct <- function(x) inherits(x, "fr_pct")
 #'   provide context for each panel. When `.split` is enabled but no
 #'   columns have `stub = TRUE`, stubs are auto-inferred from
 #'   `group_by`/`indent_by` columns or the first column.
+#' @param spaces How to handle leading spaces in cell data. One of:
+#'   * `"indent"` — convert leading spaces to paragraph-level indent
+#'     (RTF `\li`, LaTeX `\leftskip`). All lines (including wrapped)
+#'     maintain the same indent. This is the correct approach for
+#'     proportional fonts and pharma SOC/PT hierarchies.
+#'   * `"preserve"` — keep leading spaces as literal characters. Use
+#'     for pre-formatted content where exact spacing must be retained.
+#'   * `NULL` (default) — inherits from the `.spaces` argument of
+#'     [fr_cols()], which defaults to `"indent"`.
+#' @param n Per-column subject count. A non-negative integer scalar
+#'   (e.g. `n = 45`). Formatted into the column label at render time
+#'   using the `.n_format` template from [fr_cols()]. Takes **highest
+#'   priority** in N-count resolution — overrides bulk `.n` from
+#'   [fr_cols()]. Use for the common case where you know each column's
+#'   N at definition time. `NULL` (default) means no per-column N.
+#' @param group Character scalar. Assigns this column to a **spanning
+#'   header group**. All columns sharing the same `group` value get an
+#'   auto-generated span at level 1, ordered by first column appearance.
+#'   This replaces [fr_spans()] for the 90\% case — define your column
+#'   structure and grouping in one place.
+#'
+#'   Rules:
+#'   * Single-column groups create single-column sub-headers.
+#'   * Explicit [fr_spans()] at the same label overrides the auto-span.
+#'   * [fr_spans()] at `.level = 2L` adds higher-level spans above.
+#'   * `NULL` (default) means no spanning group.
 #'
 #' @return An S3 object of class `fr_col` with components `id`, `label`,
-#'   `width`, `align`, `header_align`, `visible`, and `stub`.
+#'   `width`, `align`, `header_align`, `visible`, `stub`, `spaces`, `n`,
+#'   and `group`.
 #'
 #' @section Width guidelines:
 #' Landscape Letter paper (11 × 8.5 in) with 1 in margins gives **9 in**
@@ -319,6 +350,32 @@ is_fr_pct <- function(x) inherits(x, "fr_pct")
 #' * **P-value columns**: right-aligned or decimal-aligned.
 #' * **Category columns** (Yes/No, Male/Female): centered or left-aligned.
 #'
+#' @section N-count precedence:
+#' When multiple N-count sources are present, the highest-priority
+#' source wins (no double-apply):
+#'
+#' | Priority | Source |
+#' |----------|--------|
+#' | 1 (highest) | `fr_col(n = 45)` — per-column scalar |
+#' | 2 | `fr_cols(.n = c("Placebo" = 45))` — bulk named vector |
+#' | 3 | `fr_cols(.n = data.frame(...))` — data frame form |
+#' | 4 (lowest) | `fr_cols(.n = list(...))` — named list form |
+#'
+#' @section Spanning groups:
+#' The `group` parameter provides inline spanning — no separate
+#' [fr_spans()] call needed. Columns with the same `group` value are
+#' grouped under a single spanning header:
+#'
+#' ```r
+#' fr_cols(
+#'   stat      = fr_col("Statistic", width = 1.5),
+#'   pbo_base  = fr_col("Baseline", group = "Placebo"),
+#'   pbo_val   = fr_col("Value",    group = "Placebo"),
+#'   drg_base  = fr_col("Baseline", group = "Zomerane"),
+#'   drg_val   = fr_col("Value",    group = "Zomerane")
+#' )
+#' ```
+#'
 #' @examples
 #' ## ── Fixed width with explicit alignment ──────────────────────────────────
 #'
@@ -331,6 +388,14 @@ is_fr_pct <- function(x) inherits(x, "fr_pct")
 #' ## ── Centered header over right-aligned body ──────────────────────────────
 #'
 #' fr_col("Zomerane 50mg", width = 1.5, align = "right", header_align = "center")
+#'
+#' ## ── Per-column N-count ───────────────────────────────────────────────────
+#'
+#' fr_col("Placebo", n = 45)
+#'
+#' ## ── N-count + spanning group ─────────────────────────────────────────────
+#'
+#' fr_col("Baseline", group = "Placebo")
 #'
 #' ## ── Percentage width in a pipeline ───────────────────────────────────────
 #'
@@ -364,28 +429,42 @@ is_fr_pct <- function(x) inherits(x, "fr_pct")
 #'
 #' fr_col("Parameter", width = 2.5, stub = TRUE)
 #'
-#' ## ── Footnote marker in column header ─────────────────────────────────────
-#'
-#' fr_col("Placebo{fr_super('a')}\n(N=45)", width = 1.5, align = "right")
-#'
-#' ## ── Inside a full fr_cols call ──────────────────────────────────────────
+#' ## ── Spanning group: columns grouped under one header ─────────────────────
 #'
 #' tbl_demog |>
 #'   fr_table() |>
 #'   fr_cols(
 #'     characteristic = fr_col("Characteristic", width = 2.5),
-#'     zom_50mg       = fr_col("Zomerane 50 mg", width = 1.5, align = "right"),
-#'     placebo        = fr_col("Placebo",         width = 1.5, align = "right"),
-#'     group          = fr_col(visible = FALSE)
-#'   ) |>
-#'   fr_header(
-#'     n = c(zom_50mg = 45, placebo = 45),
-#'     format = "{label}\n(N={n})"
+#'     zom_50mg       = fr_col("50 mg",  group = "Zomerane"),
+#'     zom_100mg      = fr_col("100 mg", group = "Zomerane"),
+#'     placebo        = fr_col("Placebo"),
+#'     total          = fr_col("Total")
 #'   )
 #'
+#' ## ── Per-column N-counts in a pipeline ────────────────────────────────────
+#'
+#' tbl_demog |>
+#'   fr_table() |>
+#'   fr_cols(
+#'     characteristic = fr_col("Characteristic", width = 2.5),
+#'     zom_50mg       = fr_col("Zomerane 50 mg", n = 45),
+#'     placebo        = fr_col("Placebo",         n = 45),
+#'     .n_format = "{label}\n(N={n})"
+#'   )
+#'
+#' ## ── Spaces: preserve leading spaces as literal characters ──────────────
+#'
+#' fr_col("Statistic", spaces = "preserve")
+#'
+#' ## ── Spaces: explicit indent mode (default, but can be stated) ─────────
+#'
+#' fr_col("Characteristic", width = 2.5, spaces = "indent")
+#'
 #' @seealso [fr_cols()] to apply column specs to a table (including
-#'   `.split` for column splitting),
-#'   [fr_header()] for N-count labels and header styling,
+#'   `.n`, `.n_format`, and `.split` for N-counts, formatting, and
+#'   column splitting),
+#'   [fr_header()] for header presentation (bold, colours, alignment),
+#'   [fr_spans()] for advanced multi-level spanning headers,
 #'   [fr_super()], [fr_bold()], [fr_italic()] for inline markup in labels.
 #'
 #' @export
@@ -394,7 +473,10 @@ fr_col <- function(label = "",
                     align = NULL,
                     header_align = NULL,
                     visible = NULL,
-                    stub = FALSE) {
+                    stub = FALSE,
+                    spaces = NULL,
+                    n = NULL,
+                    group = NULL) {
   check_scalar_chr(label, arg = "label")
   if (!is.null(width)) {
     if (is.character(width)) {
@@ -412,6 +494,9 @@ fr_col <- function(label = "",
   if (!is.null(header_align)) header_align <- match_arg_fr(header_align, fr_env$valid_aligns)
   if (!is.null(visible)) check_scalar_lgl(visible, arg = "visible")
   check_scalar_lgl(stub, arg = "stub")
+  if (!is.null(spaces)) spaces <- match_arg_fr(spaces, fr_env$valid_spaces)
+  if (!is.null(n)) n <- check_non_negative_int(n, arg = "n")
+  if (!is.null(group)) check_scalar_chr(group, arg = "group")
 
   structure(
     list(
@@ -421,7 +506,10 @@ fr_col <- function(label = "",
       align        = align,
       header_align = header_align,
       visible      = visible,
-      stub         = stub
+      stub         = stub,
+      spaces       = spaces,
+      n            = n,
+      group        = group
     ),
     class = "fr_col"
   )
@@ -455,21 +543,20 @@ new_fr_span <- function(label, columns, level = 1L, hline = TRUE) {
 #' @noRd
 new_fr_header <- function(spans = list(), repeat_on_page = TRUE,
                           valign = "bottom", align = NULL,
+                          align_map = NULL,
                           bold = NULL, bg = NULL, fg = NULL,
-                          font_size = NULL, n = NULL,
-                          format = NULL, span_gap = TRUE) {
+                          font_size = NULL, span_gap = TRUE) {
   structure(
     list(
       spans          = spans,
       repeat_on_page = repeat_on_page,
       valign         = valign,
       align          = align,
+      align_map      = align_map,
       bold           = bold,
       bg             = bg,
       fg             = fg,
       font_size      = font_size,
-      n              = n,
-      format         = format,
       span_gap       = span_gap
     ),
     class = "fr_header"
@@ -894,7 +981,7 @@ new_fr_pagechrome <- function(left = NULL,
 new_fr_spec <- function(data,
                          meta = new_fr_meta(),
                          columns = list(),
-                         columns_meta = list(split = FALSE, width_mode = "auto"),
+                         columns_meta = list(split = FALSE, width_mode = "auto", spaces = "indent"),
                          header = new_fr_header(),
                          body = new_fr_body(),
                          rules = list(),
@@ -1022,7 +1109,7 @@ print.fr_spec <- function(x, ..., compact = FALSE) {
     if (isTRUE(h$bold)) parts <- c(parts, "bold")
     if (!is.null(h$valign)) parts <- c(parts, paste0("valign=", h$valign))
     if (!is.null(h$align)) parts <- c(parts, paste0("align=", h$align))
-    if (!is.null(h$n)) parts <- c(parts, "N-counts")
+    if (!is.null(h$align_map)) parts <- c(parts, "align_map")
     if (length(parts) > 0L) {
       cli::cli_text("Header: {paste(parts, collapse = ', ')}")
     }
@@ -1100,7 +1187,9 @@ print.fr_col <- function(x, ...) {
            else "auto"
   align <- x$align %||% "left"
   stub <- if (isTRUE(x$stub)) " stub" else ""
-  cat(sprintf("<fr_col> \"%s\" [%s, %s%s]\n", label, width, align, stub))
+  n_tag <- if (!is.null(x$n)) sprintf(" N=%d", x$n) else ""
+  grp_tag <- if (!is.null(x$group)) sprintf(" group=%s", x$group) else ""
+  cat(sprintf("<fr_col> \"%s\" [%s, %s%s%s%s]\n", label, width, align, stub, n_tag, grp_tag))
   invisible(x)
 }
 

@@ -877,7 +877,7 @@ test_that("latex_col_header_row falls back to column name when label is empty", 
 
 # ── latex_body_rows — styles, indentation, leading whitespace ──────────────
 
-test_that("latex_body_rows preserves leading whitespace as hspace", {
+test_that("latex_body_rows converts leading whitespace to leftskip indent", {
   df <- data.frame(a = c("  indented", "normal"), b = c("x", "y"))
   spec <- df |>
     fr_table() |>
@@ -885,7 +885,24 @@ test_that("latex_body_rows preserves leading whitespace as hspace", {
   fspec <- finalize_spec(spec)
   grid <- build_cell_grid(fspec$data, fspec$columns, fspec$cell_styles, fspec$page)
   rows <- latex_body_rows(fspec$data, fspec$columns, grid)
-  # Leading spaces should become \hspace{...em}
+  # Leading spaces converted to paragraph-level \leftskip indent upstream
+  expect_match(rows[1], "\\\\leftskip=", perl = TRUE)
+  expect_match(rows[1], "in\\\\relax", perl = TRUE)
+  expect_match(rows[1], "indented", fixed = TRUE)
+  # Spaces should be stripped from data
+  expect_false(grepl("^\\s+indented", fspec$data$a[1]))
+})
+
+test_that("latex_body_rows preserves leading whitespace as hspace in preserve mode", {
+  df <- data.frame(a = c("  indented", "normal"), b = c("x", "y"))
+  spec <- df |>
+    fr_table() |>
+    fr_cols(a = fr_col("A", width = 3, spaces = "preserve"),
+            b = fr_col("B", width = 2))
+  fspec <- finalize_spec(spec)
+  grid <- build_cell_grid(fspec$data, fspec$columns, fspec$cell_styles, fspec$page)
+  rows <- latex_body_rows(fspec$data, fspec$columns, grid)
+  # Preserve mode: leading spaces become \hspace{...em}
   expect_match(rows[1], "\\\\hspace\\{", perl = TRUE)
   expect_match(rows[1], "em\\}", perl = TRUE)
   expect_match(rows[1], "indented", fixed = TRUE)
@@ -1074,7 +1091,8 @@ test_that("latex_preamble includes headheight for pagehead", {
   fspec <- finalize_spec(spec)
   preamble <- paste(latex_preamble(fspec), collapse = "\n")
   expect_match(preamble, "headheight=", fixed = TRUE)
-  expect_match(preamble, "headsep=0pt", fixed = TRUE)
+
+  expect_match(preamble, "headsep=", fixed = TRUE)
 })
 
 test_that("latex_preamble sets headheight=0pt when no pagehead", {

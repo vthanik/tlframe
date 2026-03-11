@@ -142,10 +142,10 @@ spec <- tbl_demog |>
 # This allows verb-order independence
 ```
 
-**N-count labels:** `fr_header(n = ..., format = "{label}\n(N={n})")` stores
-the N-counts and format template. `finalize_spec()` resolves them into final
-column labels so that `fr_cols()` and `fr_header()` can be called in any
-order.
+**N-count labels:** `fr_cols(.n = ..., .n_format = "{label}\n(N={n})")` stores
+the N-counts and format template on `spec$columns_meta`. `finalize_spec()`
+resolves them into final column labels. Per-column counts can also be set via
+`fr_col(n = 45)`.
 
 **Blank rows:** `blank_after = "group"` inserts empty rows after each group
 boundary. `group_by` auto-implies `blank_after` on the same column.

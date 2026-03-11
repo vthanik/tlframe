@@ -13,17 +13,17 @@ test_that("fr_cols accepts .list for pre-formatted labels", {
   expect_equal(spec$columns[["pct"]]$label, "Percent")
 })
 
-test_that("fr_header(n=) dynamically formats N-counts with default format", {
+test_that("fr_cols .n stores bulk N-counts on columns_meta", {
   spec <- fr_table(df_simple) |>
     fr_cols(
-      arm = "Treatment",
-      pct = "Percent"
-    ) |>
-    fr_header(n = c(arm = 45, pct = 45))
+      arm = fr_col("Treatment"),
+      pct = fr_col("Percent"),
+      .n = c("Treatment" = 45, "Percent" = 45),
+      .n_format = "{label}\n(N={n})"
+    )
 
-  # N-counts are resolved at render time via finalize_spec(); check spec$header stores them
-
-  expect_equal(spec$header$n, c(arm = 45, pct = 45))
+  expect_equal(spec$columns_meta$n, c("Treatment" = 45, "Percent" = 45))
+  expect_equal(spec$columns_meta$n_format, "{label}\n(N={n})")
 })
 
 test_that("fr_header(align=) sets uniform header alignment", {

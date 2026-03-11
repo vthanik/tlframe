@@ -11,7 +11,10 @@ fr_cols(
   .width = NULL,
   .align = NULL,
   .label_fn = NULL,
-  .split = NULL
+  .spaces = NULL,
+  .split = NULL,
+  .n = NULL,
+  .n_format = NULL
 )
 }
 \arguments{
@@ -75,6 +78,16 @@ Common transforms:
 \item \code{toupper} — all caps.
 }}
 
+\item{.spaces}{How to handle leading spaces in cell data for all columns
+that do not have an explicit \code{spaces} set in \code{\link[=fr_col]{fr_col()}}. One of:
+\itemize{
+\item \code{"indent"} (default) — convert leading spaces to paragraph-level
+indent. The indent width is measured from the page font metrics,
+so it renders correctly in both proportional and monospace fonts.
+\item \code{"preserve"} — keep leading spaces as literal characters.
+\item \code{NULL} — same as \code{"indent"}.
+}}
+
 \item{.split}{Logical or \code{NULL}. Column splitting for wide tables that
 exceed the printable page width:
 \itemize{
@@ -93,15 +106,45 @@ Stub columns (repeated in every panel) are designated via
 \code{fr_col(stub = TRUE)}. When \code{.split} is enabled but no columns have
 \code{stub = TRUE}, stubs are auto-inferred from \code{group_by}/\code{indent_by}
 columns or the first column.}
+
+\item{.n}{Bulk N-counts applied across columns and spanning groups.
+\strong{All forms match by display label} (case-insensitive), never by
+data column name. Accepts:
+\itemize{
+\item \strong{Named numeric vector} — names = display labels matched
+case-insensitively to column labels AND group names.
+Example: \code{c("Placebo" = 45, "Zomerane 50 mg" = 44)}.
+\item \strong{Data frame (2-column)} — column 1 = display labels,
+column 2 = counts. Same N on every page.
+Example: \code{data.frame(trt = c("Placebo", "Zom 50mg"), n = c(45, 44))}.
+\item \strong{Data frame (3-column)} — column 1 = page\_by group values,
+column 2 = display labels, column 3 = counts. Different N per
+page\_by group.
+\item \strong{Named list} — keys = page\_by group values, values = named
+numeric vectors (names = display labels).
+Example: \code{list("Systolic BP" = c("Placebo" = 42, "Zom" = 40))}.
+}
+
+\strong{Auto-routing}: when a label matches a \code{group} name (spanning
+header), N goes on the span. When it matches a column label, N goes
+on the column. Group matches take priority (no double-apply).
+
+Per-column \code{fr_col(n = ...)} always takes highest priority.}
+
+\item{.n_format}{A \link[glue:glue]{glue}-style format string for N-count
+labels. Available tokens: \code{{label}} (column display label) and
+\code{{n}} (count). Default \code{NULL} inherits from config YAML
+\code{columns.n_format} or theme. Example: \code{"{label}\\\\n(N={n})"}.}
 }
 \value{
 A modified \code{fr_spec}. Column specs stored in \code{spec$columns},
 split settings in \code{spec$columns_meta}.
 }
 \description{
-Configures the display label, width, alignment, and visibility of one or
-more table columns. \code{fr_cols()} owns column \strong{structure}; \code{\link[=fr_header]{fr_header()}}
-owns header \strong{presentation} (alignment, valign, N-counts, bold, colours).
+Configures the display label, width, alignment, visibility, N-counts, and
+spanning groups for table columns. \code{fr_cols()} is the \strong{single source of
+truth} for all column structure; \code{\link[=fr_header]{fr_header()}} owns header
+\strong{presentation} only (bold, colours, font size).
 
 Columns not explicitly named here receive auto-generated defaults: the
 column name as the label (optionally transformed by \code{.label_fn}),
@@ -109,10 +152,6 @@ alignment inferred from the R column type (numeric → \code{"right"},
 everything else → \code{"left"}), and width from \code{.width}.
 
 Calling \code{fr_cols()} again \strong{replaces} the entire column configuration.
-
-For N-count header labels (e.g. \code{"Placebo\\\\n(N=45)"}), header alignment,
-or header vertical alignment, use \code{\link[=fr_header]{fr_header()}} which is
-order-independent with \code{fr_cols()}.
 }
 \section{Regulatory conventions — column ordering}{
 
@@ -136,7 +175,8 @@ Example column order for a 2-dose + placebo study:
 
 Column labels are resolved in this priority (highest wins):
 \enumerate{
-\item \code{\link[=fr_header]{fr_header()}} \code{n} / \code{format} — dynamic label with N counts.
+\item N-count formatting (\code{fr_col(n=)} or \code{.n} + \code{.n_format}) — dynamic
+label with N counts, applied at render time.
 \item Explicit \code{fr_col(label = ...)} in \code{...} arguments.
 \item \code{.list} — programmatic label map.
 \item \code{.label_fn} — transform function applied to the column name.
@@ -166,20 +206,66 @@ transform and override specific columns as needed.
 }
 
 \examples{
-## ── Relabel + set widths + right-align (most common pattern) ─────────────
+## ── Per-column N-counts (80\% case) ───────────────────────────────────────
 
 tbl_demog |>
   fr_table() |>
   fr_cols(
-    characteristic = fr_col("Characteristic",          width = 2.5),
-    zom_50mg       = fr_col("Zomerane 50 mg",          width = 1.5, align = "right"),
-    zom_100mg      = fr_col("Zomerane 100 mg",         width = 1.5, align = "right"),
-    placebo        = fr_col("Placebo",                  width = 1.5, align = "right"),
-    total          = fr_col("All Subjects",             width = 1.5, align = "right")
+    characteristic = fr_col("Characteristic", width = 2.5),
+    zom_50mg       = fr_col("Zomerane 50 mg",  n = 45),
+    zom_100mg      = fr_col("Zomerane 100 mg", n = 45),
+    placebo        = fr_col("Placebo",          n = 45),
+    total          = fr_col("Total",            n = 135),
+    .n_format = "{label}\n(N={n})"
   ) |>
-  fr_header(
-    n = c(zom_50mg = 45, zom_100mg = 45, placebo = 45, total = 135),
-    format = "{label}\n(N={n})"
+  fr_header(bold = TRUE, align = "center")
+
+## ── Bulk N from a data frame ─────────────────────────────────────────────
+
+adsl_n <- data.frame(
+  trt = c("Placebo", "Zomerane 50 mg", "Zomerane 100 mg", "Total"),
+  n   = c(45L, 45L, 45L, 135L)
+)
+tbl_demog |>
+  fr_table() |>
+  fr_cols(
+    characteristic = fr_col("Characteristic", width = 2.5),
+    placebo        = fr_col("Placebo"),
+    zom_50mg       = fr_col("Zomerane 50 mg"),
+    zom_100mg      = fr_col("Zomerane 100 mg"),
+    total          = fr_col("Total"),
+    .n = adsl_n,
+    .n_format = "{label}\n(N={n})"
+  )
+
+## ── Spanning groups via group= ───────────────────────────────────────────
+
+tbl_demog |>
+  fr_table() |>
+  fr_cols(
+    characteristic = fr_col("Characteristic", width = 2.5),
+    zom_50mg       = fr_col("50 mg",  group = "Zomerane"),
+    zom_100mg      = fr_col("100 mg", group = "Zomerane"),
+    placebo        = fr_col("Placebo"),
+    total          = fr_col("Total")
+  )
+
+## ── Bulk N auto-routes to spans and columns ──────────────────────────────
+
+n_df <- data.frame(
+  trt = c("Zomerane", "Placebo", "Total"),
+  n   = c(90L, 45L, 135L)
+)
+tbl_demog |>
+  fr_table() |>
+  fr_cols(
+    characteristic = fr_col("Characteristic", width = 2.5),
+    zom_50mg       = fr_col("50 mg",  group = "Zomerane"),
+    zom_100mg      = fr_col("100 mg", group = "Zomerane"),
+    placebo        = fr_col("Placebo"),
+    total          = fr_col("Total"),
+    .n = n_df,
+    .n_format = "{label}\n(N={n})"
   )
 
 ## ── Auto-width: let the engine calculate ─────────────────────────────────
@@ -245,32 +331,34 @@ tbl_demog |>
   fr_table() |>
   fr_cols(.list = labels_vec)
 
-## ── N-count formatting via fr_header ────────────────────────────────────
+## ── Leading spaces → paragraph-level indent (default) ──────────────────
 
+# tbl_demog has leading spaces ("  Mean (SD)", "  <65", etc.)
+# Default .spaces = "indent" converts them to real paragraph indent
 tbl_demog |>
   fr_table() |>
   fr_cols(
     characteristic = fr_col("Characteristic", width = 2.5),
-    zom_50mg       = fr_col("Zomerane 50 mg", align = "right"),
-    placebo        = fr_col("Placebo", align = "right")
-  ) |>
-  fr_header(
-    n = c(zom_50mg = 45, placebo = 45),
-    format = "{label}\n(N={n})"
+    .spaces = "indent"
   )
 
-## ── Combine auto-width + label transform ─────────────────────────────────
+## ── Preserve leading spaces as literal characters ─────────────────────
+
+# Use "preserve" for pre-formatted content with exact spacing
+tbl_demog |>
+  fr_table() |>
+  fr_cols(
+    characteristic = fr_col("Characteristic", width = 2.5),
+    .spaces = "preserve"
+  )
+
+## ── Per-column override: preserve one column, indent the rest ─────────
 
 tbl_demog |>
   fr_table() |>
   fr_cols(
-    characteristic = fr_col("Characteristic"),
-    .width = "auto",
-    .label_fn = ~ tools::toTitleCase(gsub("_", " ", .x))
-  ) |>
-  fr_header(
-    n = c(zom_50mg = 45, zom_100mg = 45, placebo = 45, total = 135),
-    format = "{label}\n(N={n})"
+    characteristic = fr_col("Characteristic", width = 2.5, spaces = "preserve"),
+    .spaces = "indent"
   )
 
 ## ── Column splitting: split + fit to fill page ─────────────────────────
@@ -293,6 +381,6 @@ tbl_vs |>
 }
 \seealso{
 \code{\link[=fr_col]{fr_col()}} for the column spec constructor, \code{\link[=fr_header]{fr_header()}} for
-N-count labels and header styling, \code{\link[=fr_spans]{fr_spans()}} for spanning group
-headers, \code{\link[=fr_rows]{fr_rows()}} for pagination.
+header presentation (bold, colours, alignment), \code{\link[=fr_spans]{fr_spans()}} for
+advanced multi-level spanning headers, \code{\link[=fr_rows]{fr_rows()}} for pagination.
 }

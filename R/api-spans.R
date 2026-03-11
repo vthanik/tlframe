@@ -210,6 +210,23 @@ fr_spans <- function(spec, ..., .level = 1L, .hline = TRUE, .gap = NULL) {
     new_fr_span(label, cols, level = .level, hline = .hline)
   })
 
+  # Validate: no column appears in more than one span at the same level
+  all_spans <- c(spec$header$spans, new_spans)
+  spans_at_level <- Filter(function(s) s$level == .level, all_spans)
+  if (length(spans_at_level) > 1L) {
+    all_cols <- unlist(lapply(spans_at_level, function(s) s$columns))
+    dups <- all_cols[duplicated(all_cols)]
+    if (length(dups) > 0L) {
+      dup_cols <- unique(dups)
+      lvl <- .level
+      cli_abort(
+        c("Columns {.val {dup_cols}} appear in multiple spans at level {lvl}.",
+          "i" = "Each column can appear in at most one span per level."),
+        call = call
+      )
+    }
+  }
+
   spec$header$spans <- c(spec$header$spans, new_spans)
   spec
 }

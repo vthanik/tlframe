@@ -505,6 +505,77 @@ apply_indent_by <- function(spec) {
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# 1g. Leading-Space → Paragraph Indent
+#
+# Detects leading spaces in cell data, measures their width using AFM font
+# metrics, strips the spaces, and creates cell_styles with the corresponding
+# indent. Both RTF (\li) and LaTeX (\leftskip) consume grid$indent for
+# paragraph-level indent that applies to ALL lines including wrapped text.
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' Convert leading spaces to paragraph-level indent
+#'
+#' For columns with `spaces = "indent"` (the default), detects leading spaces
+#' in each cell, measures their width via AFM font metrics, strips them from
+#' the data, and injects cell_styles with the equivalent indent in inches.
+#'
+#' Skips decimal-aligned columns (own spacing engine) and hidden columns.
+#'
+#' @param spec An fr_spec object (post-blank-row insertion, pre-indent_by).
+#' @return Modified fr_spec with stripped data and new cell_styles.
+#' @noRd
+apply_leading_indent <- function(spec) {
+  default_spaces <- spec$columns_meta$spaces %||% "indent"
+  nr <- nrow(spec$data)
+  if (nr == 0L) return(spec)
+
+  decimal_cols <- names(spec$decimal_geometry %||% list())
+
+  # Pre-measure single space width (font is constant across columns)
+  space_twips <- measure_text_width_twips(
+    " ", spec$page$font_family, spec$page$font_size
+  )
+
+  for (nm in names(spec$columns)) {
+    col <- spec$columns[[nm]]
+    col_spaces <- col$spaces %||% default_spaces
+    if (col_spaces != "indent") next
+    if (nm %in% decimal_cols) next
+    if (!nm %in% names(spec$data)) next
+    if (isFALSE(col$visible)) next
+
+    vals <- as.character(spec$data[[nm]])
+    vals[is.na(vals)] <- ""
+    # Cache stripped result to avoid double regex
+    stripped <- sub("^ +", "", vals)
+    n_lead <- nchar(vals) - nchar(stripped)
+    has_lead <- n_lead > 0L
+
+    if (!any(has_lead)) next
+
+    # Strip leading spaces from data
+    spec$data[[nm]][has_lead] <- stripped[has_lead]
+
+    # Group rows by indent level, create one cell_style per level
+    unique_levels <- sort(unique(n_lead[has_lead]))
+    new_styles <- vector("list", length(unique_levels))
+    for (k in seq_along(unique_levels)) {
+      n <- unique_levels[k]
+      rows <- which(n_lead == n)
+      indent_inches <- twips_to_inches(space_twips * n)
+      new_styles[[k]] <- new_fr_cell_style(
+        region = "body", type = "cell",
+        rows = rows, cols = nm,
+        indent = indent_inches
+      )
+    }
+    spec$cell_styles <- c(spec$cell_styles, new_styles)
+  }
+  spec
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # 1c. Keep-Together Mask
 #
 # Builds a logical vector indicating which rows need \trkeep (RTF) or

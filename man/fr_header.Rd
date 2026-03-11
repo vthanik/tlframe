@@ -12,17 +12,38 @@ fr_header(
   bg = NULL,
   fg = NULL,
   font_size = NULL,
-  repeat_on_page = NULL,
-  n = NULL,
-  format = NULL
+  repeat_on_page = NULL
 )
 }
 \arguments{
 \item{spec}{An \code{fr_spec} object from \code{\link[=fr_table]{fr_table()}}.}
 
-\item{align}{Default horizontal alignment for all header cells. One of
-\code{"left"}, \code{"center"}, \code{"right"}, or \code{NULL} (inherit from column).
-Overridden per-column by \code{fr_col(header_align = ...)}.}
+\item{align}{Horizontal alignment for header cells. Accepts two forms:
+\itemize{
+\item \strong{Scalar string} — \code{"left"}, \code{"center"}, \code{"right"}, or \code{NULL}
+(inherit from column). Applied to all header cells uniformly.
+\item \strong{Named list + tidyselect} — per-column alignment using column
+names and tidyselect helpers. Names are alignment values, values
+are column selections:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{fr_header(spec, align = list(
+  center = c(starts_with("zom"), "placebo"),
+  left   = "characteristic",
+  right  = "total"
+))
+}\if{html}{\out{</div>}}
+
+Unmatched columns keep \code{fr_col(header_align = ...)} or fall back
+to the body \code{align} setting.
+}
+
+\strong{Precedence} (highest wins):
+\enumerate{
+\item \code{fr_col(header_align = "right")} — per-column override
+\item \code{fr_header(align = list(...))} — tidyselect targeting
+\item \code{fr_header(align = "center")} — blanket scalar
+\item Column body \code{align} — inherited default
+}}
 
 \item{valign}{Default vertical alignment. One of \code{"top"}, \code{"middle"},
 \code{"bottom"} (default). Relevant when header rows have unequal height.}
@@ -42,52 +63,21 @@ from page font size.}
 
 \item{repeat_on_page}{Logical. Whether to repeat the column header on
 every page. Default \code{TRUE} (standard for regulatory tables).}
-
-\item{n}{Subject counts for N-count column header labels. Three forms:
-\itemize{
-\item \strong{Named numeric vector} — global N, same for all page groups.
-Names must match data column names.
-Example: \code{c(placebo = 45, zom_50mg = 44)}.
-\item \strong{Named list of named numeric vectors} — per-group N. List names
-must match \code{page_by} group values. Each element is a named numeric
-vector keyed by column name.
-Example: \code{list("Blood Pressure" = c(placebo = 42, zom_50mg = 40), "Heart Rate" = c(placebo = 45, zom_50mg = 44))}.
-\item \strong{Data frame} — pre-computed N-counts from ADSL or external source.
-
-\describe{
-\item{\strong{2-column}}{Column 1 = treatment display labels,
-column 2 = counts (numeric). Labels matched case-insensitively
-to column and spanner labels. Same N on every page.}
-\item{\strong{3-column}}{Column 1 = page\_by group values,
-column 2 = treatment display labels, column 3 = counts.
-Different N per page\_by group.}
-}
-}}
-
-\item{format}{A \link[glue:glue]{glue}-style format string for N-count
-labels. Available tokens: \code{{label}} (column display label) and
-\code{{n}} (count).
-Default \code{NULL} (no N-count formatting).
-Example: \code{"{label}\\n(N={n})"}.}
 }
 \value{
 A modified \code{fr_spec}. Header config stored in \code{spec$header}.
 }
 \description{
-The single owner of all header presentation settings: alignment, vertical
-alignment, N-count label formatting, bold, background/foreground colour,
-and font size. These defaults apply to \strong{all} column header cells unless
-overridden by per-column \code{fr_col(header_align = ...)} or
+The single owner of all header \strong{presentation} settings: alignment,
+vertical alignment, bold, background/foreground colour, and font size.
+These defaults apply to \strong{all} column header cells unless overridden by
+per-column \code{fr_col(header_align = ...)} or
 \code{fr_style(region = "header", ...)}.
 
 \code{\link[=fr_cols]{fr_cols()}} owns column \strong{structure} (labels, widths, body alignment,
-visibility); \code{fr_header()} owns header \strong{presentation}. There is no
-overlap — N-count formatting, header alignment, and header valign live
-exclusively here.
-
-N-count label formatting is \strong{deferred} — the \code{n} and \code{format} values
-are stored on the spec and resolved during rendering. This makes
-\code{fr_header()} and \code{\link[=fr_cols]{fr_cols()}} order-independent (ggplot2 pattern).
+visibility, N-counts, spanning groups); \code{fr_header()} owns header
+\strong{presentation} only. N-count labels and format are set exclusively
+via \code{\link[=fr_cols]{fr_cols()}} \code{.n} / \code{.n_format} and \code{\link[=fr_col]{fr_col()}} \code{n} parameters.
 
 Calling \code{fr_header()} again \strong{replaces} the previous header config
 (except spans, which are managed by \code{\link[=fr_spans]{fr_spans()}}).
@@ -99,33 +89,14 @@ Calling \code{fr_header()} again \strong{replaces} the previous header config
 }\if{html}{\out{</div>}}
 }
 
-\section{N-count label resolution}{
-
-N-count labels are resolved at different stages depending on the form of
-\code{n}:
-\itemize{
-\item \strong{Named numeric vector} (global) — resolved once during
-\code{finalize_spec()}. All page groups share the same labels.
-\item \strong{Named list} — resolved per page group in the render loop.
-Each group gets its own header labels via a label override map.
-\item \strong{Data frame} — 2-col resolved globally during \code{finalize_spec()}.
-3-col resolved per page group in the render loop.
-}
-
-The \code{{label}} token in \code{format} expands to the column's resolved label
-(from \code{fr_col(label = ...)} or auto-generated). This means
-\code{fr_header()} and \code{fr_cols()} can be called in any order.
-}
-
 \section{Regulatory conventions}{
 
 Many pharma TFL outputs use \strong{bold, centered} column headers with
 \code{valign = "bottom"} so that short labels (e.g. "Characteristic") align
 at the bottom when adjacent columns have multi-line labels (e.g.
-"Placebo\\n(N=45)"). The \verb{\{label\}\\\\n(N=\{n\})} format is the standard
-ICH/CDISC convention for treatment-arm headers. By default, headers are
-\strong{not bold} and inherit alignment from the column's \code{align} setting —
-use \code{fr_header(bold = TRUE, align = "center")} to opt in.
+"Placebo\n(N=45)"). By default, headers are \strong{not bold} and inherit
+alignment from the column's \code{align} setting — use
+\code{fr_header(bold = TRUE, align = "center")} to opt in.
 }
 
 \examples{
@@ -135,68 +106,14 @@ tbl_demog |>
   fr_table() |>
   fr_header(align = "center", valign = "bottom", bold = TRUE)
 
-## ── Global N-count (same for all groups) ─────────────────────────────────
+## ── Tidyselect alignment (per-column targeting) ──────────────────────────
 
 tbl_demog |>
   fr_table() |>
-  fr_cols(
-    characteristic = fr_col("Characteristic", width = 2.5),
-    zom_50mg       = fr_col("Zomerane 50 mg", align = "right"),
-    placebo        = fr_col("Placebo", align = "right")
-  ) |>
-  fr_header(
-    n = c(zom_50mg = 45, placebo = 45),
-    format = "{label}\n(N={n})"
-  )
-
-## ── Per-group N-count (different N per page_by group) ────────────────────
-
-# Hardcode N per parameter — each page_by group shows its own N
-tbl_vs |>
-  fr_table() |>
-  fr_rows(page_by = "param") |>
-  fr_header(
-    n = list(
-      "Systolic BP (mmHg)"  = c(placebo = 45, zom_50mg = 45, zom_100mg = 39, total = 129),
-      "Heart Rate (bpm)"    = c(placebo = 45, zom_50mg = 38, zom_100mg = 40, total = 123),
-      "Temperature (C)"     = c(placebo = 42, zom_50mg = 39, zom_100mg = 37, total = 118)
-    ),
-    format = "{label}\n(N={n})"
-  )
-
-## ── Data frame N-count — 2-col (global) ────────────────────────────────────
-
-# Pre-computed from ADSL — pass directly, no function wrapper needed
-adsl_n <- data.frame(
-  trt = c("Zomerane 50 mg", "Placebo"),
-  n   = c(45L, 45L)
-)
-tbl_demog |>
-  fr_table() |>
-  fr_cols(
-    zom_50mg = fr_col("Zomerane 50 mg"),
-    placebo  = fr_col("Placebo")
-  ) |>
-  fr_header(n = adsl_n, format = "{label}\n(N={n})")
-
-## ── Data frame N-count — 3-col (per-group with page_by) ───────────────────
-
-# Different N per page_by group — column 1 matches page_by values
-vs_n <- data.frame(
-  param = c("Systolic BP (mmHg)", "Systolic BP (mmHg)",
-            "Heart Rate (bpm)",   "Heart Rate (bpm)"),
-  trt   = c("Placebo", "Zomerane 50 mg",
-            "Placebo", "Zomerane 50 mg"),
-  n     = c(45L, 44L, 42L, 40L)
-)
-tbl_vs |>
-  fr_table() |>
-  fr_rows(page_by = "param") |>
-  fr_cols(
-    placebo  = fr_col("Placebo"),
-    zom_50mg = fr_col("Zomerane 50 mg")
-  ) |>
-  fr_header(n = vs_n, format = "{label}\n(N={n})")
+  fr_header(bold = TRUE, align = list(
+    left   = "characteristic",
+    center = c(starts_with("zom"), "placebo", "total")
+  ))
 
 ## ── Header background colour (hex or CSS named colour) ──────────────────
 
@@ -210,17 +127,22 @@ tbl_demog |>
   fr_table() |>
   fr_header(bg = "lavender", fg = "midnightblue", bold = TRUE)
 
-## ── Order-independent: fr_header first, then fr_cols ─────────────────────
+## ── N-counts now on fr_cols(), not fr_header() ────────────────────────────
 
 tbl_demog |>
   fr_table() |>
-  fr_header(n = c(zom_50mg = 45), format = "{label}\n(N={n})") |>
-  fr_cols(zom_50mg = fr_col("Zom 50mg", align = "right"))
+  fr_cols(
+    characteristic = fr_col("Characteristic", width = 2.5),
+    zom_50mg       = fr_col("Zomerane 50 mg", n = 45),
+    placebo        = fr_col("Placebo",         n = 45),
+    .n_format = "{label}\n(N={n})"
+  ) |>
+  fr_header(bold = TRUE, align = "center")
 
 }
 \seealso{
-\code{\link[=fr_cols]{fr_cols()}} for column structure, \code{\link[=fr_spans]{fr_spans()}} for spanning
-headers, \code{\link[=fr_col]{fr_col()}} for per-column \code{header_align} overrides,
+\code{\link[=fr_cols]{fr_cols()}} for column structure and N-counts, \code{\link[=fr_spans]{fr_spans()}} for
+spanning headers, \code{\link[=fr_col]{fr_col()}} for per-column \code{header_align} overrides,
 \code{\link[=fr_style]{fr_style()}} with \code{region = "header"} for cell-level overrides,
 \code{\link[=fr_config]{fr_config()}} for setting header defaults via \verb{_tlframe.yml}.
 }

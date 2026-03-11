@@ -38,7 +38,7 @@ Contains one row per subject per parameter per visit. Some subjects have
 missing parameters to create \strong{natural N variation} across vital sign
 groups --- exactly the scenario that per-group N-count headers address.
 
-Designed as the source for \code{\link[=fr_header]{fr_header()}} \verb{n = function(...)} closures
+Designed as the source for \code{\link[=fr_cols]{fr_cols()}} \code{.n} data frame parameter
 when the display table (\link{tbl_vs}) is pre-summarized.
 }
 \section{N variation by design}{
@@ -60,21 +60,20 @@ with(
   tapply(USUBJID, list(PARAM, TRTA), function(x) length(unique(x)))
 )
 
-# Use as N-count source via closure
+# Use as N-count source via data frame
+vs_n <- aggregate(
+  USUBJID ~ PARAM + TRTA, data = advs[advs$AVISIT == "Baseline", ],
+  FUN = function(x) length(unique(x))
+)
+names(vs_n) <- c("param", "trt", "n")
 tbl_vs |>
   fr_table() |>
   fr_rows(page_by = "param") |>
-  fr_header(
-    n = \(d) aggregate(
-      USUBJID ~ PARAM + TRTA, data = advs[advs$AVISIT == "Baseline", ],
-      FUN = function(x) length(unique(x))
-    ),
-    format = "{label}\n(N={n})"
-  )
+  fr_cols(.n = vs_n, .n_format = "{label}\n(N={n})")
 
 }
 \seealso{
-\link{tbl_vs} for the pre-summarized display table, \code{\link[=fr_header]{fr_header()}}
+\link{tbl_vs} for the pre-summarized display table, \code{\link[=fr_cols]{fr_cols()}}
 for N-count formatting.
 }
 \keyword{datasets}

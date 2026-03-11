@@ -38,10 +38,10 @@ for Baseline, Value, and Change from Baseline. Multiple timepoints
 
 Designed to demonstrate advanced tlframe features: \code{page_by} for
 per-parameter pages, \code{\link[=fr_spans]{fr_spans()}} for two-level spanning headers,
-\code{\link[=fr_header]{fr_header()}} with \verb{n = function(...)} for per-group N-counts, and
+\code{\link[=fr_cols]{fr_cols()}} with \code{.n} data frame for per-group N-counts, and
 \code{fr_cols(.split = TRUE)} for wide layouts.
 
-Pair with \link{advs} via a closure in \code{\link[=fr_header]{fr_header()}} \verb{n = \\(d) ...} to get
+Pair with \link{advs} via a data frame in \code{\link[=fr_cols]{fr_cols()}} \code{.n} to get
 per-parameter N-counts in column headers.
 }
 \examples{

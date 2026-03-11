@@ -77,6 +77,9 @@ calculate_row_heights <- function(data, columns, page) {
     content <- data[[nm]]
     if (!is.character(content)) next
 
+    # Strip sentinel tokens so width estimation uses visible text only
+    content <- sentinel_to_plain_vec(content)
+
     # Pass 1: Vectorized candidate detection
     nl_count <- stringi::stri_count_fixed(content, "\n")
     char_count <- nchar(content)
@@ -158,14 +161,15 @@ calculate_page_budget <- function(spec) {
 #' @param group_by Character vector of grouping column names.
 #' @param orphan_min Integer. Min rows to keep at bottom of page.
 #' @param widow_min Integer. Min rows to carry to next page.
-#' @return Integer vector — page number (1-based) for each row.
+#' @return Integer vector — page number (1-based) for each row, or
+#'   0 for excluded trailing blank rows (not rendered).
 #' @noRd
 paginate_rows <- function(row_heights, budget, data, group_by,
                            orphan_min = 3L, widow_min = 3L) {
   nr <- length(row_heights)
   if (nr == 0L) return(integer(0))
 
-  pages <- rep(1L, nr)
+  pages <- rep(0L, nr)
   current_page <- 1L
   used <- 0L
 
@@ -204,7 +208,7 @@ paginate_rows <- function(row_heights, budget, data, group_by,
     group_rows <- g_start:g_end
     group_height <- sum(row_heights[group_rows])
 
-    # Flush pending blank from previous group onto current page
+    # Assign pending blank to current page (belongs to previous group)
     if (!is.null(pending_blank_idx)) {
       pages[pending_blank_idx] <- current_page
     }
@@ -215,7 +219,7 @@ paginate_rows <- function(row_heights, budget, data, group_by,
       pages[group_rows] <- current_page
       used <- used + pending_blank_height + group_height
     } else if (used + group_height <= budget) {
-      # Branch 2: group fits without blank — drop blank (invisible at page bottom)
+      # Branch 2: group fits without blank — blank already assigned above
       pages[group_rows] <- current_page
       used <- used + group_height
     } else if (group_height <= budget) {
@@ -250,10 +254,6 @@ paginate_rows <- function(row_heights, budget, data, group_by,
     }
   }
 
-  # Assign final pending blank to current page
-  if (!is.null(pending_blank_idx)) {
-    pages[pending_blank_idx] <- current_page
-  }
-
+  # Final pending blank stays at page 0 — excluded from rendering
   pages
 }

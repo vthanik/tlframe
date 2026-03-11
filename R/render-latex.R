@@ -60,8 +60,19 @@ render_latex <- function(spec, page_groups, col_panels, path) {
 
       # Per-group header label overrides (pre-computed in prepare_pages,
       # or computed here for single-group specs without page_by)
-      label_overrides <- group$label_overrides %||%
-        resolve_group_labels(spec, group$data, group$group_label)
+      if (!is.null(group$label_overrides) || !is.null(group$span_overrides)) {
+        label_overrides <- group$label_overrides
+        span_overrides <- group$span_overrides
+      } else {
+        resolved <- resolve_group_labels(spec, group$data, group$group_label)
+        if (is.list(resolved)) {
+          label_overrides <- resolved$columns
+          span_overrides <- resolved$spans
+        } else {
+          label_overrides <- resolved
+          span_overrides <- NULL
+        }
+      }
 
       # Build cell grid
       cell_grid <- build_cell_grid(group$data, vis_columns,
@@ -70,7 +81,8 @@ render_latex <- function(spec, page_groups, col_panels, path) {
       # Table (titles/footnotes are in longtblr head/foot templates)
       lines <- c(lines, latex_table(spec, group$data, vis_columns,
                                      cell_grid, borders,
-                                     label_overrides = label_overrides))
+                                     label_overrides = label_overrides,
+                                     span_overrides = span_overrides))
     }
   }
 
@@ -132,14 +144,23 @@ latex_preamble <- function(spec) {
   mb <- page$margins$bottom
 
   # Pagehead/pagefoot positioning — match RTF behavior:
-  # - Pagehead flows from start of body area upward (headsep=0pt)
-  # - Pagefoot flows from end of body area downward (footskip=line height)
-  # When absent, zero them out to avoid dead space.
+  # The pagehead's LAST line sits at the bottom of the top margin (1in mark).
+  # Content flows upward into the margin. A thin headsep gap separates the
+  # pagehead from titles. fancyhdr baseline-aligns content at headheight
+  # distance from the body top, so headheight + headsep must fit within
+  # the top margin. Body (titles via longtblr head template) starts at
+  # top + headsep below the original margin.
+  headsep_pt <- 0
+
   if (!is.null(spec$pagehead)) {
     ph_fs <- spec$pagehead$font_size %||% (page$font_size - 1)
     ph_line_pt <- round(ph_fs * lf, 1)
-    headheight_str <- paste0(",headheight=", ph_line_pt, "pt")
-    headsep_str <- ",headsep=0pt"
+    ph_max_lines <- max_chrome_lines(spec$pagehead)
+    headheight_pt <- round(ph_max_lines * ph_line_pt, 1)
+    # Hairline gap between pagehead bottom and titles (2pt)
+    headsep_pt <- 2
+    headheight_str <- paste0(",headheight=", headheight_pt, "pt")
+    headsep_str <- paste0(",headsep=", headsep_pt, "pt")
   } else {
     headheight_str <- ",headheight=0pt"
     headsep_str <- ",headsep=0pt"
@@ -148,9 +169,21 @@ latex_preamble <- function(spec) {
   if (!is.null(spec$pagefoot)) {
     pf_fs <- spec$pagefoot$font_size %||% (page$font_size - 1)
     pf_line_pt <- round(pf_fs * lf, 1)
-    footskip_str <- paste0(",footskip=", pf_line_pt, "pt")
+    pf_max_lines <- max_chrome_lines(spec$pagefoot)
+    footskip_str <- paste0(",footskip=",
+                           round(pf_max_lines * pf_line_pt, 1), "pt")
   } else {
     footskip_str <- ",footskip=0pt"
+  }
+
+  # Expand top margin by headsep so the body (titles) starts just below
+  # the original margin line, matching RTF where pagehead bottom = margin.
+  # Expand bottom margin by footskip so the pagefoot sits at the margin edge.
+  top_in <- mt + headsep_pt / fr_env$points_per_inch
+  bot_in <- if (!is.null(spec$pagefoot)) {
+    mb + round(pf_max_lines * pf_line_pt, 1) / fr_env$points_per_inch
+  } else {
+    mb
   }
 
   geom_opts <- paste0(
@@ -158,8 +191,8 @@ latex_preamble <- function(spec) {
     if (nzchar(orient_opt)) paste0(",", orient_opt) else "",
     ",left=", ml, "in",
     ",right=", mr, "in",
-    ",top=", mt, "in",
-    ",bottom=", mb, "in",
+    ",top=", round(top_in, 4), "in",
+    ",bottom=", round(bot_in, 4), "in",
     headheight_str, headsep_str, footskip_str
   )
 
@@ -261,12 +294,15 @@ latex_fancyhdr_setup <- function(spec) {
     }
   }
 
-  # Helper: resolve tokens first (replacing {thepage} with \thepage etc.),
-  # then resolve sentinels but do NOT escape LaTeX specials — token values
-  # are pre-escaped above, and LaTeX commands (\thepage) must survive.
-  # Fancyhdr content is trusted (user-authored), same as RTF page chrome.
-  latex_chrome_text <- function(raw_text, token_map, context) {
-    txt <- resolve_tokens(raw_text, token_map, context)
+  # Escape literal text first, then resolve tokens (pre-escaped above)
+  # and sentinels (produce LaTeX commands). This ensures underscores and
+  # other LaTeX specials in user text are safe, while token values and
+  # sentinel output pass through unescaped.
+  latex_chrome_text <- function(raw_text, token_map, context,
+                                align_key = "l", max_lines = 1L) {
+    # Escape literal text, preserving {token} placeholders and \n
+    escaped <- latex_escape_chrome(raw_text)
+    txt <- resolve_tokens(escaped, token_map, context)
     # Resolve inline markup sentinels only (not full escape)
     if (has_sentinel(txt)) {
       pattern <- fr_env$sentinel_pattern
@@ -278,8 +314,21 @@ latex_fancyhdr_setup <- function(spec) {
         txt <- sub(s, resolved, txt, fixed = TRUE)
       }
     }
-    # Convert \n to LaTeX line break for multi-line chrome text
-    gsub("\n", "\\\\\\\\", txt)
+    # When ANY zone in the chrome has multiple lines, ALL zones must use
+    # \shortstack padded to the same height. fancyhdr baseline-aligns content
+    # at the bottom of headheight; padding ensures single-line zones align
+    # with the first line of multi-line zones (top-alignment).
+    parts <- strsplit(txt, "\n", fixed = TRUE)[[1L]]
+    if (max_lines > 1L) {
+      # Pad with phantom lines so all zones have equal height
+      n_pad <- max_lines - length(parts)
+      if (n_pad > 0L) {
+        parts <- c(parts, rep("\\phantom{Xg}", n_pad))
+      }
+      txt <- paste0("\\shortstack[", align_key, "]{",
+                    paste0(parts, collapse = "\\\\"), "}")
+    }
+    txt
   }
 
   # Page header
@@ -288,21 +337,25 @@ latex_fancyhdr_setup <- function(spec) {
     fs <- chrome$font_size %||% (spec$page$font_size - 1)
     bold_on  <- if (isTRUE(chrome$bold)) "\\textbf{" else ""
     bold_off <- if (isTRUE(chrome$bold)) "}" else ""
+    ph_ml <- max_chrome_lines(chrome)
 
     if (!is.null(chrome$left)) {
-      txt <- latex_chrome_text(chrome$left, token_map, "page header")
+      txt <- latex_chrome_text(chrome$left, token_map, "page header",
+                               align_key = "l", max_lines = ph_ml)
       lines <- c(lines, paste0("\\fancyhead[L]{\\fontsize{", fs, "}{",
                                  round(fs * fr_env$latex_leading_factor, 1), "}\\selectfont ",
                                  bold_on, txt, bold_off, "}"))
     }
     if (!is.null(chrome$center)) {
-      txt <- latex_chrome_text(chrome$center, token_map, "page header")
+      txt <- latex_chrome_text(chrome$center, token_map, "page header",
+                               align_key = "c", max_lines = ph_ml)
       lines <- c(lines, paste0("\\fancyhead[C]{\\fontsize{", fs, "}{",
                                  round(fs * fr_env$latex_leading_factor, 1), "}\\selectfont ",
                                  bold_on, txt, bold_off, "}"))
     }
     if (!is.null(chrome$right)) {
-      txt <- latex_chrome_text(chrome$right, token_map, "page header")
+      txt <- latex_chrome_text(chrome$right, token_map, "page header",
+                               align_key = "r", max_lines = ph_ml)
       lines <- c(lines, paste0("\\fancyhead[R]{\\fontsize{", fs, "}{",
                                  round(fs * fr_env$latex_leading_factor, 1), "}\\selectfont ",
                                  bold_on, txt, bold_off, "}"))
@@ -316,21 +369,25 @@ latex_fancyhdr_setup <- function(spec) {
     fs <- chrome$font_size %||% (spec$page$font_size - 1)
     bold_on  <- if (isTRUE(chrome$bold)) "\\textbf{" else ""
     bold_off <- if (isTRUE(chrome$bold)) "}" else ""
+    pf_ml <- max_chrome_lines(chrome)
 
     if (!is.null(chrome$left)) {
-      txt <- latex_chrome_text(chrome$left, token_map, "page footer")
+      txt <- latex_chrome_text(chrome$left, token_map, "page footer",
+                               align_key = "l", max_lines = pf_ml)
       lines <- c(lines, paste0("\\fancyfoot[L]{\\fontsize{", fs, "}{",
                                  round(fs * fr_env$latex_leading_factor, 1), "}\\selectfont ",
                                  bold_on, txt, bold_off, "}"))
     }
     if (!is.null(chrome$center)) {
-      txt <- latex_chrome_text(chrome$center, token_map, "page footer")
+      txt <- latex_chrome_text(chrome$center, token_map, "page footer",
+                               align_key = "c", max_lines = pf_ml)
       lines <- c(lines, paste0("\\fancyfoot[C]{\\fontsize{", fs, "}{",
                                  round(fs * fr_env$latex_leading_factor, 1), "}\\selectfont ",
                                  bold_on, txt, bold_off, "}"))
     }
     if (!is.null(chrome$right)) {
-      txt <- latex_chrome_text(chrome$right, token_map, "page footer")
+      txt <- latex_chrome_text(chrome$right, token_map, "page footer",
+                               align_key = "r", max_lines = pf_ml)
       lines <- c(lines, paste0("\\fancyfoot[R]{\\fontsize{", fs, "}{",
                                  round(fs * fr_env$latex_leading_factor, 1), "}\\selectfont ",
                                  bold_on, txt, bold_off, "}"))
@@ -638,7 +695,7 @@ build_fn_latex_content <- function(entries, spec, skip_spacing = FALSE,
 #' Build the complete tabularray table
 #' @noRd
 latex_table <- function(spec, data, columns, cell_grid, borders,
-                         label_overrides = NULL) {
+                         label_overrides = NULL, span_overrides = NULL) {
   col_names <- names(columns)
   nc <- length(col_names)
   nr <- nrow(data)
@@ -710,7 +767,7 @@ latex_table <- function(spec, data, columns, cell_grid, borders,
   )
 
   # Spanner rows (compute early to get hline keys for inner spec)
-  spanner_result <- latex_spanner_rows(spec, columns)
+  spanner_result <- latex_spanner_rows(spec, columns, span_overrides = span_overrides)
   if (length(spanner_result$hlines) > 0L) {
     inner_keys <- c(inner_keys, spanner_result$hlines)
     inner_str <- paste0(inner_keys, collapse = ",\n  ")
@@ -921,7 +978,7 @@ latex_header_style_specs <- function(hgrid, header_row_idx, nc,
 
 #' LaTeX spanner (spanning header) rows
 #' @noRd
-latex_spanner_rows <- function(spec, columns) {
+latex_spanner_rows <- function(spec, columns, span_overrides = NULL) {
   spans <- spec$header$spans
   if (length(spans) == 0L) return(list(rows = character(0), hlines = character(0)))
 
@@ -953,7 +1010,12 @@ latex_spanner_rows <- function(spec, columns) {
       if (!is.null(matching_span)) {
         sp_cols <- intersect(matching_span$columns, col_names)
         span_width <- length(sp_cols)
-        content <- latex_escape_and_resolve(matching_span$label)
+        span_label <- matching_span$label
+        if (!is.null(span_overrides)) {
+          ov <- span_overrides[matching_span$label]
+          if (!is.na(ov)) span_label <- ov
+        }
+        content <- latex_escape_and_resolve(span_label)
         cells <- c(cells, paste0(
           "\\SetCell[c=", span_width, "]{c} ", content
         ))
@@ -1078,17 +1140,22 @@ latex_body_rows <- function(data, columns, cell_grid,
         cells[j] <- paste0("\\hspace{", offset_pt, "pt}", formatted_esc)
       } else {
         # Standard cell handling
-        # Preserve leading whitespace: convert leading spaces to \hspace
-        n_lead <- nchar(content) - nchar(sub("^ +", "", content))
-        if (n_lead > 0L) content <- sub("^ +", "", content)
-        content <- latex_escape_and_resolve(content)
-        if (n_lead > 0L) {
-          # ~0.55em per space in monospace font
-          content <- paste0("\\hspace{", round(n_lead * fr_env$latex_space_width_em, 2), "em}", content)
+        col_spaces <- columns[[col_names[j]]]$spaces %||% "indent"
+        if (col_spaces == "preserve") {
+          # Preserve mode: convert leading spaces to \hspace (first-line visual spacing)
+          n_lead <- nchar(content) - nchar(sub("^ +", "", content))
+          if (n_lead > 0L) content <- sub("^ +", "", content)
+          content <- latex_escape_and_resolve(content)
+          if (n_lead > 0L) {
+            content <- paste0("\\hspace{", round(n_lead * fr_env$latex_space_width_em, 2), "em}", content)
+          }
+        } else {
+          # Indent mode: spaces already stripped upstream, \leftskip handles indent
+          content <- latex_escape_and_resolve(content)
         }
-        # Apply cell indent (from fr_rows(indent_by=))
+        # Apply paragraph-level indent (all lines, including wrapped)
         if (cell_indent > 0) {
-          content <- paste0("\\hspace{", round(cell_indent, 4), "in}", content)
+          content <- paste0("\\leftskip=", round(cell_indent, 4), "in\\relax ", content)
         }
         # Handle multiline content: wrap in \parbox with column alignment
         if (grepl("\n", content, fixed = TRUE)) {
@@ -1118,3 +1185,51 @@ latex_body_rows <- function(data, columns, cell_grid,
 }
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Helpers
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' Count maximum number of lines across pagehead/pagefoot zones
+#'
+#' Multi-line content arises from `c("Line 1", "Line 2")` in fr_pagehead(),
+#' which is collapsed to "Line 1\nLine 2" by collapse_chrome_text().
+#' @param chrome A pagehead or pagefoot list with $left, $center, $right.
+#' @return Integer: maximum line count across all zones (minimum 1).
+#' @noRd
+max_chrome_lines <- function(chrome) {
+  if (is.null(chrome)) return(1L)
+  zones <- c(chrome$left %||% "", chrome$center %||% "", chrome$right %||% "")
+  max(vapply(zones, function(z) {
+    length(strsplit(z, "\n", fixed = TRUE)[[1L]])
+  }, integer(1)))
+}
+
+
+#' Escape LaTeX specials in chrome text, preserving {token} placeholders
+#'
+#' Finds `{...}` token placeholders via regex, escapes everything else,
+#' and reassembles. Newlines (`\n`) are preserved for later shortstack wrapping.
+#' @param text Character scalar with possible `{token}` placeholders.
+#' @return LaTeX-safe string with tokens intact.
+#' @noRd
+latex_escape_chrome <- function(text) {
+  if (is.null(text) || !nzchar(text)) return(text)
+  # Temporarily protect \n from escaping
+  text <- gsub("\n", "\x01NL\x02", text, fixed = TRUE)
+  # Find all {token} placeholders
+  m <- gregexpr("\\{[^}]+\\}", text, perl = TRUE)
+  tokens <- regmatches(text, m)[[1L]]
+  if (length(tokens) == 0L) {
+    # No tokens — escape everything and restore \n
+    return(gsub("\x01NL\x02", "\n", latex_escape(text), fixed = TRUE))
+  }
+  # Replace tokens with unique sentinels, escape, restore
+  for (i in seq_along(tokens)) {
+    text <- sub(tokens[i], paste0("\x01TK", i, "\x02"), text, fixed = TRUE)
+  }
+  text <- latex_escape(text)
+  for (i in seq_along(tokens)) {
+    text <- sub(paste0("\x01TK", i, "\x02"), tokens[i], text, fixed = TRUE)
+  }
+  gsub("\x01NL\x02", "\n", text, fixed = TRUE)
+}

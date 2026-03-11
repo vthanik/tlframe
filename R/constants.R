@@ -901,6 +901,8 @@ fr_env$align_to_latex <- c(
 # LaTeX: t (top), m (middle), b (bottom) — tabularray valign key
 fr_env$valid_valigns <- c("top", "middle", "bottom")
 
+fr_env$valid_spaces <- c("indent", "preserve")
+
 fr_env$valign_to_rtf <- c(
   top    = "",
   middle = "\\clvertalc",

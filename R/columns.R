@@ -161,6 +161,9 @@ estimate_col_width <- function(data, col_name, label, page) {
   col_values <- as.character(data[[col_name]])
   if (length(col_values) == 0L || all(is.na(col_values))) {
     max_content_twips <- 0
+    cli::cli_inform(c(
+      "i" = "Column {.val {col_name}} is all NA — width estimated from label only (min 0.5in)."
+    ))
   } else {
     col_values[is.na(col_values)] <- ""
     col_values <- unique(col_values)

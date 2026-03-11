@@ -12,6 +12,7 @@ fr_theme(
   col_gap = NULL,
   font_family = NULL,
   font_size = NULL,
+  spaces = NULL,
   split = NULL,
   stub = NULL,
   pagehead = NULL,
@@ -20,6 +21,7 @@ fr_theme(
   hlines = NULL,
   vlines = NULL,
   spacing = NULL,
+  n_format = NULL,
   header = NULL,
   footnote_separator = NULL
 )
@@ -38,6 +40,11 @@ unchanged. See \code{\link[=fr_page]{fr_page()}} for details.}
 \item{font_family}{Font family name. \code{NULL} leaves unchanged.}
 
 \item{font_size}{Font size in points. \code{NULL} leaves unchanged.}
+
+\item{spaces}{How to handle leading spaces in cell data. One of
+\code{"indent"} (convert to paragraph-level indent) or \code{"preserve"}
+(keep literal spaces). \code{NULL} leaves unchanged. See \code{\link[=fr_cols]{fr_cols()}}
+\code{.spaces} parameter for details.}
 
 \item{split}{Logical. \code{TRUE} to enable column splitting for wide tables,
 \code{FALSE} to disable. \code{NULL} leaves unchanged. See \code{\link[=fr_cols]{fr_cols()}} \code{.split}
@@ -66,6 +73,11 @@ unchanged.}
 \item{spacing}{Named list with \code{titles_after}, \code{footnotes_before},
 \code{pagehead_after}, \code{pagefoot_before}, \code{page_by_after} (integer
 blank lines). \code{NULL} leaves unchanged. See \code{\link[=fr_spacing]{fr_spacing()}}.}
+
+\item{n_format}{A \link[glue:glue]{glue}-style format string for N-count
+labels. Applied to all tables that use \code{fr_col(n = ...)} or
+\code{fr_cols(.n = ...)} without an explicit \code{.n_format}. Available
+tokens: \code{{label}} and \code{{n}}. \code{NULL} leaves unchanged.}
 
 \item{header}{Named list of header defaults. Currently supports:
 \itemize{
@@ -160,6 +172,15 @@ fr_theme(
                    pagehead_after = 1L)
 )
 fr_theme_get()$spacing   # check the spacing settings
+
+## ── Theme with leading-space handling ────────────────────────────────────
+
+fr_theme_reset()
+fr_theme(spaces = "indent")   # default: leading spaces → paragraph indent
+fr_theme_get()$spaces         # "indent"
+
+fr_theme(spaces = "preserve") # keep leading spaces as literal characters
+fr_theme_get()$spaces         # "preserve"
 
 ## ── Theme with footnote_separator ────────────────────────────────────────
 

@@ -95,7 +95,9 @@ tbl_ae_soc |>
   fr_titles("Table 14.3.1",
             "Adverse Events by System Organ Class and Preferred Term") |>
   fr_rows(indent_by = c("pt" = 0.25), blank_after = "soc") |>
-  fr_header(bold = TRUE, n = list(placebo = 45, low = 45, high = 45)) |>
+  fr_cols(.n = c("Placebo" = 45, "Low Dose" = 45, "High Dose" = 45),
+          .n_format = "{label}\n(N={n})") |>
+  fr_header(bold = TRUE) |>
   fr_hlines("header") |>
   fr_render(tempfile(fileext = ".rtf"))
 ```
@@ -108,7 +110,7 @@ Every verb takes an `fr_spec`, returns a modified `fr_spec`. Side effects only a
 |---|---|
 | `fr_table()` | Entry point — creates spec from data |
 | `fr_cols()` | Column labels, widths, alignment, selection |
-| `fr_header()` | Header styling, N-counts, alignment |
+| `fr_header()` | Header styling, alignment |
 | `fr_titles()` | Table titles (1-4 lines) |
 | `fr_footnotes()` | Footnotes with optional separator |
 | `fr_rows()` | Row grouping, indentation, blank rows |
@@ -134,8 +136,8 @@ fr_render(spec, "output.tex")  # LaTeX source
 ### Automatic N-counts in headers
 
 ```r
-spec |> fr_header(n = list(placebo = 45, low = 45, high = 45),
-                  format = "{label}\n(N={n})")
+spec |> fr_cols(.n = c("Placebo" = 45, "Low Dose" = 45, "High Dose" = 45),
+               .n_format = "{label}\n(N={n})")
 ```
 
 ### Page tokens

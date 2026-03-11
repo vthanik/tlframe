@@ -817,17 +817,16 @@ test_that("print.fr_spec rich view shows columns section with visible count", {
   expect_match(combined, "2 visible of 3", fixed = TRUE)
 })
 
-test_that("print.fr_spec rich view shows header section with bold and N-counts", {
+test_that("print.fr_spec rich view shows header section with bold", {
   spec <- data.frame(a = 1, b = 2) |>
     fr_table() |>
     fr_cols(a = fr_col("A"), b = fr_col("B")) |>
-    fr_header(bold = TRUE, align = "center", n = c(a = 10, b = 20))
+    fr_header(bold = TRUE, align = "center")
 
   combined <- capture_print(spec)
   expect_match(combined, "Header")
   expect_match(combined, "bold")
   expect_match(combined, "align=center", fixed = TRUE)
-  expect_match(combined, "N-counts")
 })
 
 test_that("print.fr_spec rich view shows rows section", {
@@ -1237,13 +1236,11 @@ test_that("new_fr_header stores all optional parameters", {
   expect_false(h$span_gap)
 })
 
-test_that("new_fr_header stores N-count parameters", {
+test_that("new_fr_header stores align_map parameter", {
   h <- new_fr_header(
-    n = c(a = 10, b = 20),
-    format = "{label}\n(N={n})"
+    align_map = list(a = "center", b = "right")
   )
-  expect_equal(h$n, c(a = 10, b = 20))
-  expect_equal(h$format, "{label}\n(N={n})")
+  expect_equal(h$align_map, list(a = "center", b = "right"))
 })
 
 test_that("new_fr_body stores all parameters", {

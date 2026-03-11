@@ -469,8 +469,54 @@ finalize_columns <- function(spec) {
     spec$columns <- distribute_auto_widths(spec$columns, spec$page)
   }
 
+  # Generate auto-spans from fr_col(group = ...) before inject_span_gaps
+  spec <- generate_group_spans(spec)
+
   # Inject gap columns between adjacent spanning headers
   spec <- inject_span_gaps(spec)
+
+  spec
+}
+
+
+#' Generate spanning headers from fr_col(group = ...) annotations
+#'
+#' Scans all columns for `group` values and creates level-1 spans.
+#' Explicit `fr_spans()` at the same label override auto-generated spans.
+#'
+#' @noRd
+generate_group_spans <- function(spec) {
+  cols <- spec$columns
+  col_names <- names(cols)
+
+  # Collect unique group names preserving first-column-appearance order
+  groups <- character(0)
+  group_cols <- list()
+  for (nm in col_names) {
+    grp <- cols[[nm]]$group
+    if (!is.null(grp)) {
+      if (!grp %in% groups) {
+        groups <- c(groups, grp)
+        group_cols[[grp]] <- nm
+      } else {
+        group_cols[[grp]] <- c(group_cols[[grp]], nm)
+      }
+    }
+  }
+  if (length(groups) == 0L) return(spec)
+
+  # Get existing span labels to check for overrides
+  existing_spans <- spec$header$spans %||% list()
+  existing_labels <- vapply(existing_spans, function(s) s$label, character(1))
+
+  for (grp in groups) {
+    # Skip if an explicit fr_spans() exists at this label
+    if (grp %in% existing_labels) next
+    spec$header$spans <- c(
+      spec$header$spans,
+      list(new_fr_span(label = grp, columns = group_cols[[grp]], level = 1L))
+    )
+  }
 
   spec
 }
@@ -479,39 +525,76 @@ finalize_columns <- function(spec) {
 #' Finalize header labels and N-count resolution
 #' @noRd
 finalize_labels <- function(spec) {
-  n_val <- spec$header$n
-  fmt <- spec$header$format
+  n_meta <- spec$columns_meta$n
+  fmt <- spec$columns_meta$n_format
 
-  if (is.data.frame(n_val) && !is.null(fmt)) {
-    # Data frame form: 2-col (global) or 3-col (per-group)
-    parsed <- parse_df_n_counts(n_val, spec)
-
-    if (parsed$type == "global") {
-      matched_col <- match_trt_to_columns(parsed$counts, spec$columns)
-      matched_span <- match_trt_to_spans(parsed$counts, spec$columns,
-                                          spec$header$spans %||% list())
-      spec <- apply_n_counts(spec, matched_col, fmt)
-      spec <- apply_span_n_counts(spec, matched_span, fmt)
-      spec$header$n <- matched_col
-    } else {
-      # 3-col df → store for per-group resolution in render loop
-      spec$header$._df_result <- parsed
+  # ── Per-column fr_col(n = ...) — highest priority ───────────────────────
+  # Apply per-column N-counts first (these have highest priority)
+  cols_with_n <- character(0)
+  if (!is.null(fmt)) {
+    for (nm in names(spec$columns)) {
+      col <- spec$columns[[nm]]
+      if (!is.null(col$n)) {
+        base_label <- col$label %||% nm
+        if (!nzchar(base_label)) base_label <- nm
+        row_data <- list(label = base_label, n = col$n)
+        spec$columns[[nm]]$label <- tryCatch(
+          as.character(glue::glue_data(row_data, fmt)),
+          error = function(e) base_label
+        )
+        cols_with_n <- c(cols_with_n, nm)
+      }
     }
   } else {
-    # Resolve global named numeric
-    spec <- resolve_header_labels(spec)
+    # Check if any columns have n set without format → warn
+    has_any_n <- any(vapply(spec$columns, function(c) !is.null(c$n), logical(1)))
+    if (has_any_n) {
+      cli_warn(
+        c("Column{?s} have {.arg n} set but no {.arg .n_format} is defined.",
+          "i" = "Set {.arg .n_format} in {.fn fr_cols} or config YAML to display N-counts.")
+      )
+    }
+  }
+
+  # ── Bulk .n from columns_meta — lower priority ─────────────────────────
+  if (!is.null(n_meta) && !is.null(fmt)) {
+    if (is.data.frame(n_meta)) {
+      parsed <- parse_df_n_counts(n_meta, spec)
+      if (parsed$type == "global") {
+        matched_col <- match_trt_to_columns(parsed$counts, spec$columns)
+        matched_span <- match_trt_to_spans(parsed$counts, spec$columns,
+                                            spec$header$spans %||% list())
+        # Remove columns that already got per-column n
+        matched_col <- matched_col[!names(matched_col) %in% cols_with_n]
+        spec <- apply_n_counts(spec, matched_col, fmt)
+        spec <- apply_span_n_counts(spec, matched_span, fmt)
+
+      } else {
+        # 3-col df → store for per-group resolution in render loop
+        spec$columns_meta$._df_result <- parsed
+      }
+    } else if (is.numeric(n_meta)) {
+      # Named numeric vector — match by display label
+      matched_col <- match_trt_to_columns(n_meta, spec$columns)
+      matched_span <- match_trt_to_spans(n_meta, spec$columns,
+                                          spec$header$spans %||% list())
+      matched_col <- matched_col[!names(matched_col) %in% cols_with_n]
+      spec <- apply_n_counts(spec, matched_col, fmt)
+      spec <- apply_span_n_counts(spec, matched_span, fmt)
+    } else if (is.list(n_meta) && !is.data.frame(n_meta)) {
+      # Named list — per-group, resolved in render loop (no global resolution)
+    }
   }
 
   # Warn if per-group n (list or 3-col df) is used without page_by
-  n_input <- spec$header$n
-  has_df_pergroup <- !is.null(spec$header$._df_result) &&
-    spec$header$._df_result$type == "per_group"
-  is_pergroup_list <- is.list(n_input) && !is.numeric(n_input) &&
-    !is.data.frame(n_input)
+  has_df_pergroup <- !is.null(spec$columns_meta$._df_result) &&
+    spec$columns_meta$._df_result$type == "per_group"
+  is_pergroup_list <- is.list(n_meta) && !is.numeric(n_meta) &&
+    !is.data.frame(n_meta)
   if ((is_pergroup_list || has_df_pergroup) &&
       length(spec$body$page_by) == 0L) {
     cli_warn(
-      "Per-group {.arg n} requires {.fn fr_rows} with {.arg page_by}. N-counts ignored."
+      "Per-group {.arg .n} requires {.fn fr_rows} with {.arg page_by}. N-counts ignored."
     )
   }
 
@@ -570,28 +653,6 @@ finalize_rows <- function(spec) {
   spec <- apply_indent_by(spec)
 
   spec
-}
-
-
-#' Resolve deferred header N-count labels (global named numeric only)
-#'
-#' When fr_header(n = <named numeric>, format = ...) is set, reformat column
-#' labels using the stored N-counts and format string. This runs during
-#' finalize_spec() so fr_header() and fr_cols() are order-independent.
-#'
-#' Per-group forms (named list, function returning 3-col df) are resolved
-#' per group in the render loop via resolve_group_labels().
-#'
-#' @noRd
-resolve_header_labels <- function(spec) {
-  n_counts <- spec$header$n
-  fmt <- spec$header$format
-  if (is.null(n_counts) || is.null(fmt)) return(spec)
-
-  # Per-group list or function N-counts are resolved per group in the render loop
-  if (!is.numeric(n_counts)) return(spec)
-
-  apply_n_counts(spec, n_counts, fmt)
 }
 
 
@@ -655,12 +716,12 @@ apply_span_n_counts <- function(spec, span_counts, fmt) {
 #' @return Named character vector of column label overrides, or NULL.
 #' @noRd
 resolve_group_labels <- function(spec, group_data, group_label) {
-  n_input <- spec$header$n
-  fmt <- spec$header$format
+  n_input <- spec$columns_meta$n
+  fmt <- spec$columns_meta$n_format
   if (is.null(fmt)) return(NULL)
 
   # Check for cached per-group data frame result (3-col df from finalize_labels)
-  df_res <- spec$header$._df_result
+  df_res <- spec$columns_meta$._df_result
   if (!is.null(df_res) && df_res$type == "per_group") {
     df <- df_res$df
     page_vals <- as.character(df[[df_res$page_col]])
@@ -669,7 +730,7 @@ resolve_group_labels <- function(spec, group_data, group_label) {
     if (nrow(group_df) == 0L) {
       cli_warn(c(
         "No N-counts found for page group {.val {group_label}}.",
-        "i" = "Available groups in {.arg n}: {.val {unique(page_vals)}}.",
+        "i" = "Available groups in {.arg .n}: {.val {unique(page_vals)}}.",
         "i" = "Ensure column 1 values match {.arg page_by} group values (case-insensitive)."
       ))
       return(NULL)
@@ -689,11 +750,16 @@ resolve_group_labels <- function(spec, group_data, group_label) {
   }
 
   if (is.list(n_input) && !is.numeric(n_input) && !is.data.frame(n_input)) {
-    # Per-group static list
-    n_counts <- n_input[[group_label]]
-    if (is.null(n_counts)) return(NULL)
-    col_ov <- build_label_overrides(n_counts, fmt, spec$columns)
-    return(list(columns = col_ov, spans = NULL))
+    # Per-group static list — match by display label
+    n_counts_raw <- n_input[[group_label]]
+    if (is.null(n_counts_raw)) return(NULL)
+    n_counts_col <- match_trt_to_columns(n_counts_raw, spec$columns)
+    n_counts_span <- match_trt_to_spans(n_counts_raw, spec$columns,
+                                          spec$header$spans %||% list())
+    col_ov <- build_label_overrides(n_counts_col, fmt, spec$columns)
+    span_ov <- build_span_label_overrides(n_counts_span, fmt,
+                                            spec$header$spans %||% list())
+    return(list(columns = col_ov, spans = span_ov))
   }
 
   # Global numeric already resolved in finalize_labels; data frame already
@@ -849,19 +915,42 @@ build_span_label_overrides <- function(n_counts, fmt, spans) {
 
 #' Apply header-level styling defaults to columns
 #'
-#' Propagates fr_header(align = ...) to columns that don't have a
-#' per-column header_align set.
+#' Propagates fr_header(align = ...) and fr_header(align = list(...))
+#' to columns that don't have a per-column header_align set.
+#'
+#' Precedence (highest wins):
+#'   1. fr_col(header_align = ...)  — per-column override
+#'   2. align_map (tidyselect)      — applied here
+#'   3. scalar align                — blanket default applied here
+#'   4. column body align           — inherited (default)
 #'
 #' @noRd
 apply_header_defaults <- function(spec) {
   h <- spec$header
   if (is.null(h)) return(spec)
 
-  # Header align → column header_align (unless per-column override exists)
+  # Capture which columns have explicit fr_col(header_align=) BEFORE we
+
+  # apply any defaults. These must not be overridden.
+  explicit_ha <- vapply(spec$columns, function(c) !is.null(c$header_align),
+                         logical(1))
+
+  # Step 1: Apply scalar align as blanket default (lowest priority)
   if (!is.null(h$align)) {
     for (nm in names(spec$columns)) {
-      if (is.null(spec$columns[[nm]]$header_align)) {
+      if (!explicit_ha[nm]) {
         spec$columns[[nm]]$header_align <- h$align
+      }
+    }
+  }
+
+  # Step 2: Apply align_map (tidyselect) — overrides scalar but not fr_col
+  align_map <- h$align_map
+  if (!is.null(align_map) && length(align_map) > 0L) {
+    for (nm in names(align_map)) {
+      if (is.null(spec$columns[[nm]])) next
+      if (!explicit_ha[nm]) {
+        spec$columns[[nm]]$header_align <- align_map[[nm]]
       }
     }
   }
