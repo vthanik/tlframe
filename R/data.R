@@ -269,8 +269,8 @@
 #' missing parameters to create **natural N variation** across vital sign
 #' groups --- exactly the scenario that per-group N-count headers address.
 #'
-#' Designed as the `n_data` source for [fr_header()] with `n = "auto"` or
-#' `n = function(...)` when the display table ([tbl_vs]) is pre-summarized.
+#' Designed as the source for [fr_header()] `n = function(...)` closures
+#' when the display table ([tbl_vs]) is pre-summarized.
 #'
 #' @format A data frame with approximately 1900 rows and 12 variables:
 #' \describe{
@@ -313,15 +313,16 @@
 #'   tapply(USUBJID, list(PARAM, TRTA), function(x) length(unique(x)))
 #' )
 #'
-#' # Use as n_data source for per-group N-counts
+#' # Use as N-count source via closure
 #' tbl_vs |>
 #'   fr_table() |>
 #'   fr_rows(page_by = "param") |>
 #'   fr_header(
-#'     n = "auto",
-#'     n_subject = "USUBJID",
-#'     n_data = advs,
-#'     format = "{name}\n(N={n})"
+#'     n = \(d) aggregate(
+#'       USUBJID ~ PARAM + TRTA, data = advs[advs$AVISIT == "Baseline", ],
+#'       FUN = function(x) length(unique(x))
+#'     ),
+#'     format = "{label}\n(N={n})"
 #'   )
 #'
 #' @seealso [tbl_vs] for the pre-summarized display table, [fr_header()]
@@ -544,8 +545,8 @@
 #' [fr_header()] with `n = function(...)` for per-group N-counts, and
 #' `fr_cols(.split = TRUE)` for wide layouts.
 #'
-#' Pair with [advs] as `n_data` in [fr_header()] to get per-parameter
-#' N-counts in column headers.
+#' Pair with [advs] via a closure in [fr_header()] `n = \(d) ...` to get
+#' per-parameter N-counts in column headers.
 #'
 #' @format A data frame with 60 rows and 12 variables:
 #' \describe{

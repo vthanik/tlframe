@@ -38,8 +38,8 @@ Contains one row per subject per parameter per visit. Some subjects have
 missing parameters to create \strong{natural N variation} across vital sign
 groups --- exactly the scenario that per-group N-count headers address.
 
-Designed as the \code{n_data} source for \code{\link[=fr_header]{fr_header()}} with \code{n = "auto"} or
-\verb{n = function(...)} when the display table (\link{tbl_vs}) is pre-summarized.
+Designed as the source for \code{\link[=fr_header]{fr_header()}} \verb{n = function(...)} closures
+when the display table (\link{tbl_vs}) is pre-summarized.
 }
 \section{N variation by design}{
 
@@ -60,15 +60,16 @@ with(
   tapply(USUBJID, list(PARAM, TRTA), function(x) length(unique(x)))
 )
 
-# Use as n_data source for per-group N-counts
+# Use as N-count source via closure
 tbl_vs |>
   fr_table() |>
   fr_rows(page_by = "param") |>
   fr_header(
-    n = "auto",
-    n_subject = "USUBJID",
-    n_data = advs,
-    format = "{name}\n(N={n})"
+    n = \(d) aggregate(
+      USUBJID ~ PARAM + TRTA, data = advs[advs$AVISIT == "Baseline", ],
+      FUN = function(x) length(unique(x))
+    ),
+    format = "{label}\n(N={n})"
   )
 
 }

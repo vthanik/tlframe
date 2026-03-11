@@ -33,6 +33,12 @@
 #'   `1L`.
 #' @param .hline Logical. Whether to draw a thin horizontal line below the
 #'   spanned columns. Default `TRUE`. Set to `FALSE` to suppress the border.
+#' @param .gap Logical or `NULL`. Whether to insert narrow gap columns
+#'   between adjacent spanning headers at the same level. Gap columns create
+#'   a clean visual break between span groups in both RTF and PDF output,
+#'   without relying on border trimming. `NULL` (default) inherits the
+#'   current setting (default `TRUE`). Set `FALSE` to disable gap insertion
+#'   and produce continuous span hlines.
 #'
 #' @return A modified `fr_spec`. Spans are appended to `spec$header$spans`.
 #'
@@ -86,7 +92,7 @@
 #'   ) |>
 #'   fr_header(
 #'     n = c(zom_50mg = 45, zom_100mg = 45, placebo = 45, total = 135),
-#'     format = "{name}\n(N={n})"
+#'     format = "{label}\n(N={n})"
 #'   ) |>
 #'   fr_spans(
 #'     "Zomerane" = c("zom_50mg", "zom_100mg")
@@ -154,9 +160,13 @@
 #'   applies to spans and column labels.
 #'
 #' @export
-fr_spans <- function(spec, ..., .level = 1L, .hline = TRUE) {
+fr_spans <- function(spec, ..., .level = 1L, .hline = TRUE, .gap = NULL) {
   call <- caller_env()
   check_fr_spec(spec, call = call)
+  if (!is.null(.gap)) {
+    check_scalar_lgl(.gap, arg = ".gap", call = call)
+    spec$header$span_gap <- .gap
+  }
 
   quos <- enquos(...)
   if (length(quos) == 0L) return(spec)

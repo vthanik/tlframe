@@ -380,7 +380,7 @@ is_fr_pct <- function(x) inherits(x, "fr_pct")
 #'   ) |>
 #'   fr_header(
 #'     n = c(zom_50mg = 45, placebo = 45),
-#'     format = "{name}\n(N={n})"
+#'     format = "{label}\n(N={n})"
 #'   )
 #'
 #' @seealso [fr_cols()] to apply column specs to a table (including
@@ -457,8 +457,7 @@ new_fr_header <- function(spans = list(), repeat_on_page = TRUE,
                           valign = "bottom", align = NULL,
                           bold = NULL, bg = NULL, fg = NULL,
                           font_size = NULL, n = NULL,
-                          format = NULL, n_subject = NULL,
-                          n_data = NULL, span_gap = TRUE) {
+                          format = NULL, span_gap = TRUE) {
   structure(
     list(
       spans          = spans,
@@ -471,8 +470,6 @@ new_fr_header <- function(spans = list(), repeat_on_page = TRUE,
       font_size      = font_size,
       n              = n,
       format         = format,
-      n_subject      = n_subject,
-      n_data         = n_data,
       span_gap       = span_gap
     ),
     class = "fr_header"

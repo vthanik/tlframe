@@ -41,8 +41,8 @@ per-parameter pages, \code{\link[=fr_spans]{fr_spans()}} for two-level spanning 
 \code{\link[=fr_header]{fr_header()}} with \verb{n = function(...)} for per-group N-counts, and
 \code{fr_cols(.split = TRUE)} for wide layouts.
 
-Pair with \link{advs} as \code{n_data} in \code{\link[=fr_header]{fr_header()}} to get per-parameter
-N-counts in column headers.
+Pair with \link{advs} via a closure in \code{\link[=fr_header]{fr_header()}} \verb{n = \\(d) ...} to get
+per-parameter N-counts in column headers.
 }
 \examples{
 head(tbl_vs, 8)

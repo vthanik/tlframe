@@ -27,7 +27,7 @@ header:
   valign: bottom
   bold: false
   span_gap: true
-  n_format: "{name}\n(N={n})"
+  n_format: "{label}\n(N={n})"
 
 pagehead:
   left: ~

@@ -24,7 +24,7 @@
 #'   ) |>
 #'   fr_header(
 #'     n = c(placebo = 45, zom_50mg = 45, zom_100mg = 45, total = 135),
-#'     format = "{name}\n(N={n})",
+#'     format = "{label}\n(N={n})",
 #'     bold = TRUE
 #'   ) |>
 #'   fr_hlines("header") |>

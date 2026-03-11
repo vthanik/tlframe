@@ -78,7 +78,7 @@ header:
   valign: bottom                      # top | middle | bottom
   bold: false
   span_gap: true                      # Gap between adjacent spans
-  n_format: "{name}\n(N={n})"         # N-count label template
+  n_format: "{label}\n(N={n})"         # N-count label template
 
 pagehead:
   left: "Protocol TFRM-2024-001"
@@ -321,7 +321,7 @@ demog_recipe <- fr_recipe(
   fr_header(bold = TRUE, align = "center",
             n = c(placebo = 45, zom_50mg = 45,
                   zom_100mg = 45, total = 135),
-            format = "{name}\n(N={n})"),
+            format = "{label}\n(N={n})"),
   fr_footnotes("Percentages based on N per treatment arm.",
                .separator = FALSE)
 )
@@ -330,7 +330,7 @@ ae_recipe <- fr_recipe(
   fr_header(bold = TRUE, align = "center",
             n = c(placebo = 45, zom_50mg = 45,
                   zom_100mg = 45, total = 135),
-            format = "{name}\n(N={n})"),
+            format = "{label}\n(N={n})"),
   fr_page(continuation = "(continued)"),
   fr_footnotes("MedDRA version 26.0.",
                "Subjects counted once per SOC and PT.",

@@ -341,7 +341,7 @@ test_that("finalize_spec resolves global numeric N-counts in header labels", {
       trt1 = fr_col("Treatment A"),
       trt2 = fr_col("Treatment B")
     ) |>
-    fr_header(n = c(trt1 = 50, trt2 = 48), format = "{name}\n(N={n})")
+    fr_header(n = c(trt1 = 50, trt2 = 48), format = "{label}\n(N={n})")
 
   result <- tlframe:::finalize_spec(spec)
   expect_equal(result$columns$trt1$label, "Treatment A\n(N=50)")
@@ -599,7 +599,7 @@ test_that("fit_panel_widths preserves proportional ratios", {
 test_that("resolve_header_labels skips non-numeric n (per-group)", {
   spec <- data.frame(a = 1, b = 2) |> fr_table()
   spec$header$n <- list(grp1 = c(a = 10), grp2 = c(a = 20))
-  spec$header$format <- "{name}\n(N={n})"
+  spec$header$format <- "{label}\n(N={n})"
 
   result <- tlframe:::resolve_header_labels(spec)
   # Per-group n is not resolved here — labels should be unchanged
@@ -609,7 +609,7 @@ test_that("resolve_header_labels skips non-numeric n (per-group)", {
 test_that("resolve_header_labels handles missing columns in n gracefully", {
   spec <- data.frame(a = 1) |> fr_table()
   spec$header$n <- c(nonexistent = 50)
-  spec$header$format <- "{name}\n(N={n})"
+  spec$header$format <- "{label}\n(N={n})"
 
   # Should not error, just skip the non-matching column
   result <- tlframe:::resolve_header_labels(spec)
@@ -634,8 +634,8 @@ test_that("resolve_group_labels handles per-group list n", {
     fr_cols(a = fr_col("Col A"), b = fr_col("Col B"))
 
   spec$header$n <- list("GroupX" = c(a = 30, b = 25))
-  spec$header$format <- "{name}\n(N={n})"
-  spec <- tlframe:::finalize_spec(spec)
+  spec$header$format <- "{label}\n(N={n})"
+  spec <- suppressWarnings(tlframe:::finalize_spec(spec))
 
   result <- tlframe:::resolve_group_labels(spec, spec$data, "GroupX")
   expect_true("a" %in% names(result))
@@ -645,93 +645,60 @@ test_that("resolve_group_labels handles per-group list n", {
 test_that("resolve_group_labels returns NULL for unknown group in list n", {
   spec <- data.frame(a = 1) |> fr_table()
   spec$header$n <- list("GroupA" = c(a = 10))
-  spec$header$format <- "{name}\n(N={n})"
-  spec <- tlframe:::finalize_spec(spec)
+  spec$header$format <- "{label}\n(N={n})"
+  spec <- suppressWarnings(tlframe:::finalize_spec(spec))
 
   result <- tlframe:::resolve_group_labels(spec, spec$data, "UnknownGroup")
   expect_null(result)
 })
 
-test_that("resolve_group_labels handles function n", {
+test_that("resolve_group_labels handles function n returning named vector", {
+  # Function returning named vector → resolved globally in finalize_labels
   spec <- data.frame(trt1 = 1, trt2 = 2) |>
     fr_table() |>
     fr_cols(trt1 = fr_col("Treatment 1"), trt2 = fr_col("Treatment 2"))
 
-  spec$header$n <- function(data, group_label) {
-    c(trt1 = 40L, trt2 = 35L)
-  }
-  spec$header$format <- "{name}\n(N={n})"
+  spec$header$n <- function(d) c(trt1 = 40L, trt2 = 35L)
+  spec$header$format <- "{label}\n(N={n})"
   spec <- tlframe:::finalize_spec(spec)
 
+  # Named vector return → already resolved globally, resolve_group_labels returns NULL
   result <- tlframe:::resolve_group_labels(spec, spec$data, "SomeGroup")
-  expect_true("trt1" %in% names(result))
-  expect_true(grepl("N=40", result["trt1"]))
-})
-
-test_that("resolve_group_labels warns when function n returns wrong type", {
-  spec <- data.frame(a = 1) |> fr_table()
-  spec$header$n <- function(data, group_label) "bad"
-  spec$header$format <- "{name}\n(N={n})"
-  spec <- tlframe:::finalize_spec(spec)
-
-  expect_warning(
-    result <- tlframe:::resolve_group_labels(spec, spec$data, "G1"),
-    "named numeric"
-  )
   expect_null(result)
+
+  # Labels should be resolved globally
+  expect_true(grepl("N=40", spec$columns$trt1$label))
+})
+
+test_that("finalize_spec errors when function n returns wrong type", {
+  spec <- data.frame(a = 1) |> fr_table()
+  spec$header$n <- function(d) "bad"
+  spec$header$format <- "{label}\n(N={n})"
+
+  expect_error(tlframe:::finalize_spec(spec), "named numeric")
 })
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# subset_n_data()
+# match_trt_to_columns()
 # ══════════════════════════════════════════════════════════════════════════════
 
-test_that("subset_n_data matches page_by case-insensitively", {
-  n_data <- data.frame(
-    PARAM = c("BP", "BP", "HR", "HR"),
-    TRTA = c("A", "B", "A", "B"),
-    val = 1:4,
-    stringsAsFactors = FALSE
+test_that("match_trt_to_columns matches treatment labels to columns", {
+  columns <- list(
+    col_a = fr_col("Placebo"),
+    col_b = fr_col("Active")
   )
-
-  result <- tlframe:::subset_n_data(n_data, "param", "BP")
-  expect_equal(nrow(result), 2L)
-  expect_equal(result$PARAM, c("BP", "BP"))
+  counts <- c("Placebo" = 45L, "Active" = 44L)
+  result <- tlframe:::match_trt_to_columns(counts, columns)
+  expect_equal(result[["col_a"]], 45L)
+  expect_equal(result[["col_b"]], 44L)
 })
 
-test_that("subset_n_data returns all data when no page_by", {
-  n_data <- data.frame(x = 1:3)
-  result <- tlframe:::subset_n_data(n_data, character(0), NULL)
-  expect_equal(nrow(result), 3L)
-})
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# compute_auto_n()
-# ══════════════════════════════════════════════════════════════════════════════
-
-test_that("compute_auto_n counts unique subjects per column", {
-  data <- data.frame(
-    USUBJID = c("S01", "S01", "S02", "S03"),
-    trt_a = c("x", "x", "x", NA),
-    trt_b = c(NA, "y", "y", "y"),
-    stringsAsFactors = FALSE
-  )
-
-  result <- tlframe:::compute_auto_n(data, c("trt_a", "trt_b"), "USUBJID")
-  expect_equal(result[["trt_a"]], 2L)  # S01, S02 (non-NA in trt_a)
-  expect_equal(result[["trt_b"]], 3L)  # S01(row2), S02, S03 (non-NA in trt_b)
-})
-
-test_that("compute_auto_n excludes columns not in data", {
-  data <- data.frame(
-    USUBJID = c("S01", "S02"),
-    a = c("x", "y"),
-    stringsAsFactors = FALSE
-  )
-  result <- tlframe:::compute_auto_n(data, c("a", "nonexistent"), "USUBJID")
-  expect_true("a" %in% names(result))
-  expect_false("nonexistent" %in% names(result))
+test_that("match_trt_to_columns is case-insensitive", {
+  columns <- list(col_a = fr_col("PLACEBO"))
+  counts <- c("placebo" = 45L)
+  result <- tlframe:::match_trt_to_columns(counts, columns)
+  expect_equal(result[["col_a"]], 45L)
 })
 
 
@@ -799,8 +766,7 @@ test_that("inject_span_gaps does nothing when span_gap = FALSE", {
       c = fr_col("C", width = 1),
       d = fr_col("D", width = 1)
     ) |>
-    fr_spans("S1" = c("a", "b"), "S2" = c("c", "d")) |>
-    fr_header(span_gap = FALSE)
+    fr_spans("S1" = c("a", "b"), "S2" = c("c", "d"), .gap = FALSE)
 
   spec <- tlframe:::finalize_spec(spec)
   gap_cols <- grep("__span_gap_", names(spec$columns), value = TRUE)

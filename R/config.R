@@ -349,12 +349,8 @@ apply_config <- function(spec) {
     if (!is.null(header_cfg$valign))    spec$header$valign    <- header_cfg$valign
     if (!is.null(header_cfg$bold))      spec$header$bold      <- header_cfg$bold
     if (!is.null(header_cfg$span_gap))  spec$header$span_gap  <- header_cfg$span_gap
-    if (!is.null(header_cfg$n_subject)) spec$header$n_subject <- header_cfg$n_subject
     if (!is.null(header_cfg$n_format))  spec$header$format    <- header_cfg$n_format
-    # n: "auto" from YAML is a character string
-    if (!is.null(header_cfg$n)) {
-      spec$header$n <- header_cfg$n
-    }
+    if (!is.null(header_cfg$format))    spec$header$format    <- header_cfg$format
   }
 
   # Pagehead

@@ -4,7 +4,7 @@
 \alias{fr_spans}
 \title{Add Spanning Column Headers}
 \usage{
-fr_spans(spec, ..., .level = 1L, .hline = TRUE)
+fr_spans(spec, ..., .level = 1L, .hline = TRUE, .gap = NULL)
 }
 \arguments{
 \item{spec}{An \code{fr_spec} object from \code{\link[=fr_table]{fr_table()}}.}
@@ -25,6 +25,13 @@ above the column header row; higher numbers are further above). Default
 
 \item{.hline}{Logical. Whether to draw a thin horizontal line below the
 spanned columns. Default \code{TRUE}. Set to \code{FALSE} to suppress the border.}
+
+\item{.gap}{Logical or \code{NULL}. Whether to insert narrow gap columns
+between adjacent spanning headers at the same level. Gap columns create
+a clean visual break between span groups in both RTF and PDF output,
+without relying on border trimming. \code{NULL} (default) inherits the
+current setting (default \code{TRUE}). Set \code{FALSE} to disable gap insertion
+and produce continuous span hlines.}
 }
 \value{
 A modified \code{fr_spec}. Spans are appended to \code{spec$header$spans}.
@@ -102,7 +109,7 @@ tbl_demog |>
   ) |>
   fr_header(
     n = c(zom_50mg = 45, zom_100mg = 45, placebo = 45, total = 135),
-    format = "{name}\n(N={n})"
+    format = "{label}\n(N={n})"
   ) |>
   fr_spans(
     "Zomerane" = c("zom_50mg", "zom_100mg")

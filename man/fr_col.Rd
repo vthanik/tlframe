@@ -179,7 +179,7 @@ tbl_demog |>
   ) |>
   fr_header(
     n = c(zom_50mg = 45, placebo = 45),
-    format = "{name}\n(N={n})"
+    format = "{label}\n(N={n})"
   )
 
 }

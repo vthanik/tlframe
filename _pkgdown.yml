@@ -124,9 +124,9 @@ reference:
     desc: >
       The column header row sits between titles and data. `fr_header()`
       controls bold, alignment, background/foreground colors, and automatic
-      N-count labels via a `format` template (e.g., `"{name}\n(N={n})"`).
-      N-counts support four forms — scalar, named vector, per-group list,
-      and `"auto"`. `fr_spans()` adds spanning headers that group columns
+      N-count labels via a `format` template (e.g., `"{label}\n(N={n})"`).
+      N-counts support three forms — named vector, per-group list,
+      and function. `fr_spans()` adds spanning headers that group columns
       under a shared label, with tidyselect support for column selection.
     contents:
       - fr_header

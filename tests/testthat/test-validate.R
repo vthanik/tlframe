@@ -256,23 +256,15 @@ test_that("parse_pct_width errors on >100%", {
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# validate_n_param — additional coverage
+# validate_n_param — three-form validation
 # ══════════════════════════════════════════════════════════════════════════════
 
 test_that("validate_n_param accepts NULL n", {
   expect_silent(validate_n_param(n = NULL))
 })
 
-test_that("validate_n_param errors on auto without n_subject", {
-  expect_error(validate_n_param(n = "auto"), class = "rlang_error")
-})
-
-test_that("validate_n_param errors on auto with non-character n_subject", {
-  expect_error(validate_n_param(n = "auto", n_subject = 42), class = "rlang_error")
-})
-
-test_that("validate_n_param accepts auto with valid n_subject", {
-  expect_silent(validate_n_param(n = "auto", n_subject = "USUBJID"))
+test_that("validate_n_param errors on character scalar (no longer valid)", {
+  expect_error(validate_n_param(n = "TRTA"), class = "rlang_error")
 })
 
 test_that("validate_n_param errors on unnamed numeric vector", {
@@ -289,7 +281,7 @@ test_that("validate_n_param errors on unnamed list", {
 
 test_that("validate_n_param errors on named list with non-named-numeric entry", {
   expect_error(
-    validate_n_param(n = list(grp1 = c(10, 20))),  # unnamed inner
+    validate_n_param(n = list(grp1 = c(10, 20))),
     class = "rlang_error"
   )
 })
@@ -309,22 +301,11 @@ test_that("validate_n_param accepts named list with named numeric entries", {
 })
 
 test_that("validate_n_param accepts function form", {
-  expect_silent(validate_n_param(n = function(d, g) c(a = 1)))
+  expect_silent(validate_n_param(n = function(d) c(a = 1)))
 })
 
 test_that("validate_n_param errors on unsupported type (logical)", {
   expect_error(validate_n_param(n = TRUE), class = "rlang_error")
-})
-
-test_that("validate_n_param errors on n_data that is not a data frame", {
-  expect_error(
-    validate_n_param(n = c(a = 10), n_data = "not_a_df"),
-    class = "rlang_error"
-  )
-})
-
-test_that("validate_n_param accepts n_data as a data frame", {
-  expect_silent(validate_n_param(n = c(a = 10), n_data = data.frame(x = 1)))
 })
 
 test_that("validate_n_param validates format as character scalar", {

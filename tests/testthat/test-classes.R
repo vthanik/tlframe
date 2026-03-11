@@ -629,8 +629,7 @@ test_that("check_non_negative_int rejects invalid inputs", {
 
 test_that("validate_n_param accepts valid n forms", {
   expect_silent(validate_n_param(n = c(a = 10, b = 20)))
-  expect_silent(validate_n_param(n = "auto", n_subject = "USUBJID"))
-  expect_silent(validate_n_param(n = function(d, g) c(a = 1)))
+  expect_silent(validate_n_param(n = function(d) c(a = 1)))
   expect_silent(validate_n_param(n = list(grp1 = c(a = 10))))
   expect_silent(validate_n_param(n = NULL))
 })
@@ -638,7 +637,7 @@ test_that("validate_n_param accepts valid n forms", {
 test_that("validate_n_param rejects invalid n forms", {
   # unnamed numeric
   expect_error(validate_n_param(n = c(1, 2)), class = "rlang_error")
-  # auto without n_subject
+  # character string (no longer valid)
   expect_error(validate_n_param(n = "auto"), class = "rlang_error")
   # wrong type
   expect_error(validate_n_param(n = TRUE), class = "rlang_error")
@@ -1231,14 +1230,10 @@ test_that("new_fr_header stores all optional parameters", {
 test_that("new_fr_header stores N-count parameters", {
   h <- new_fr_header(
     n = c(a = 10, b = 20),
-    format = "{name}\n(N={n})",
-    n_subject = "USUBJID",
-    n_data = data.frame(TRTA = "A")
+    format = "{label}\n(N={n})"
   )
   expect_equal(h$n, c(a = 10, b = 20))
-  expect_equal(h$format, "{name}\n(N={n})")
-  expect_equal(h$n_subject, "USUBJID")
-  expect_true(is.data.frame(h$n_data))
+  expect_equal(h$format, "{label}\n(N={n})")
 })
 
 test_that("new_fr_body stores all parameters", {

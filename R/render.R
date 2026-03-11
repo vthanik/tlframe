@@ -479,12 +479,41 @@ finalize_columns <- function(spec) {
 #' Finalize header labels and N-count resolution
 #' @noRd
 finalize_labels <- function(spec) {
-  # Resolve deferred header N-count labels (from fr_header())
-  spec <- resolve_header_labels(spec)
+  n_val <- spec$header$n
+  fmt <- spec$header$format
 
-  # Warn if per-group n is used without page_by
+  # Handle function form: call once with full spec$data
+
+  if (is.function(n_val) && !is.null(fmt)) {
+    fn_result <- n_val(spec$data)
+    fn_parsed <- parse_fn_result(fn_result, spec)
+
+    if (fn_parsed$type == "global") {
+      if (fn_parsed$source == "vector") {
+        # Named vector → names ARE column names, use directly
+        spec <- apply_n_counts(spec, fn_parsed$counts, fmt)
+        spec$header$n <- fn_parsed$counts
+      } else {
+        # 2-col df → names are treatment labels, match to column labels
+        matched <- match_trt_to_columns(fn_parsed$counts, spec$columns)
+        spec <- apply_n_counts(spec, matched, fmt)
+        spec$header$n <- matched
+      }
+    } else {
+      # 3-col df → store for per-group resolution in render loop
+      spec$header$._fn_result <- fn_parsed
+    }
+  } else {
+    # Resolve global named numeric
+    spec <- resolve_header_labels(spec)
+  }
+
+  # Warn if per-group n (list or 3-col fn) is used without page_by
   n_input <- spec$header$n
-  if (is.list(n_input) && !is.numeric(n_input) &&
+  has_fn_pergroup <- !is.null(spec$header$._fn_result) &&
+    spec$header$._fn_result$type == "per_group"
+  is_pergroup_list <- is.list(n_input) && !is.numeric(n_input)
+  if ((is_pergroup_list || has_fn_pergroup) &&
       length(spec$body$page_by) == 0L) {
     cli_warn(
       "Per-group {.arg n} requires {.fn fr_rows} with {.arg page_by}. N-counts ignored."
@@ -545,14 +574,14 @@ finalize_rows <- function(spec) {
 }
 
 
-#' Resolve deferred header N-count labels (global form only)
+#' Resolve deferred header N-count labels (global named numeric only)
 #'
 #' When fr_header(n = <named numeric>, format = ...) is set, reformat column
 #' labels using the stored N-counts and format string. This runs during
 #' finalize_spec() so fr_header() and fr_cols() are order-independent.
 #'
-#' Per-group forms (named list, function, "auto") are resolved per group in
-#' the render loop via resolve_group_labels().
+#' Per-group forms (named list, function returning 3-col df) are resolved
+#' per group in the render loop via resolve_group_labels().
 #'
 #' @noRd
 resolve_header_labels <- function(spec) {
@@ -560,28 +589,31 @@ resolve_header_labels <- function(spec) {
   fmt <- spec$header$format
   if (is.null(n_counts) || is.null(fmt)) return(spec)
 
-  # Per-group or auto N-counts are resolved per group in the render loop
+  # Per-group list or function N-counts are resolved per group in the render loop
   if (!is.numeric(n_counts)) return(spec)
 
-  for (nm in names(n_counts)) {
-    if (!nm %in% names(spec$columns)) next
-    col <- spec$columns[[nm]]
+  apply_n_counts(spec, n_counts, fmt)
+}
 
-    # Base label: from fr_col(label=) or auto-generated column name
-    base_label <- col$label
-    if (is.null(base_label) || !nzchar(base_label)) base_label <- nm
 
-    # Build data for glue_data
-    row_data <- list(name = base_label, n = as.integer(n_counts[[nm]]))
-
-    new_label <- tryCatch(
-      as.character(glue::glue_data(row_data, fmt)),
-      error = function(e) base_label
-    )
-
-    spec$columns[[nm]]$label <- new_label
+#' Apply N-counts to column labels using a format string
+#'
+#' Builds glue labels from n_counts + format for each matching column,
+#' updating `spec$columns[[nm]]$label` in place. Delegates label
+#' computation to `build_label_overrides()`.
+#'
+#' @param spec fr_spec object with resolved columns.
+#' @param n_counts Named integer/numeric vector keyed by column name.
+#' @param fmt Glue format string with `{label}` and `{n}` tokens.
+#' @return Modified spec.
+#' @noRd
+apply_n_counts <- function(spec, n_counts, fmt) {
+  overrides <- build_label_overrides(n_counts, fmt, spec$columns)
+  if (!is.null(overrides)) {
+    for (nm in names(overrides)) {
+      spec$columns[[nm]]$label <- overrides[[nm]]
+    }
   }
-
   spec
 }
 
@@ -603,109 +635,146 @@ resolve_group_labels <- function(spec, group_data, group_label) {
   fmt <- spec$header$format
   if (is.null(fmt)) return(NULL)
 
-  # Determine the source data for n computation
-  source_data <- spec$header$n_data %||% group_data
+  # Check for cached per-group function result (3-col df from finalize_labels)
+  fn_res <- spec$header$._fn_result
+  if (!is.null(fn_res) && fn_res$type == "per_group") {
+    df <- fn_res$df
+    page_vals <- as.character(df[[fn_res$page_col]])
+    mask <- tolower(page_vals) == tolower(as.character(group_label))
+    group_df <- df[mask, , drop = FALSE]
+    if (nrow(group_df) == 0L) return(NULL)
 
-  if (identical(n_input, "auto")) {
-    # Auto: split source data by page_by if needed, then count
-    if (!is.null(group_label) && !is.null(spec$header$n_data)) {
-      # Split n_data by same page_by columns
-      source_data <- subset_n_data(
-        spec$header$n_data, spec$body$page_by, group_label
-      )
-    }
-    n_counts <- compute_auto_n(
-      source_data, names(spec$columns), spec$header$n_subject
+    n_counts <- setNames(
+      as.integer(group_df[[fn_res$count_col]]),
+      as.character(group_df[[fn_res$trt_col]])
     )
-  } else if (is.function(n_input)) {
-    # Function form: call with source data and group label
-    if (!is.null(spec$header$n_data) && !is.null(group_label)) {
-      source_data <- subset_n_data(
-        spec$header$n_data, spec$body$page_by, group_label
-      )
-    }
-    n_counts <- n_input(source_data, group_label)
-    if (!is.numeric(n_counts) || is.null(names(n_counts))) {
-      cli_warn(
-        c("{.arg n} function must return a named numeric vector.",
-          "i" = "Got {.cls {class(n_counts)}} for group {.val {group_label}}."),
-      )
-      return(NULL)
-    }
-  } else if (is.list(n_input) && !is.numeric(n_input)) {
-    # Per-group list
-    n_counts <- n_input[[group_label]]
-    if (is.null(n_counts)) return(NULL)
-  } else {
-    return(NULL)
+    n_counts <- match_trt_to_columns(n_counts, spec$columns)
+    return(build_label_overrides(n_counts, fmt, spec$columns))
   }
 
-  # Build label overrides from n_counts
+  if (is.list(n_input) && !is.numeric(n_input)) {
+    # Per-group static list
+    n_counts <- n_input[[group_label]]
+    if (is.null(n_counts)) return(NULL)
+    return(build_label_overrides(n_counts, fmt, spec$columns))
+  }
+
+  # Global numeric already resolved in finalize_labels; function already
+
+  # handled above via ._fn_result
+  NULL
+}
+
+
+#' Parse the return value of an N-count function
+#'
+#' Converts the function's return value to a standardised internal format:
+#' either "global" (named vector or 2-col df) or "per_group" (3-col df).
+#'
+#' @param result The return value of the user's N-count function.
+#' @param spec The fr_spec (used for column label matching).
+#' @return A list with `$type` ("global" or "per_group") and type-specific
+#'   fields.
+#' @noRd
+parse_fn_result <- function(result, spec) {
+  # Named numeric → global (names are column names, match directly)
+  if (is.numeric(result) && !is.null(names(result))) {
+    return(list(type = "global", source = "vector", counts = result))
+  }
+
+  # Data frame
+  if (!is.data.frame(result) || ncol(result) < 2L) {
+    cli_abort(
+      c("{.arg n} function must return a named numeric vector or a 2-3 column data frame.",
+        "x" = "Got {.obj_type_friendly {result}}."),
+      call = caller_env()
+    )
+  }
+
+  count_col <- ncol(result)
+  if (!is.numeric(result[[count_col]])) {
+    cli_abort(
+      c("Last column of {.arg n} function result must be numeric (counts).",
+        "x" = "Column {.val {names(result)[count_col]}} is {.cls {class(result[[count_col]])}}."),
+      call = caller_env()
+    )
+  }
+
+  if (ncol(result) == 2L) {
+    counts <- setNames(as.integer(result[[2L]]), as.character(result[[1L]]))
+    return(list(type = "global", source = "dataframe", counts = counts))
+  }
+
+  if (ncol(result) == 3L) {
+    return(list(
+      type      = "per_group",
+      df        = result,
+      page_col  = 1L,
+      trt_col   = 2L,
+      count_col = 3L
+    ))
+  }
+
+  cli_abort(
+    c("{.arg n} function must return a 2 or 3 column data frame.",
+      "x" = "Got {ncol(result)} columns."),
+    call = caller_env()
+  )
+}
+
+
+#' Match treatment labels to column labels (case-insensitive)
+#'
+#' Takes a named vector of treatment counts and matches them to columns
+#' by comparing against column display labels (case-insensitive).
+#' Returns a named integer vector keyed by column name.
+#'
+#' @param trt_counts Named numeric vector (e.g. `c("Placebo" = 45)`).
+#' @param columns Named list of `fr_col` objects.
+#' @return Named integer vector keyed by column name.
+#' @noRd
+match_trt_to_columns <- function(trt_counts, columns) {
+  col_names <- names(columns)
+  col_labels <- vapply(col_names, function(nm) {
+    lbl <- columns[[nm]]$label
+    if (is.null(lbl) || !nzchar(lbl)) nm else lbl
+  }, character(1))
+  labels_lower <- tolower(col_labels)
+
+  result <- integer(0)
+  for (trt in names(trt_counts)) {
+    trt_lower <- tolower(trt)
+    # Match against column labels only
+    idx <- match(trt_lower, labels_lower)
+    if (!is.na(idx)) result[col_names[idx]] <- as.integer(trt_counts[trt])
+  }
+  result
+}
+
+
+#' Build label overrides from N-counts and format string
+#'
+#' @param n_counts Named integer vector keyed by column name.
+#' @param fmt Glue format string with `{label}` and `{n}` tokens.
+#' @param columns Named list of `fr_col` objects.
+#' @return Named character vector of label overrides, or NULL.
+#' @noRd
+build_label_overrides <- function(n_counts, fmt, columns) {
   overrides <- character(0)
   for (nm in names(n_counts)) {
-    if (!nm %in% names(spec$columns)) next
-    col <- spec$columns[[nm]]
-    base_label <- col$label
-    if (is.null(base_label) || !nzchar(base_label)) base_label <- nm
-    row_data <- list(name = base_label, n = as.integer(n_counts[[nm]]))
-    new_label <- tryCatch(
+    if (!nm %in% names(columns)) next
+    base_label <- columns[[nm]]$label %||% nm
+    if (!nzchar(base_label)) base_label <- nm
+    row_data <- list(
+      label = base_label,
+      n     = as.integer(n_counts[[nm]])
+    )
+    overrides[nm] <- tryCatch(
       as.character(glue::glue_data(row_data, fmt)),
       error = function(e) base_label
     )
-    overrides[nm] <- new_label
   }
-
   if (length(overrides) == 0L) NULL else overrides
-}
-
-
-#' Subset n_data by page_by columns to match a group label
-#'
-#' Matches page_by column names case-insensitively against n_data columns,
-#' so `page_by = "param"` matches `n_data$PARAM` (common CDISC pattern
-#' where display tables use lowercase, source data uses uppercase).
-#'
-#' @param n_data Data frame (record-level source data).
-#' @param page_by Character vector of page_by column names (from display data).
-#' @param group_label Character scalar — composite key (sep = " / ").
-#' @return Data frame subset matching the group.
-#' @noRd
-subset_n_data <- function(n_data, page_by, group_label) {
-  if (length(page_by) == 0L || is.null(group_label)) return(n_data)
-
-  # Case-insensitive column matching (display "param" → source "PARAM")
-  nd_names <- names(n_data)
-  nd_lower <- tolower(nd_names)
-  resolved <- vapply(page_by, function(col) {
-    idx <- match(tolower(col), nd_lower)
-    if (is.na(idx)) col else nd_names[idx]
-  }, character(1))
-
-  keys <- inject(paste(!!!lapply(resolved, function(col) n_data[[col]]),
-                        sep = " / "))
-  n_data[keys == group_label, , drop = FALSE]
-}
-
-
-#' Auto-compute N-counts: unique subjects per column per group
-#'
-#' For each column in the display table that also exists in the source
-#' data, counts unique values of the subject column where the data
-#' column is non-missing.
-#'
-#' @param data Data frame (source data, possibly a page_by subset).
-#' @param col_names Character vector of display column names.
-#' @param subject_col Character scalar — column name for subject IDs.
-#' @return Named integer vector keyed by column name.
-#' @noRd
-compute_auto_n <- function(data, col_names, subject_col) {
-  result <- vapply(col_names, function(nm) {
-    if (!nm %in% names(data)) return(NA_integer_)
-    x <- data[[nm]]
-    mask <- !is.na(x) & nzchar(as.character(x))
-    length(unique(data[[subject_col]][mask]))
-  }, integer(1))
-  result[!is.na(result)]
 }
 
 

@@ -31,7 +31,7 @@
 #'   Overridden per-column by `fr_col(header_align = ...)`.
 #' @param valign Default vertical alignment. One of `"top"`, `"middle"`,
 #'   `"bottom"` (default). Relevant when header rows have unequal height.
-#' @param n Subject counts for N-count column header labels. Four forms:
+#' @param n Subject counts for N-count column header labels. Three forms:
 #'
 #'   * **Named numeric vector** — global N, same for all page groups.
 #'     Names must match data column names.
@@ -43,56 +43,34 @@
 #'     Example: `list("Blood Pressure" = c(placebo = 42, zom_50mg = 40),
 #'                     "Heart Rate" = c(placebo = 45, zom_50mg = 44))`.
 #'
-#'   * **Function** — called once per page group to compute N dynamically.
-#'     Must accept exactly two arguments and return a named numeric vector
-#'     keyed by column name:
+#'   * **Function** — called **once** with the full `spec$data` during
+#'     `finalize_spec()`. Must accept one argument (the data frame) and
+#'     return either:
 #'
 #'     \describe{
-#'       \item{`group_data`}{A data frame: the subset of `n_data` (or
-#'         `spec$data` if `n_data` is `NULL`) filtered to the current
-#'         `page_by` group. For example, if `page_by = "param"` and the
-#'         current page is `"Systolic BP (mmHg)"`, then `group_data`
-#'         contains only rows where `PARAM == "Systolic BP (mmHg)"`.
-#'         When there is no `page_by`, `group_data` is the full dataset.}
-#'       \item{`group_label`}{A character string: the display label for
-#'         the current `page_by` group (e.g. `"Systolic BP (mmHg)"`).
-#'         `NULL` when no `page_by` is set. Useful for conditional
-#'         counting logic that varies by group — for example, excluding
-#'         baseline visits for certain parameters, or using a different
-#'         subject-ID column per group.}
+#'       \item{**Named numeric vector**}{Treatment names → counts.
+#'         Names are matched to column display labels (case-insensitive).
+#'         Same N on every page (global).
+#'         Example return: `c("Placebo" = 45, "Zomerane 50mg" = 44)`.}
+#'       \item{**2-column data frame**}{Column 1 = treatment labels,
+#'         column 2 = counts (numeric). Same N on every page (global).
+#'         Equivalent to a named vector.}
+#'       \item{**3-column data frame**}{Column 1 = page\_by group values,
+#'         column 2 = treatment labels, column 3 = counts (numeric).
+#'         Different N per page\_by group — tlframe slices per group at
+#'         render time.}
 #'     }
 #'
-#'     Most functions only need `group_data` (the subset already does the
-#'     filtering). `group_label` is available for edge cases where the
-#'     counting logic itself must differ by group. Both arguments are
-#'     always passed by tlframe, so the function must accept both even if
-#'     it ignores `group_label`.
-#'
-#'     Example: `function(d, gl) c(placebo = length(unique(d$USUBJID[d$TRT01A == "Placebo"])))`.
-#'
-#'   * **`"auto"`** — auto-compute unique subjects per column per group.
-#'     Requires `n_subject` (subject ID column name). Uses `n_data` if
-#'     provided, otherwise counts from `spec$data`. For each display column
-#'     name present in the source data, counts unique `n_subject` values
-#'     where the column is non-missing. Best suited for **wide-format**
-#'     source data where column names match the display table. For
-#'     long-format CDISC data (e.g., `TRTA` column), use the function
-#'     form instead.
+#'     For external data (e.g. ADSL), capture via closure:
+#'     `\(d) adsl |> ...` (the `d` argument receives `spec$data` but
+#'     can be ignored in favour of the captured external data).
 #'
 #' @param format A [glue][glue::glue]-style format string for N-count
-#'   labels. Available tokens: `{name}` (column label) and `{n}` (count).
+#'   labels. Available tokens: `{label}` (column display label) and
+#'   `{n}` (count).
 #'   Default `NULL` (no N-count formatting).
-#'   Example: `"{name}\n(N={n})"`.
-#' @param n_subject Character scalar. Column name containing subject
-#'   identifiers (e.g. `"USUBJID"`). Required when `n = "auto"`.
-#'   The column must exist in `n_data` (or `spec$data` if `n_data` is
-#'   `NULL`).
-#' @param n_data Optional data frame for N-count computation. When
-#'   provided, the `"auto"` and function forms of `n` operate on this
-#'   dataset instead of `spec$data`. Useful when the display table is
-#'   pre-summarized but N-counts must come from record-level source data
-#'   (e.g. ADSL, ADVS). The data frame must contain the `page_by`
-#'   column(s) if per-group counts are needed.
+#'   Example: `"{label}\n(N={n})"`.
+#'
 #' @param bold Logical or `NULL`. Whether header cells are bold. Default
 #'   `NULL` inherits the built-in default (FALSE). Set `TRUE` explicitly
 #'   if you want bold headers.
@@ -104,11 +82,6 @@
 #'   from page font size.
 #' @param repeat_on_page Logical. Whether to repeat the column header on
 #'   every page. Default `TRUE` (standard for regulatory tables).
-#' @param span_gap Logical or `NULL`. Whether to insert narrow gap columns
-#'   between adjacent spanning headers at the same level. Gap columns create
-#'   a clean visual break between span groups in both RTF and PDF output,
-#'   without relying on border trimming. Default `TRUE`. Set `FALSE` to
-#'   disable gap insertion and produce continuous span hlines.
 #' @return A modified `fr_spec`. Header config stored in `spec$header`.
 #'
 #' @section Priority chain for header alignment:
@@ -122,11 +95,13 @@
 #'
 #' * **Named numeric vector** (global) — resolved once during
 #'   `finalize_spec()`. All page groups share the same labels.
-#' * **Named list, function, or `"auto"`** — resolved per page group in
-#'   the render loop. Each group gets its own header labels via a label
-#'   override map, without cloning the column specs.
+#' * **Named list** — resolved per page group in the render loop.
+#'   Each group gets its own header labels via a label override map.
+#' * **Function** — called once during `finalize_spec()`. The return
+#'   type determines global (named vector or 2-col df) vs per-group
+#'   (3-col df) resolution.
 #'
-#' The `{name}` token in `format` expands to the column's resolved label
+#' The `{label}` token in `format` expands to the column's resolved label
 #' (from `fr_col(label = ...)` or auto-generated). This means
 #' `fr_header()` and `fr_cols()` can be called in any order.
 #'
@@ -134,10 +109,10 @@
 #' Many pharma TFL outputs use **bold, centered** column headers with
 #' `valign = "bottom"` so that short labels (e.g. "Characteristic") align
 #' at the bottom when adjacent columns have multi-line labels (e.g.
-#' "Placebo\\n(N=45)"). The `{name}\\n(N={n})` format is the standard ICH/CDISC
-#' convention for treatment-arm headers. By default, headers are **not bold**
-#' and inherit alignment from the column's `align` setting — use
-#' `fr_header(bold = TRUE, align = "center")` to opt in.
+#' "Placebo\\n(N=45)"). The `{label}\\n(N={n})` format is the standard
+#' ICH/CDISC convention for treatment-arm headers. By default, headers are
+#' **not bold** and inherit alignment from the column's `align` setting —
+#' use `fr_header(bold = TRUE, align = "center")` to opt in.
 #'
 #' @examples
 #' ## ── Center all headers with bottom valign ────────────────────────────────
@@ -157,7 +132,7 @@
 #'   ) |>
 #'   fr_header(
 #'     n = c(zom_50mg = 45, placebo = 45),
-#'     format = "{name}\n(N={n})"
+#'     format = "{label}\n(N={n})"
 #'   )
 #'
 #' ## ── Per-group N-count (different N per page_by group) ────────────────────
@@ -172,55 +147,54 @@
 #'       "Heart Rate (bpm)"    = c(placebo = 45, zom_50mg = 38, zom_100mg = 40, total = 123),
 #'       "Temperature (C)"     = c(placebo = 42, zom_50mg = 39, zom_100mg = 37, total = 118)
 #'     ),
-#'     format = "{name}\n(N={n})"
+#'     format = "{label}\n(N={n})"
 #'   )
 #'
-#' ## ── Function N-count (dynamic from record-level source) ──────────────────
+#' ## ── Function N-count — named vector return (global) ───────────────────────
 #'
-#' # Best approach for long-format source data (CDISC ADaM pattern):
-#' # the function receives the per-group subset of n_data and computes
-#' # N per treatment arm dynamically.
-#' #
-#' # group_data = rows of advs where PARAM matches the current page_by value
-#' # group_label = the page_by label string (unused here — counting logic
-#' #               is the same for all parameters, only the data subset changes)
-#' tbl_vs |>
+#' tbl_demog |>
 #'   fr_table() |>
-#'   fr_rows(page_by = "param") |>
 #'   fr_header(
-#'     n = function(group_data, group_label) {
-#'       d <- group_data
-#'       c(placebo   = length(unique(d$USUBJID[d$TRTA == "Placebo"])),
-#'         zom_50mg  = length(unique(d$USUBJID[d$TRTA == "Zomerane 50mg"])),
-#'         zom_100mg = length(unique(d$USUBJID[d$TRTA == "Zomerane 100mg"])),
-#'         total     = length(unique(d$USUBJID)))
-#'     },
-#'     n_data = advs,
-#'     format = "{name}\n(N={n})"
+#'     n = \(d) c(placebo = nrow(d[d$characteristic == "n", ]),
+#'                zom_50mg = nrow(d[d$characteristic == "n", ])),
+#'     format = "{label}\n(N={n})"
 #'   )
 #'
-#' ## ── Function N-count using group_label for conditional logic ──────────────
+#' ## ── Function N-count — 2-col data frame return (global) ──────────────────
 #'
-#' # group_label is useful when counting logic varies by parameter.
-#' # Here, Temperature uses a stricter filter (non-missing + in-range).
-#' tbl_vs |>
+#' # Function receives spec$data, returns data frame with treatment + count.
+#' # Treatment labels are matched to column labels (case-insensitive).
+#' tbl_demog |>
 #'   fr_table() |>
-#'   fr_rows(page_by = "param") |>
+#'   fr_cols(
+#'     zom_50mg = fr_col("Zomerane 50 mg"),
+#'     placebo  = fr_col("Placebo")
+#'   ) |>
 #'   fr_header(
-#'     n = function(group_data, group_label) {
-#'       d <- group_data
-#'       if (group_label == "Temperature (C)") {
-#'         # Stricter: only subjects with in-range temperature
-#'         d <- d[d$AVAL >= 35 & d$AVAL <= 42, ]
-#'       }
-#'       c(placebo   = length(unique(d$USUBJID[d$TRTA == "Placebo"])),
-#'         zom_50mg  = length(unique(d$USUBJID[d$TRTA == "Zomerane 50mg"])),
-#'         zom_100mg = length(unique(d$USUBJID[d$TRTA == "Zomerane 100mg"])),
-#'         total     = length(unique(d$USUBJID)))
-#'     },
-#'     n_data = advs,
-#'     format = "{name}\n(N={n})"
+#'     n = \(d) data.frame(
+#'       trt = c("Zomerane 50 mg", "Placebo"),
+#'       n   = c(45L, 45L)
+#'     ),
+#'     format = "{label}\n(N={n})"
 #'   )
+#'
+#' ## ── Function N-count using closure for external data ─────────────────────
+#'
+#' # Capture external dataset via closure — d argument is ignored
+#' \donttest{
+#' if (requireNamespace("dplyr", quietly = TRUE)) {
+#'   tbl_vs |>
+#'     fr_table() |>
+#'     fr_rows(page_by = "param") |>
+#'     fr_header(
+#'       n = \(d) advs |>
+#'         dplyr::filter(SAFFL == "Y") |>
+#'         dplyr::group_by(PARAM, TRTA) |>
+#'         dplyr::summarise(n = dplyr::n_distinct(USUBJID), .groups = "drop"),
+#'       format = "{label}\n(N={n})"
+#'     )
+#' }
+#' }
 #'
 #' ## ── Header background colour (hex or CSS named colour) ──────────────────
 #'
@@ -238,7 +212,7 @@
 #'
 #' tbl_demog |>
 #'   fr_table() |>
-#'   fr_header(n = c(zom_50mg = 45), format = "{name}\n(N={n})") |>
+#'   fr_header(n = c(zom_50mg = 45), format = "{label}\n(N={n})") |>
 #'   fr_cols(zom_50mg = fr_col("Zom 50mg", align = "right"))
 #'
 #' @seealso [fr_cols()] for column structure, [fr_spans()] for spanning
@@ -248,11 +222,9 @@
 #'
 #' @export
 fr_header <- function(spec, align = NULL, valign = NULL,
-                      n = NULL, format = NULL,
-                      n_subject = NULL, n_data = NULL,
                       bold = NULL, bg = NULL, fg = NULL,
                       font_size = NULL, repeat_on_page = NULL,
-                      span_gap = NULL) {
+                      n = NULL, format = NULL) {
   call <- caller_env()
   check_fr_spec(spec, call = call)
 
@@ -263,11 +235,9 @@ fr_header <- function(spec, align = NULL, valign = NULL,
   if (!is.null(bg)) bg <- resolve_color(bg, call = call)
   if (!is.null(fg)) fg <- resolve_color(fg, call = call)
   if (!is.null(repeat_on_page)) check_scalar_lgl(repeat_on_page, arg = "repeat_on_page", call = call)
-  if (!is.null(span_gap)) check_scalar_lgl(span_gap, arg = "span_gap", call = call)
 
-  # Validate N-count parameters
-  validate_n_param(n = n, n_subject = n_subject, n_data = n_data,
-                    format = format, call = call)
+  # Validate N-count parameters (3 forms: named numeric, named list, function)
+  validate_n_param(n = n, format = format, call = call)
 
   # Preserve existing spans — fr_header replaces everything else
   old_spans <- spec$header$spans
@@ -283,9 +253,7 @@ fr_header <- function(spec, align = NULL, valign = NULL,
     font_size      = font_size %||% spec$header$font_size,
     n              = n         %||% spec$header$n,
     format         = format    %||% spec$header$format,
-    n_subject      = n_subject %||% spec$header$n_subject,
-    n_data         = n_data    %||% spec$header$n_data,
-    span_gap       = span_gap  %||% spec$header$span_gap
+    span_gap       = spec$header$span_gap
   )
 
   spec

@@ -8,16 +8,13 @@ fr_header(
   spec,
   align = NULL,
   valign = NULL,
-  n = NULL,
-  format = NULL,
-  n_subject = NULL,
-  n_data = NULL,
   bold = NULL,
   bg = NULL,
   fg = NULL,
   font_size = NULL,
   repeat_on_page = NULL,
-  span_gap = NULL
+  n = NULL,
+  format = NULL
 )
 }
 \arguments{
@@ -29,68 +26,6 @@ Overridden per-column by \code{fr_col(header_align = ...)}.}
 
 \item{valign}{Default vertical alignment. One of \code{"top"}, \code{"middle"},
 \code{"bottom"} (default). Relevant when header rows have unequal height.}
-
-\item{n}{Subject counts for N-count column header labels. Four forms:
-\itemize{
-\item \strong{Named numeric vector} — global N, same for all page groups.
-Names must match data column names.
-Example: \code{c(placebo = 45, zom_50mg = 44)}.
-\item \strong{Named list of named numeric vectors} — per-group N. List names
-must match \code{page_by} group values. Each element is a named numeric
-vector keyed by column name.
-Example: \code{list("Blood Pressure" = c(placebo = 42, zom_50mg = 40), "Heart Rate" = c(placebo = 45, zom_50mg = 44))}.
-\item \strong{Function} — called once per page group to compute N dynamically.
-Must accept exactly two arguments and return a named numeric vector
-keyed by column name:
-
-\describe{
-\item{\code{group_data}}{A data frame: the subset of \code{n_data} (or
-\code{spec$data} if \code{n_data} is \code{NULL}) filtered to the current
-\code{page_by} group. For example, if \code{page_by = "param"} and the
-current page is \code{"Systolic BP (mmHg)"}, then \code{group_data}
-contains only rows where \code{PARAM == "Systolic BP (mmHg)"}.
-When there is no \code{page_by}, \code{group_data} is the full dataset.}
-\item{\code{group_label}}{A character string: the display label for
-the current \code{page_by} group (e.g. \code{"Systolic BP (mmHg)"}).
-\code{NULL} when no \code{page_by} is set. Useful for conditional
-counting logic that varies by group — for example, excluding
-baseline visits for certain parameters, or using a different
-subject-ID column per group.}
-}
-
-Most functions only need \code{group_data} (the subset already does the
-filtering). \code{group_label} is available for edge cases where the
-counting logic itself must differ by group. Both arguments are
-always passed by tlframe, so the function must accept both even if
-it ignores \code{group_label}.
-
-Example: \code{function(d, gl) c(placebo = length(unique(d$USUBJID[d$TRT01A == "Placebo"])))}.
-\item \strong{\code{"auto"}} — auto-compute unique subjects per column per group.
-Requires \code{n_subject} (subject ID column name). Uses \code{n_data} if
-provided, otherwise counts from \code{spec$data}. For each display column
-name present in the source data, counts unique \code{n_subject} values
-where the column is non-missing. Best suited for \strong{wide-format}
-source data where column names match the display table. For
-long-format CDISC data (e.g., \code{TRTA} column), use the function
-form instead.
-}}
-
-\item{format}{A \link[glue:glue]{glue}-style format string for N-count
-labels. Available tokens: \code{{name}} (column label) and \code{{n}} (count).
-Default \code{NULL} (no N-count formatting).
-Example: \code{"{name}\\n(N={n})"}.}
-
-\item{n_subject}{Character scalar. Column name containing subject
-identifiers (e.g. \code{"USUBJID"}). Required when \code{n = "auto"}.
-The column must exist in \code{n_data} (or \code{spec$data} if \code{n_data} is
-\code{NULL}).}
-
-\item{n_data}{Optional data frame for N-count computation. When
-provided, the \code{"auto"} and function forms of \code{n} operate on this
-dataset instead of \code{spec$data}. Useful when the display table is
-pre-summarized but N-counts must come from record-level source data
-(e.g. ADSL, ADVS). The data frame must contain the \code{page_by}
-column(s) if per-group counts are needed.}
 
 \item{bold}{Logical or \code{NULL}. Whether header cells are bold. Default
 \code{NULL} inherits the built-in default (FALSE). Set \code{TRUE} explicitly
@@ -108,11 +43,43 @@ from page font size.}
 \item{repeat_on_page}{Logical. Whether to repeat the column header on
 every page. Default \code{TRUE} (standard for regulatory tables).}
 
-\item{span_gap}{Logical or \code{NULL}. Whether to insert narrow gap columns
-between adjacent spanning headers at the same level. Gap columns create
-a clean visual break between span groups in both RTF and PDF output,
-without relying on border trimming. Default \code{TRUE}. Set \code{FALSE} to
-disable gap insertion and produce continuous span hlines.}
+\item{n}{Subject counts for N-count column header labels. Three forms:
+\itemize{
+\item \strong{Named numeric vector} — global N, same for all page groups.
+Names must match data column names.
+Example: \code{c(placebo = 45, zom_50mg = 44)}.
+\item \strong{Named list of named numeric vectors} — per-group N. List names
+must match \code{page_by} group values. Each element is a named numeric
+vector keyed by column name.
+Example: \code{list("Blood Pressure" = c(placebo = 42, zom_50mg = 40), "Heart Rate" = c(placebo = 45, zom_50mg = 44))}.
+\item \strong{Function} — called \strong{once} with the full \code{spec$data} during
+\code{finalize_spec()}. Must accept one argument (the data frame) and
+return either:
+
+\describe{
+\item{\strong{Named numeric vector}}{Treatment names → counts.
+Names are matched to column display labels (case-insensitive).
+Same N on every page (global).
+Example return: \code{c("Placebo" = 45, "Zomerane 50mg" = 44)}.}
+\item{\strong{2-column data frame}}{Column 1 = treatment labels,
+column 2 = counts (numeric). Same N on every page (global).
+Equivalent to a named vector.}
+\item{\strong{3-column data frame}}{Column 1 = page\_by group values,
+column 2 = treatment labels, column 3 = counts (numeric).
+Different N per page\_by group — tlframe slices per group at
+render time.}
+}
+
+For external data (e.g. ADSL), capture via closure:
+\verb{\\(d) adsl |> ...} (the \code{d} argument receives \code{spec$data} but
+can be ignored in favour of the captured external data).
+}}
+
+\item{format}{A \link[glue:glue]{glue}-style format string for N-count
+labels. Available tokens: \code{{label}} (column display label) and
+\code{{n}} (count).
+Default \code{NULL} (no N-count formatting).
+Example: \code{"{label}\\n(N={n})"}.}
 }
 \value{
 A modified \code{fr_spec}. Header config stored in \code{spec$header}.
@@ -150,12 +117,14 @@ N-count labels are resolved at different stages depending on the form of
 \itemize{
 \item \strong{Named numeric vector} (global) — resolved once during
 \code{finalize_spec()}. All page groups share the same labels.
-\item \strong{Named list, function, or \code{"auto"}} — resolved per page group in
-the render loop. Each group gets its own header labels via a label
-override map, without cloning the column specs.
+\item \strong{Named list} — resolved per page group in the render loop.
+Each group gets its own header labels via a label override map.
+\item \strong{Function} — called once during \code{finalize_spec()}. The return
+type determines global (named vector or 2-col df) vs per-group
+(3-col df) resolution.
 }
 
-The \code{{name}} token in \code{format} expands to the column's resolved label
+The \code{{label}} token in \code{format} expands to the column's resolved label
 (from \code{fr_col(label = ...)} or auto-generated). This means
 \code{fr_header()} and \code{fr_cols()} can be called in any order.
 }
@@ -165,10 +134,10 @@ The \code{{name}} token in \code{format} expands to the column's resolved label
 Many pharma TFL outputs use \strong{bold, centered} column headers with
 \code{valign = "bottom"} so that short labels (e.g. "Characteristic") align
 at the bottom when adjacent columns have multi-line labels (e.g.
-"Placebo\\n(N=45)"). The \verb{\{name\}\\\\n(N=\{n\})} format is the standard ICH/CDISC
-convention for treatment-arm headers. By default, headers are \strong{not bold}
-and inherit alignment from the column's \code{align} setting — use
-\code{fr_header(bold = TRUE, align = "center")} to opt in.
+"Placebo\\n(N=45)"). The \verb{\{label\}\\\\n(N=\{n\})} format is the standard
+ICH/CDISC convention for treatment-arm headers. By default, headers are
+\strong{not bold} and inherit alignment from the column's \code{align} setting —
+use \code{fr_header(bold = TRUE, align = "center")} to opt in.
 }
 
 \examples{
@@ -189,7 +158,7 @@ tbl_demog |>
   ) |>
   fr_header(
     n = c(zom_50mg = 45, placebo = 45),
-    format = "{name}\n(N={n})"
+    format = "{label}\n(N={n})"
   )
 
 ## ── Per-group N-count (different N per page_by group) ────────────────────
@@ -204,55 +173,54 @@ tbl_vs |>
       "Heart Rate (bpm)"    = c(placebo = 45, zom_50mg = 38, zom_100mg = 40, total = 123),
       "Temperature (C)"     = c(placebo = 42, zom_50mg = 39, zom_100mg = 37, total = 118)
     ),
-    format = "{name}\n(N={n})"
+    format = "{label}\n(N={n})"
   )
 
-## ── Function N-count (dynamic from record-level source) ──────────────────
+## ── Function N-count — named vector return (global) ───────────────────────
 
-# Best approach for long-format source data (CDISC ADaM pattern):
-# the function receives the per-group subset of n_data and computes
-# N per treatment arm dynamically.
-#
-# group_data = rows of advs where PARAM matches the current page_by value
-# group_label = the page_by label string (unused here — counting logic
-#               is the same for all parameters, only the data subset changes)
-tbl_vs |>
+tbl_demog |>
   fr_table() |>
-  fr_rows(page_by = "param") |>
   fr_header(
-    n = function(group_data, group_label) {
-      d <- group_data
-      c(placebo   = length(unique(d$USUBJID[d$TRTA == "Placebo"])),
-        zom_50mg  = length(unique(d$USUBJID[d$TRTA == "Zomerane 50mg"])),
-        zom_100mg = length(unique(d$USUBJID[d$TRTA == "Zomerane 100mg"])),
-        total     = length(unique(d$USUBJID)))
-    },
-    n_data = advs,
-    format = "{name}\n(N={n})"
+    n = \(d) c(placebo = nrow(d[d$characteristic == "n", ]),
+               zom_50mg = nrow(d[d$characteristic == "n", ])),
+    format = "{label}\n(N={n})"
   )
 
-## ── Function N-count using group_label for conditional logic ──────────────
+## ── Function N-count — 2-col data frame return (global) ──────────────────
 
-# group_label is useful when counting logic varies by parameter.
-# Here, Temperature uses a stricter filter (non-missing + in-range).
-tbl_vs |>
+# Function receives spec$data, returns data frame with treatment + count.
+# Treatment labels are matched to column labels (case-insensitive).
+tbl_demog |>
   fr_table() |>
-  fr_rows(page_by = "param") |>
+  fr_cols(
+    zom_50mg = fr_col("Zomerane 50 mg"),
+    placebo  = fr_col("Placebo")
+  ) |>
   fr_header(
-    n = function(group_data, group_label) {
-      d <- group_data
-      if (group_label == "Temperature (C)") {
-        # Stricter: only subjects with in-range temperature
-        d <- d[d$AVAL >= 35 & d$AVAL <= 42, ]
-      }
-      c(placebo   = length(unique(d$USUBJID[d$TRTA == "Placebo"])),
-        zom_50mg  = length(unique(d$USUBJID[d$TRTA == "Zomerane 50mg"])),
-        zom_100mg = length(unique(d$USUBJID[d$TRTA == "Zomerane 100mg"])),
-        total     = length(unique(d$USUBJID)))
-    },
-    n_data = advs,
-    format = "{name}\n(N={n})"
+    n = \(d) data.frame(
+      trt = c("Zomerane 50 mg", "Placebo"),
+      n   = c(45L, 45L)
+    ),
+    format = "{label}\n(N={n})"
   )
+
+## ── Function N-count using closure for external data ─────────────────────
+
+# Capture external dataset via closure — d argument is ignored
+\donttest{
+if (requireNamespace("dplyr", quietly = TRUE)) {
+  tbl_vs |>
+    fr_table() |>
+    fr_rows(page_by = "param") |>
+    fr_header(
+      n = \(d) advs |>
+        dplyr::filter(SAFFL == "Y") |>
+        dplyr::group_by(PARAM, TRTA) |>
+        dplyr::summarise(n = dplyr::n_distinct(USUBJID), .groups = "drop"),
+      format = "{label}\n(N={n})"
+    )
+}
+}
 
 ## ── Header background colour (hex or CSS named colour) ──────────────────
 
@@ -270,7 +238,7 @@ tbl_demog |>
 
 tbl_demog |>
   fr_table() |>
-  fr_header(n = c(zom_50mg = 45), format = "{name}\n(N={n})") |>
+  fr_header(n = c(zom_50mg = 45), format = "{label}\n(N={n})") |>
   fr_cols(zom_50mg = fr_col("Zom 50mg", align = "right"))
 
 }

@@ -155,35 +155,23 @@ parse_pct_width <- function(x, arg = caller_arg(x), call = caller_env()) {
 }
 
 
-#' Validate n, n_subject, n_data, and format parameters for fr_header()
+#' Validate n and format parameters for fr_header()
 #'
-#' Centralises the 4-form N-count validation (auto, function, numeric, list)
-#' plus n_data and format checks.
+#' Validates the three supported N-count forms: named numeric vector,
+#' named list of named numeric vectors, and function.
 #'
-#' @param n N-count specification (numeric, list, function, "auto", or NULL).
-#' @param n_subject Subject ID column name (required for auto mode).
-#' @param n_data Optional source data frame for N-count computation.
+#' @param n N-count specification (numeric, list, function, or NULL).
 #' @param format Optional glue format string for N-count labels.
 #' @param call Caller environment for error reporting.
 #' @noRd
-validate_n_param <- function(n, n_subject = NULL, n_data = NULL,
-                              format = NULL, call = caller_env()) {
+validate_n_param <- function(n, format = NULL, call = caller_env()) {
   if (!is.null(n)) {
-    if (identical(n, "auto")) {
-      if (is.null(n_subject)) {
-        cli_abort(
-          c("{.arg n_subject} is required when {.code n = \"auto\"}.",
-            "i" = "Example: {.code fr_header(n = \"auto\", n_subject = \"USUBJID\")}"),
-          call = call
-        )
-      }
-      check_scalar_chr(n_subject, arg = "n_subject", call = call)
-    } else if (is.function(n)) {
-      # Function form: validated at call time (must return named numeric)
+    if (is.function(n)) {
+      # Function form: validated at call time (must return named numeric or df)
     } else if (is.numeric(n)) {
       if (is.null(names(n))) {
         cli_abort(
-          c("{.arg n} must be a named numeric vector, a named list, a function, or {.val \"auto\"}.",
+          c("{.arg n} must be a named numeric vector, a named list, or a function.",
             "x" = "You supplied an unnamed numeric vector.",
             "i" = "Example: {.code c(placebo = 45, zom_50mg = 45)}."),
           call = call
@@ -209,18 +197,12 @@ validate_n_param <- function(n, n_subject = NULL, n_data = NULL,
       }
     } else {
       cli_abort(
-        c("{.arg n} must be a named numeric vector, a named list, a function, or {.val \"auto\"}.",
+        c("{.arg n} must be a named numeric vector, a named list, or a function.",
           "x" = "You supplied {.obj_type_friendly {n}}.",
-          "i" = "See {.fun fr_header} docs for per-group N-count examples."),
+          "i" = "See {.fun fr_header} docs for N-count examples."),
         call = call
       )
     }
-  }
-
-  if (!is.null(n_data) && !is.data.frame(n_data)) {
-    cli_abort(c("{.arg n_data} must be a data frame.",
-                "x" = "You supplied {.obj_type_friendly {n_data}}."),
-              call = call)
   }
 
   if (!is.null(format)) {

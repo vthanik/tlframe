@@ -19,6 +19,8 @@ screenshots/
 
 # Claude Code config (local only)
 .claude/
+CLAUDE.md
+BACKEND.md
 
 # Presentation materials (local only)
 presentation/

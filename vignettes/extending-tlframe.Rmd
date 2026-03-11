@@ -142,7 +142,7 @@ spec <- tbl_demog |>
 # This allows verb-order independence
 ```
 
-**N-count labels:** `fr_header(n = ..., format = "{name}\n(N={n})")` stores
+**N-count labels:** `fr_header(n = ..., format = "{label}\n(N={n})")` stores
 the N-counts and format template. `finalize_spec()` resolves them into final
 column labels so that `fr_cols()` and `fr_header()` can be called in any
 order.

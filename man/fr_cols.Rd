@@ -179,7 +179,7 @@ tbl_demog |>
   ) |>
   fr_header(
     n = c(zom_50mg = 45, zom_100mg = 45, placebo = 45, total = 135),
-    format = "{name}\n(N={n})"
+    format = "{label}\n(N={n})"
   )
 
 ## ── Auto-width: let the engine calculate ─────────────────────────────────
@@ -256,7 +256,7 @@ tbl_demog |>
   ) |>
   fr_header(
     n = c(zom_50mg = 45, placebo = 45),
-    format = "{name}\n(N={n})"
+    format = "{label}\n(N={n})"
   )
 
 ## ── Combine auto-width + label transform ─────────────────────────────────
@@ -270,7 +270,7 @@ tbl_demog |>
   ) |>
   fr_header(
     n = c(zom_50mg = 45, zom_100mg = 45, placebo = 45, total = 135),
-    format = "{name}\n(N={n})"
+    format = "{label}\n(N={n})"
   )
 
 ## ── Column splitting: split + fit to fill page ─────────────────────────

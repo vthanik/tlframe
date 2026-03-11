@@ -27,11 +27,11 @@ test_that("fr_header stores n and format", {
     fr_table() |>
     fr_header(
       n = c(zom_50mg = 45, placebo = 45),
-      format = "{name}\n(N={n})"
+      format = "{label}\n(N={n})"
     )
 
   expect_equal(spec$header$n, c(zom_50mg = 45, placebo = 45))
-  expect_equal(spec$header$format, "{name}\n(N={n})")
+  expect_equal(spec$header$format, "{label}\n(N={n})")
 })
 
 test_that("fr_header n-count labels resolve during finalize_spec", {
@@ -43,7 +43,7 @@ test_that("fr_header n-count labels resolve during finalize_spec", {
     ) |>
     fr_header(
       n = c(zom_50mg = 45, placebo = 45),
-      format = "{name}\n(N={n})"
+      format = "{label}\n(N={n})"
     )
 
   # finalize_spec resolves the labels
@@ -57,14 +57,14 @@ test_that("fr_header and fr_cols are order-independent", {
   # fr_header first, then fr_cols
   spec1 <- tbl_demog |>
     fr_table() |>
-    fr_header(n = c(zom_50mg = 45), format = "{name}\n(N={n})") |>
+    fr_header(n = c(zom_50mg = 45), format = "{label}\n(N={n})") |>
     fr_cols(zom_50mg = fr_col("Zom 50mg", align = "right"))
 
   # fr_cols first, then fr_header
   spec2 <- tbl_demog |>
     fr_table() |>
     fr_cols(zom_50mg = fr_col("Zom 50mg", align = "right")) |>
-    fr_header(n = c(zom_50mg = 45), format = "{name}\n(N={n})")
+    fr_header(n = c(zom_50mg = 45), format = "{label}\n(N={n})")
 
   fspec1 <- tlframe:::finalize_spec(spec1)
   fspec2 <- tlframe:::finalize_spec(spec2)
@@ -102,24 +102,18 @@ test_that("fr_header validates inputs", {
   spec <- tbl_demog |> fr_table()
 
   expect_error(fr_header(spec, n = c(1, 2)), "named numeric")
-  expect_error(fr_header(spec, n = "bad_string"), "named numeric")
   expect_error(fr_header(spec, n = TRUE), "named numeric")
   expect_error(fr_header(spec, bold = "yes"), "TRUE.*FALSE")
   expect_error(fr_header(spec, font_size = -1), "positive")
 
-  # auto requires n_subject
-  expect_error(fr_header(spec, n = "auto"), "n_subject")
+  # character scalar is no longer a valid n form
+  expect_error(fr_header(spec, n = "TRTA"), "named numeric")
 
   # list n must be named
   expect_error(fr_header(spec, n = list(c(a = 1))), "named by page_by")
 
   # list n elements must be named numeric
-
   expect_error(fr_header(spec, n = list(grp = c(1, 2))), "named numeric")
-
-  # n_data must be a data frame
-  expect_error(fr_header(spec, n = "auto", n_subject = "X", n_data = "bad"),
-               "data frame")
 })
 
 test_that("fr_header align propagates to columns via finalize_spec", {
@@ -184,7 +178,7 @@ test_that("fr_header stores per-group list n", {
         "Group A" = c(zom_50mg = 42, placebo = 40),
         "Group B" = c(zom_50mg = 45, placebo = 44)
       ),
-      format = "{name}\n(N={n})"
+      format = "{label}\n(N={n})"
     )
 
   expect_true(is.list(spec$header$n))
@@ -193,26 +187,12 @@ test_that("fr_header stores per-group list n", {
 })
 
 test_that("fr_header stores function n", {
-  n_fn <- function(group_data, group_label) c(zom_50mg = 42L)
+  n_fn <- function(d) c(zom_50mg = 42L)
   spec <- tbl_demog |>
     fr_table() |>
-    fr_header(n = n_fn, format = "{name}\n(N={n})")
+    fr_header(n = n_fn, format = "{label}\n(N={n})")
 
   expect_true(is.function(spec$header$n))
-})
-
-test_that("fr_header stores n_subject and n_data", {
-  src <- data.frame(USUBJID = c("S1", "S2"), grp = c("A", "B"))
-  spec <- tbl_demog |>
-    fr_table() |>
-    fr_header(
-      n = "auto", n_subject = "USUBJID", n_data = src,
-      format = "{name}\n(N={n})"
-    )
-
-  expect_equal(spec$header$n, "auto")
-  expect_equal(spec$header$n_subject, "USUBJID")
-  expect_true(is.data.frame(spec$header$n_data))
 })
 
 test_that("per-group list n skips global resolution in finalize_spec", {
@@ -224,7 +204,7 @@ test_that("per-group list n skips global resolution in finalize_spec", {
     ) |>
     fr_header(
       n = list("Group A" = c(zom_50mg = 42, placebo = 40)),
-      format = "{name}\n(N={n})"
+      format = "{label}\n(N={n})"
     )
 
   # finalize_spec should NOT resolve labels for per-group n
@@ -247,7 +227,7 @@ test_that("resolve_group_labels returns overrides for per-group list", {
         "Group A" = c(zom_50mg = 42, placebo = 40),
         "Group B" = c(zom_50mg = 45, placebo = 44)
       ),
-      format = "{name}\n(N={n})"
+      format = "{label}\n(N={n})"
     )
 
   fspec <- suppressWarnings(tlframe:::finalize_spec(spec))
@@ -266,7 +246,7 @@ test_that("resolve_group_labels returns NULL for missing group key", {
     fr_table() |>
     fr_header(
       n = list("Group A" = c(zom_50mg = 42)),
-      format = "{name}\n(N={n})"
+      format = "{label}\n(N={n})"
     )
 
   fspec <- suppressWarnings(tlframe:::finalize_spec(spec))
@@ -279,7 +259,7 @@ test_that("resolve_group_labels returns NULL for global numeric n", {
     fr_table() |>
     fr_header(
       n = c(zom_50mg = 45, placebo = 45),
-      format = "{name}\n(N={n})"
+      format = "{label}\n(N={n})"
     )
 
   fspec <- tlframe:::finalize_spec(spec)
@@ -287,9 +267,35 @@ test_that("resolve_group_labels returns NULL for global numeric n", {
   expect_null(ov)
 })
 
-test_that("resolve_group_labels works with function n", {
-  n_fn <- function(group_data, group_label) {
-    c(zom_50mg = 99L, placebo = 88L)
+test_that("resolve_group_labels works with function n returning named vector", {
+  n_fn <- function(d) c(zom_50mg = 99L, placebo = 88L)
+
+  spec <- tbl_demog |>
+    fr_table() |>
+    fr_cols(
+      zom_50mg = fr_col("Zom"),
+      placebo  = fr_col("Placebo")
+    ) |>
+    fr_header(n = n_fn, format = "{label}\n(N={n})")
+
+  fspec <- tlframe:::finalize_spec(spec)
+
+  # Named vector return → global resolution in finalize_labels
+  # resolve_group_labels should return NULL (already resolved)
+  ov <- tlframe:::resolve_group_labels(fspec, fspec$data, "SomeGroup")
+  expect_null(ov)
+
+  # Labels should be resolved globally
+  expect_equal(fspec$columns$zom_50mg$label, "Zom\n(N=99)")
+  expect_equal(fspec$columns$placebo$label, "Placebo\n(N=88)")
+})
+
+test_that("function n returning 2-col df resolves globally", {
+  n_fn <- function(d) {
+    data.frame(
+      trt = c("Zom", "Placebo"),
+      n   = c(99L, 88L)
+    )
   }
 
   spec <- tbl_demog |>
@@ -298,26 +304,26 @@ test_that("resolve_group_labels works with function n", {
       zom_50mg = fr_col("Zom"),
       placebo  = fr_col("Placebo")
     ) |>
-    fr_header(n = n_fn, format = "{name}\n(N={n})")
+    fr_header(n = n_fn, format = "{label}\n(N={n})")
 
   fspec <- tlframe:::finalize_spec(spec)
-  ov <- tlframe:::resolve_group_labels(fspec, fspec$data, "SomeGroup")
-  expect_equal(ov[["zom_50mg"]], "Zom\n(N=99)")
-  expect_equal(ov[["placebo"]], "Placebo\n(N=88)")
+
+  # 2-col df → global, matched to column labels
+  expect_equal(fspec$columns$zom_50mg$label, "Zom\n(N=99)")
+  expect_equal(fspec$columns$placebo$label, "Placebo\n(N=88)")
 })
 
-test_that("resolve_group_labels works with n = auto and n_data", {
-  # Source data: 3 subjects for col_a, 2 for col_b (per group)
-  src <- data.frame(
-    grp = rep(c("G1", "G2"), each = 4),
-    SUBJ = c("S1", "S2", "S3", "S3", "S4", "S5", "S5", "S5"),
-    col_a = c("x", "x", "x", NA, "x", "x", NA, NA),
-    col_b = c("y", "y", NA, NA, "y", "y", "y", NA),
-    stringsAsFactors = FALSE
-  )
+test_that("function n returning 3-col df resolves per-group", {
+  n_fn <- function(d) {
+    data.frame(
+      param = c("G1", "G1", "G2", "G2"),
+      trt   = c("Col A", "Col B", "Col A", "Col B"),
+      n     = c(10L, 20L, 30L, 40L)
+    )
+  }
 
   display <- data.frame(
-    grp = c("G1", "G2"),
+    grp   = c("G1", "G2"),
     col_a = c("summary_a1", "summary_a2"),
     col_b = c("summary_b1", "summary_b2"),
     stringsAsFactors = FALSE
@@ -330,48 +336,39 @@ test_that("resolve_group_labels works with n = auto and n_data", {
       col_a = fr_col("Col A"),
       col_b = fr_col("Col B")
     ) |>
-    fr_header(
-      n = "auto", n_subject = "SUBJ", n_data = src,
-      format = "{name}\n(N={n})"
-    )
+    fr_header(n = n_fn, format = "{label}\n(N={n})")
 
   fspec <- tlframe:::finalize_spec(spec)
 
-  # G1: col_a has S1, S2, S3 with non-NA -> 3; col_b has S1, S2 -> 2
-  ov_g1 <- tlframe:::resolve_group_labels(fspec, display[1, ], "G1")
-  expect_equal(ov_g1[["col_a"]], "Col A\n(N=3)")
-  expect_equal(ov_g1[["col_b"]], "Col B\n(N=2)")
+  # Labels should NOT be resolved globally (3-col df → per-group)
+  expect_equal(fspec$columns$col_a$label, "Col A")
+  expect_equal(fspec$columns$col_b$label, "Col B")
 
-  # G2: col_a has S4, S5 with non-NA -> 2; col_b has S4, S5 -> 2
+  # Per-group resolution
+  ov_g1 <- tlframe:::resolve_group_labels(fspec, display[1, ], "G1")
+  expect_equal(ov_g1[["col_a"]], "Col A\n(N=10)")
+  expect_equal(ov_g1[["col_b"]], "Col B\n(N=20)")
+
   ov_g2 <- tlframe:::resolve_group_labels(fspec, display[2, ], "G2")
-  expect_equal(ov_g2[["col_a"]], "Col A\n(N=2)")
-  expect_equal(ov_g2[["col_b"]], "Col B\n(N=2)")
+  expect_equal(ov_g2[["col_a"]], "Col A\n(N=30)")
+  expect_equal(ov_g2[["col_b"]], "Col B\n(N=40)")
 })
 
-test_that("n = auto without page_by counts from full data", {
-  src <- data.frame(
-    SUBJ = c("S1", "S2", "S3"),
-    col_a = c("x", "x", NA),
-    stringsAsFactors = FALSE
-  )
+test_that("function n with closure captures external data", {
+  external_counts <- c(zom_50mg = 100L, placebo = 200L)
+  n_fn <- function(d) external_counts
 
-  display <- data.frame(
-    col_a = "summary",
-    stringsAsFactors = FALSE
-  )
-
-  spec <- display |>
+  spec <- tbl_demog |>
     fr_table() |>
-    fr_cols(col_a = fr_col("Col A")) |>
-    fr_header(
-      n = "auto", n_subject = "SUBJ", n_data = src,
-      format = "{name}\n(N={n})"
-    )
+    fr_cols(
+      zom_50mg = fr_col("Zom"),
+      placebo  = fr_col("Placebo")
+    ) |>
+    fr_header(n = n_fn, format = "{label}\n(N={n})")
 
   fspec <- tlframe:::finalize_spec(spec)
-  ov <- tlframe:::resolve_group_labels(fspec, display, NULL)
-  # S1, S2 have non-NA col_a -> N=2
-  expect_equal(ov[["col_a"]], "Col A\n(N=2)")
+  expect_equal(fspec$columns$zom_50mg$label, "Zom\n(N=100)")
+  expect_equal(fspec$columns$placebo$label, "Placebo\n(N=200)")
 })
 
 test_that("per-group list n without page_by emits warning", {
@@ -379,10 +376,100 @@ test_that("per-group list n without page_by emits warning", {
     fr_table() |>
     fr_header(
       n = list("A" = c(zom_50mg = 42)),
-      format = "{name}\n(N={n})"
+      format = "{label}\n(N={n})"
     )
 
   expect_warning(tlframe:::finalize_spec(spec), "page_by")
+})
+
+test_that("{label} token works in format string", {
+  spec <- tbl_demog |>
+    fr_table() |>
+    fr_cols(zom_50mg = fr_col("Zom")) |>
+    fr_header(
+      n = c(zom_50mg = 45),
+      format = "{label}\n(N={n})"
+    )
+
+  fspec <- tlframe:::finalize_spec(spec)
+  expect_equal(fspec$columns$zom_50mg$label, "Zom\n(N=45)")
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# parse_fn_result() tests
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("parse_fn_result handles named numeric vector", {
+  spec <- tbl_demog |> fr_table()
+  result <- tlframe:::parse_fn_result(c(a = 10, b = 20), spec)
+  expect_equal(result$type, "global")
+  expect_equal(result$counts, c(a = 10, b = 20))
+})
+
+test_that("parse_fn_result handles 2-col data frame", {
+  spec <- tbl_demog |> fr_table()
+  df <- data.frame(trt = c("A", "B"), n = c(10L, 20L))
+  result <- tlframe:::parse_fn_result(df, spec)
+  expect_equal(result$type, "global")
+  expect_equal(result$counts, c(A = 10L, B = 20L))
+})
+
+test_that("parse_fn_result handles 3-col data frame", {
+  spec <- tbl_demog |> fr_table()
+  df <- data.frame(
+    grp = c("G1", "G1", "G2"),
+    trt = c("A", "B", "A"),
+    n   = c(10L, 20L, 30L)
+  )
+  result <- tlframe:::parse_fn_result(df, spec)
+  expect_equal(result$type, "per_group")
+  expect_equal(result$page_col, 1L)
+  expect_equal(result$trt_col, 2L)
+  expect_equal(result$count_col, 3L)
+})
+
+test_that("parse_fn_result errors on invalid return", {
+  spec <- tbl_demog |> fr_table()
+  expect_error(tlframe:::parse_fn_result("bad", spec), "named numeric")
+  expect_error(tlframe:::parse_fn_result(c(1, 2), spec), "named numeric")
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# match_trt_to_columns() tests
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("match_trt_to_columns matches case-insensitively to labels", {
+  columns <- list(
+    col_a = fr_col("Placebo"),
+    col_b = fr_col("Zomerane 50mg")
+  )
+  counts <- c("placebo" = 45L, "zomerane 50mg" = 44L)
+  result <- tlframe:::match_trt_to_columns(counts, columns)
+  expect_equal(result[["col_a"]], 45L)
+  expect_equal(result[["col_b"]], 44L)
+})
+
+test_that("match_trt_to_columns skips unmatched treatments", {
+  columns <- list(col_a = fr_col("Placebo"))
+  counts <- c("Placebo" = 45L, "Unknown" = 99L)
+  result <- tlframe:::match_trt_to_columns(counts, columns)
+  expect_equal(length(result), 1L)
+  expect_equal(result[["col_a"]], 45L)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# fr_spans — .gap parameter
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("fr_spans .gap sets span_gap on header", {
+  spec <- tbl_demog |>
+    fr_table() |>
+    fr_spans("Zomerane" = c("zom_50mg", "zom_100mg"), .gap = FALSE)
+
+  expect_false(spec$header$span_gap)
 })
 
 

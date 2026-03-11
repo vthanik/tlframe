@@ -374,12 +374,12 @@ spec <- tbl_demog |>
   ) |>
   fr_header(
     n      = c(placebo = 45, zom_50mg = 45, zom_100mg = 45, total = 135),
-    format = "{name}\n(N={n})"
+    format = "{label}\n(N={n})"
   )
 ```
 
-The `format` template has two tokens: `{name}` (the column label) and `{n}`
-(the count). The default format is `"{name}\n(N={n})"`.
+The `format` template has two tokens: `{label}` (the column display label)
+and `{n}` (the count). The default format is `"{label}\n(N={n})"`.
 
 **Form 2: Named list** (for per-group counts with `page_by`)
 
@@ -392,38 +392,52 @@ fr_header(
     "Systolic BP (mmHg)"  = c(placebo = 42, zom_50mg = 44, zom_100mg = 43),
     "Diastolic BP (mmHg)" = c(placebo = 42, zom_50mg = 44, zom_100mg = 43)
   ),
-  format = "{name}\n(N={n})"
+  format = "{label}\n(N={n})"
 )
 ```
 
-**Form 3: Function** (computed per page group)
+**Form 3: Function** (called once, returns vector or data frame)
 
-For maximum flexibility, pass a function that receives the page group's data
-and label:
+Pass a function that receives `spec$data` and returns N-counts. The
+function is called **once** during rendering --- use closures to capture
+external data like ADSL or ADVS:
+
 ```{r ncounts-function, eval = FALSE}
+# Named vector return → same N on every page (global)
 fr_header(
-  n = function(group_data, group_label) {
-    c(placebo = sum(group_data$arm == "Placebo"),
-      active  = sum(group_data$arm == "Active"))
-  }
+  n = \(d) c(placebo = nrow(d[d$trt == "P", ]),
+             active  = nrow(d[d$trt == "A", ])),
+  format = "{label}\n(N={n})"
+)
+
+# 3-column data frame → different N per page_by group
+fr_header(
+  n = \(d) aggregate(
+    USUBJID ~ PARAM + TRTA, data = advs[advs$AVISIT == "Baseline", ],
+    FUN = function(x) length(unique(x))
+  ),
+  format = "{label}\n(N={n})"
 )
 ```
 
-**Form 4: `"auto"`** (computed from a source dataset)
+When the function returns a **2-column data frame** (treatment + count),
+treatment labels are matched to column display labels case-insensitively.
+A **3-column data frame** (page_by group + treatment + count) provides
+per-group N-counts --- tlframe slices per page at render time.
 
-The simplest option for per-group counts. Provide the source dataset and
-subject ID column:
+> **SAS parallel:** This is like `PROC FREQ` + `PROC TRANSPOSE` to build
+> N-counts, then attaching them as column headers. tlframe does it in one
+> `fr_header()` call.
 
-```{r ncounts-auto, eval = FALSE}
-fr_header(
-  n = "auto",
-  n_subject = "USUBJID",
-  n_data = advs
-)
-```
+**When to use each form:**
 
-tlframe counts unique subjects per treatment arm per page_by group
-automatically. This is the recommended approach for vital signs and lab tables.
+| Form | Best for |
+|------|----------|
+| Named vector | Demographics, disposition (fixed N per arm) |
+| Named list | Multi-page tables with known per-page N |
+| Function (vector) | Simple dynamic counting from spec\$data |
+| Function (2-col df) | Dynamic N from external data (global) |
+| Function (3-col df) | Dynamic per-page N from external data |
 
 
 ## Row Organization
@@ -634,7 +648,7 @@ ICH E3 requires specific elements on each TLF page. Here's how tlframe maps:
 | Study ID on every page | `fr_pagehead(left = "Study TFRM-2024-001")` |
 | Table number and title | `fr_titles("Table 14.1.1", "Demographics...")` |
 | Population label | Third title line: `"Intent-to-Treat Population"` |
-| Treatment arm N-counts | `fr_header(n = ..., format = "{name}\n(N={n})")` |
+| Treatment arm N-counts | `fr_header(n = ..., format = "{label}\n(N={n})")` |
 | Page numbering | `fr_pagefoot(right = "Page {thepage} of {total_pages}")` |
 | Program name | `fr_pagefoot(left = "{program}")` |
 | Continuation label | `fr_page(continuation = "(continued)")` |
@@ -1004,7 +1018,7 @@ spec <- tbl_demog |>
     bold   = TRUE,
     align  = "center",
     n      = c(placebo = 45, zom_50mg = 45, zom_100mg = 45, total = 135),
-    format = "{name}\n(N={n})"
+    format = "{label}\n(N={n})"
   ) |>
 
   # ── Rows ──
@@ -1061,7 +1075,7 @@ demog_spec <- tbl_demog |>
   fr_header(
     n = c(placebo = 45, zom_50mg = 45, zom_100mg = 45, total = 135),
     bold = TRUE, align = "center",
-    format = "{name}\n(N={n})"
+    format = "{label}\n(N={n})"
   ) |>
   fr_rows(group_by = "group", blank_after = "group") |>
   fr_hlines("header") |>
@@ -1092,7 +1106,7 @@ disp_spec <- tbl_disp |>
   fr_header(
     n = c(placebo = 45, zom_50mg = 45, zom_100mg = 45, total = 135),
     bold = TRUE, align = "center",
-    format = "{name}\n(N={n})"
+    format = "{label}\n(N={n})"
   ) |>
   fr_hlines("header") |>
   fr_footnotes(
@@ -1128,7 +1142,7 @@ ae_soc_spec <- tbl_ae_soc |>
   fr_header(
     n = c(placebo = 45, zom_50mg = 45, zom_100mg = 45, total = 135),
     bold = TRUE, align = "center",
-    format = "{name}\n(N={n})"
+    format = "{label}\n(N={n})"
   ) |>
   fr_rows(group_by = "soc", indent_by = "pt") |>
   fr_hlines("header") |>
@@ -1166,7 +1180,7 @@ tte_spec <- tbl_tte |>
   fr_header(
     n = c(zom_50mg = 45, zom_100mg = 45, placebo = 45),
     bold = TRUE, align = "center",
-    format = "{name}\n(N={n})"
+    format = "{label}\n(N={n})"
   ) |>
   fr_rows(group_by = "section", blank_after = "section") |>
   fr_hlines("header") |>
@@ -1207,7 +1221,7 @@ cm_spec <- tbl_cm |>
   fr_header(
     n = c(placebo = 45, zom_50mg = 45, zom_100mg = 45, total = 135),
     bold = TRUE, align = "center",
-    format = "{name}\n(N={n})"
+    format = "{label}\n(N={n})"
   ) |>
   fr_rows(group_by = "category", indent_by = "medication") |>
   fr_hlines("header") |>
@@ -1250,8 +1264,11 @@ vs_spec <- tbl_vs[tbl_vs$timepoint == "Week 24", ] |>
   fr_rows(page_by = "param") |>
   fr_header(
     bold = TRUE, align = "center",
-    n = "auto", n_subject = "USUBJID", n_data = advs,
-    format = "{name}\n(N={n})"
+    n = \(d) aggregate(
+      USUBJID ~ PARAM + TRTA, data = advs[advs$AVISIT == "Baseline", ],
+      FUN = function(x) length(unique(x))
+    ),
+    format = "{label}\n(N={n})"
   ) |>
   fr_spans(
     "Placebo"        = c("placebo_base", "placebo_value", "placebo_chg"),
