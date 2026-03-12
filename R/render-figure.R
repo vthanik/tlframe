@@ -65,7 +65,7 @@ render_figure_pdf <- function(spec, path) {
   lines <- c(lines, sprintf("\\setlength{\\parskip}{0pt}"))
 
   # Pagehead / pagefoot via fancyhdr
-  token_map <- build_token_map(page_num = "\\thepage",
+  token_map <- build_token_map(page_num = "\\thepage{}",
                                 total_pages = "\\pageref{LastPage}",
                                 spec = spec)
   lines <- c(lines, "\\usepackage{lastpage}")
