@@ -127,7 +127,7 @@ render_html <- function(spec, page_groups, col_panels, path) {
   writeLines(html, path)
   path
 }
-fr_register_backend("html", render_html, extensions = "html")
+fr_register_backend("html", extensions = "html", render_fn = render_html)
 
 # Now this works:
 spec |> fr_render("output.html")

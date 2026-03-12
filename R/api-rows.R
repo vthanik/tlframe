@@ -155,9 +155,6 @@
 #'     wrap        = TRUE
 #'   )
 #'
-#' @seealso [fr_page()] to set `orphan_min` / `widow_min`,
-#'   [fr_cols()] to hide structural columns from display.
-#'
 #' @param sort_by Character vector of column name(s). Sorts the data by these
 #'   columns before rendering. For listings, this controls the display order
 #'   (e.g., `sort_by = c("USUBJID", "ASTDT")`). Sorting is applied in
@@ -169,6 +166,9 @@
 #' @param wrap Logical. When `TRUE`, enables text wrapping in body cells.
 #'   Default `FALSE`. For listings with long text fields (e.g., verbatim terms,
 #'   medical history), wrapping prevents cell content from overflowing.
+#'
+#' @seealso [fr_page()] to set `orphan_min` / `widow_min`,
+#'   [fr_cols()] to hide structural columns from display.
 #'
 #' @export
 fr_rows <- function(spec, page_by = NULL,
