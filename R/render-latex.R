@@ -1062,7 +1062,7 @@ latex_col_header_row <- function(spec, columns, label_overrides = NULL) {
         left   = "\\raggedright",
         "\\raggedright"
       )
-      inner <- gsub("\n", " \\\\ ", content, fixed = TRUE)
+      inner <- newline_to_latex_break(content)
       content <- paste0("\\parbox[b]{\\hsize}{", tex_align, " ", inner, "}")
     }
 
@@ -1145,7 +1145,7 @@ latex_body_rows <- function(data, columns, cell_grid,
             left   = "\\raggedright",
             "\\raggedright"
           )
-          inner <- gsub("\n", " \\\\ ", content, fixed = TRUE)
+          inner <- newline_to_latex_break(content)
           content <- paste0("\\parbox[t]{\\hsize}{", tex_align, " ", inner, "}")
         }
         cells[j] <- content

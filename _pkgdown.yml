@@ -34,11 +34,6 @@ home:
     An R package for pharmaceutical submissions. Describe a table once
     with an immutable pipeline — tlframe renders both RTF and PDF natively.
     No intermediate HTML, no gt dependency, no RMarkdown pipeline.
-  links:
-    - text: "Report a bug"
-      href: https://github.com/vthanik/tlframe/issues
-    - text: "Browse source code"
-      href: https://github.com/vthanik/tlframe
 
 navbar:
   type: light

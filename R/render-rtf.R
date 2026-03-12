@@ -600,7 +600,7 @@ rtf_chrome_content <- function(chrome, spec, token_map, context,
   chrome_escape <- function(txt) {
     txt <- resolve_tokens(txt, token_map, context)
     txt <- rtf_escape_and_resolve(txt)
-    gsub("\n", "\\\\line ", txt)
+    newline_to_rtf_line(txt)
   }
 
   bold_on  <- if (isTRUE(chrome$bold)) "\\b " else ""
@@ -859,7 +859,7 @@ rtf_spanner_rows <- function(spec, columns, borders, color_info,
           if (!is.na(ov)) span_label <- ov
         }
         content <- rtf_escape_and_resolve(span_label)
-        content <- gsub("\n", "\\\\line ", content)
+        content <- newline_to_rtf_line(content)
         cell_contents <- c(cell_contents,
                            paste0("\\pard\\intbl\\qc", sp_str, "\\fs", fs, " ",
                                   content, "\\cell"))
@@ -943,7 +943,7 @@ rtf_col_header_row <- function(spec, columns, borders, color_info,
     # Escape/resolve first, THEN replace \n with \line
     # (rtf_escape would double-escape the backslash in \line)
     content <- rtf_escape_and_resolve(label %||% "")
-    content <- gsub("\n", "\\\\line ", content)
+    content <- newline_to_rtf_line(content)
 
     fs <- pt_to_half_pt(g$font_size)
     align_rtf <- fr_env$align_to_rtf[[g$align]]
@@ -1082,7 +1082,7 @@ rtf_body_rows <- function(spec, data, columns, cell_grid, borders, color_info) {
         formatted <- geom$formatted[i]
         if (nzchar(trimws(formatted))) {
           formatted_esc <- rtf_escape_and_resolve(formatted)
-          formatted_esc <- gsub("\n", "\\\\line ", formatted_esc)
+          formatted_esc <- newline_to_rtf_line(formatted_esc)
           dec_indent <- paste0("\\li", geom$center_offset[i])
           cell_contents[[j]] <- paste0(
             "\\pard\\plain\\intbl\\ql", sp_str, dec_indent,
@@ -1095,7 +1095,7 @@ rtf_body_rows <- function(spec, data, columns, cell_grid, borders, color_info) {
       } else {
         align_rtf <- fr_env$align_to_rtf[[g$align]]
         content <- rtf_escape_and_resolve(g$content)
-        content <- gsub("\n", "\\\\line ", content)
+        content <- newline_to_rtf_line(content)
         cell_contents[[j]] <- paste0(
           "\\pard\\plain\\intbl", align_rtf, sp_str, indent_str,
           "\\fs", fs, " ",

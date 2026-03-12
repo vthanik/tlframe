@@ -947,6 +947,54 @@ rtf_encode_unicode_char <- function(char) {
 # 4. Text Escaping
 # ══════════════════════════════════════════════════════════════════════════════
 
+#' Replace \\n with RTF \\line, preserving leading spaces
+#'
+#' In RTF, `\\line` is a control word whose first trailing space is consumed as
+#' a delimiter. Any leading spaces on subsequent lines must be converted to
+#' non-breaking spaces (`\\~`) to survive rendering.
+#'
+#' @param text Character vector (already RTF-escaped).
+#' @return Character vector with `\\n` replaced by `\\line` + preserved spaces.
+#' @noRd
+newline_to_rtf_line <- function(text) {
+  vapply(text, function(t) {
+    if (!grepl("\n", t, fixed = TRUE)) return(t)
+    parts <- strsplit(t, "\n", fixed = TRUE)[[1L]]
+    # First part stays as-is; subsequent parts get leading spaces → \~
+    for (i in seq_along(parts)[-1L]) {
+      stripped <- sub("^ +", "", parts[[i]])
+      n_spaces <- nchar(parts[[i]]) - nchar(stripped)
+      if (n_spaces > 0L) {
+        parts[[i]] <- paste0(strrep("\\~", n_spaces), stripped)
+      }
+    }
+    paste0(parts, collapse = "\\line ")
+  }, character(1), USE.NAMES = FALSE)
+}
+
+#' Replace \\n with LaTeX \\\\, preserving leading spaces
+#'
+#' LaTeX collapses multiple spaces into one. Leading spaces on subsequent
+#' lines are converted to `~` (non-breaking space) to preserve indentation.
+#'
+#' @param text Character vector (already LaTeX-escaped).
+#' @return Character vector with `\\n` replaced by `\\\\` + preserved spaces.
+#' @noRd
+newline_to_latex_break <- function(text) {
+  vapply(text, function(t) {
+    if (!grepl("\n", t, fixed = TRUE)) return(t)
+    parts <- strsplit(t, "\n", fixed = TRUE)[[1L]]
+    for (i in seq_along(parts)[-1L]) {
+      stripped <- sub("^ +", "", parts[[i]])
+      n_spaces <- nchar(parts[[i]]) - nchar(stripped)
+      if (n_spaces > 0L) {
+        parts[[i]] <- paste0(strrep("~", n_spaces), stripped)
+      }
+    }
+    paste0(parts, collapse = " \\\\ ")
+  }, character(1), USE.NAMES = FALSE)
+}
+
 #' Escape text for RTF output
 #'
 #' Escapes RTF special characters (\\, {, }) and converts non-ASCII

@@ -1678,3 +1678,39 @@ test_that("build_rtf_colortbl handles single color", {
   expect_equal(result$index[["#FFFFFF"]], 1L)
   expect_true(grepl("\\\\red255\\\\green255\\\\blue255", result$rtf))
 })
+
+
+# ── newline_to_rtf_line ──────────────────────────────────────────────────────
+
+test_that("newline_to_rtf_line preserves leading spaces as \\~", {
+  # No spaces — standard \line
+
+  expect_equal(newline_to_rtf_line("A\nB"), "A\\line B")
+  # Leading spaces become \~
+  expect_equal(newline_to_rtf_line("SOC\n  PT"), "SOC\\line \\~\\~PT")
+  # Single space
+  expect_equal(newline_to_rtf_line("X\n Y"), "X\\line \\~Y")
+  # No newline — pass-through
+  expect_equal(newline_to_rtf_line("hello"), "hello")
+  # Multiple lines
+  expect_equal(newline_to_rtf_line("A\n B\n  C"), "A\\line \\~B\\line \\~\\~C")
+})
+
+test_that("newline_to_rtf_line is vectorized", {
+  result <- newline_to_rtf_line(c("A\n  B", "C\nD"))
+  expect_equal(result, c("A\\line \\~\\~B", "C\\line D"))
+})
+
+
+# ── newline_to_latex_break ───────────────────────────────────────────────────
+
+test_that("newline_to_latex_break preserves leading spaces as ~", {
+  expect_equal(newline_to_latex_break("A\nB"), "A \\\\ B")
+  expect_equal(newline_to_latex_break("SOC\n  PT"), "SOC \\\\ ~~PT")
+  expect_equal(newline_to_latex_break("hello"), "hello")
+})
+
+test_that("newline_to_latex_break is vectorized", {
+  result <- newline_to_latex_break(c("A\n  B", "C\nD"))
+  expect_equal(result, c("A \\\\ ~~B", "C \\\\ D"))
+})

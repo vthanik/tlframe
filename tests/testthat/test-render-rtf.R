@@ -234,6 +234,25 @@ test_that("column header newlines render as \\line in RTF", {
   expect_false(grepl("Col A\\\\line", txt, fixed = TRUE))
 })
 
+test_that("column header newlines preserve leading spaces as non-breaking", {
+  tmp <- tempfile(fileext = ".rtf")
+  on.exit(unlink(tmp), add = TRUE)
+
+  data <- data.frame(a = 1, b = 2, stringsAsFactors = FALSE)
+  data |>
+    fr_table() |>
+    fr_cols(
+      a = fr_col(label = "SOC\n  PT"),
+      b = fr_col(label = "Col B"),
+      .width = "equal"
+    ) |>
+    fr_render(tmp)
+
+  txt <- rawToChar(readBin(tmp, "raw", file.info(tmp)$size))
+  # Leading spaces on second line should become \~ (non-breaking spaces)
+  expect_true(grepl("SOC\\line \\~\\~PT", txt, fixed = TRUE))
+})
+
 
 test_that("fr_spans adds bottom border to spanned cells by default", {
   tmp <- tempfile(fileext = ".rtf")
