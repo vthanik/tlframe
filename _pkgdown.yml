@@ -72,35 +72,55 @@ reference:
 
   - title: "Column Configuration"
     desc: >
-      `fr_cols()` controls labels, widths, alignment, visibility, N-counts,
-      and column splitting. `fr_col()` is the constructor for individual
-      column specs. Width modes: fixed inches, percentages, `"auto"`,
-      `"fit"`, and `"equal"`.
+      `fr_cols()` is the single source of truth for column structure: labels,
+      widths, alignment, visibility, N-counts, and column splitting.
+      `fr_col()` constructs individual column specs. Width modes: fixed inches,
+      percentages, `"auto"` (content-measured), `"fit"` (scale to page width),
+      and `"equal"` (divide remaining space). Alignment modes include
+      `"decimal"` for stat-display alignment. N-counts accept named vectors,
+      data frames, or lists and auto-route to spanning headers or column labels.
+      `fr_col(group=)` creates inline spanning headers. Tidyselect formula
+      syntax applies shared specs to multiple columns at once.
     contents:
       - fr_cols
       - fr_col
 
   - title: "Titles and Footnotes"
     desc: >
-      `fr_titles()` adds 1--4 centered title lines. `fr_footnotes()` adds
-      footnotes with placement control. Both support inline markup.
+      `fr_titles()` adds title lines above the table. Each argument is one
+      line; plain text or the list form for per-line `align`, `bold`, and
+      `font_size` overrides. `fr_footnotes()` adds footnote lines with
+      `.placement` (`"every"` / `"last"`), `.separator` (rule above block),
+      and per-line overrides via the list form. Both support inline
+      `{fr_*()}` markup.
     contents:
       - fr_titles
       - fr_footnotes
 
   - title: "Header Presentation"
     desc: >
-      `fr_header()` controls header styling (bold, alignment, colors).
-      N-counts are set via `fr_cols(.n=)`. `fr_spans()` adds spanning
-      headers that group columns under a shared label.
+      `fr_header()` controls header presentation: bold, `align` (scalar or
+      tidyselect named list for per-column targeting), `valign`
+      (`"bottom"` default aligns short labels under multi-line ones),
+      `bg`/`fg` colors, `font_size`, and `repeat_on_page`. N-counts are
+      set via `fr_cols(.n=)`. `fr_spans()` adds spanning headers at one or
+      more levels (`.level`) with optional underline (`.hline`) and gap
+      columns (`.gap`). For simple grouping, use `fr_col(group=)` inside
+      `fr_cols()` instead.
     contents:
       - fr_header
       - fr_spans
 
   - title: "Page Layout"
     desc: >
-      Paper size, orientation, margins, fonts, running headers/footers,
-      and token substitution (`{thepage}`, `{program}`, `{datetime}`).
+      Paper size, orientation, margins, fonts, and pagination controls.
+      `fr_page()` sets `orphan_min`/`widow_min` (default 3 rows), a
+      `continuation` label for multi-page tables, `col_gap` (inter-column
+      padding), and `tokens` (named list for custom `{token}` values).
+      `fr_pagehead()` and `fr_pagefoot()` define three-zone running chrome
+      with token substitution: built-in `{thepage}`, `{total_pages}`,
+      `{program}`, `{datetime}`, plus any custom tokens.
+      `fr_spacing()` controls blank lines at five table junctions.
     contents:
       - fr_page
       - fr_pagehead
@@ -109,9 +129,13 @@ reference:
 
   - title: "Row Organization"
     desc: >
-      `fr_rows()` handles `group_by`, `page_by`, `indent_by`, `blank_after`,
-      `sort_by`, and `repeat_cols`. `fr_rows_matches()` creates data-driven
-      row selectors for use with styling verbs.
+      `fr_rows()` handles `group_by` (keep-together groups), `page_by` (page
+      breaks with a group label), `indent_by` (single-level string or
+      multi-level named list for SOC/HLT/PT hierarchies), `group_label`
+      (inject group values as header rows into a display column),
+      `blank_after`, `sort_by`, `repeat_cols`, `wrap`, and `group_keep`.
+      `fr_rows_matches()` creates data-driven row selectors (exact value or
+      regex) for use in styling verbs.
     contents:
       - fr_rows
       - fr_rows_matches
@@ -119,7 +143,9 @@ reference:
   - title: "Rules and Borders"
     desc: >
       Horizontal rules (`fr_hlines()`), vertical rules (`fr_vlines()`),
-      and full grids (`fr_grid()`). Preset names or custom placement.
+      and full grids (`fr_grid()`). Named presets (`"header"`, `"booktabs"`,
+      `"box"`, `"void"`, etc.) or custom `width`, `color`, and `linestyle`
+      for all rules in the set.
     contents:
       - fr_hlines
       - fr_vlines
@@ -127,8 +153,14 @@ reference:
 
   - title: "Cell Styling"
     desc: >
-      Conditional formatting for cells, rows, or columns. Later styles
-      override earlier ones; narrower scopes win (cell > row > column).
+      Cell, row, and column style overrides applied via `fr_styles()`.
+      `fr_style()` targets cells by position, region, or tidyselect column
+      selection; supports `colspan`/`rowspan` for merging. `fr_row_style()`
+      and `fr_col_style()` apply uniformly across rows or columns.
+      `fr_style_if()` applies styles data-driven: a formula or function
+      evaluates cell values at render time. Narrower scope wins:
+      cell > row > column; later styles override earlier ones.
+      `fr_style_explain()` audits the resolved styles.
     contents:
       - fr_style
       - fr_row_style
@@ -139,8 +171,13 @@ reference:
 
   - title: "Inline Markup"
     desc: >
-      Rich text in any string. Produces backend-agnostic sentinel tokens
-      resolved at render time.
+      Rich text in any string field -- titles, footnotes, column labels, cell
+      values. Includes `fr_super()`/`fr_sub()` (superscript/subscript),
+      `fr_bold()`/`fr_italic()`/`fr_underline()` (font style),
+      `fr_dagger()`/`fr_ddagger()` (regulatory symbols), em/en dashes,
+      `fr_newline()` (line break within a cell), and `fr_unicode()` for
+      arbitrary Unicode characters. Sentinel tokens are resolved per-backend
+      at render time.
     contents:
       - fr_super
       - fr_sub
@@ -156,7 +193,12 @@ reference:
 
   - title: "Theme and Configuration"
     desc: >
-      Three-tier defaults: YAML config < session theme < per-table verbs.
+      Four-tier defaults: package defaults < `_tlframe.yml` (auto-discovered)
+      < `fr_theme()` (session-wide) < per-table verbs. `fr_config()` loads a
+      YAML file covering page layout, fonts, column behavior, header style,
+      rules, spacing, tokens, and footnote defaults. `fr_theme()` sets the
+      same options programmatically. `fr_theme_get()` / `fr_theme_reset()`
+      inspect and clear the session theme.
     contents:
       - fr_theme
       - fr_theme_set
@@ -168,7 +210,11 @@ reference:
 
   - title: "Recipes"
     desc: >
-      Reusable pipeline fragments. Create once, apply to any spec.
+      Reusable pipeline fragments. `fr_recipe()` captures a sequence of
+      `fr_*()` verb calls as a language object (survives `saveRDS()`). Apply
+      with `fr_apply(spec, recipe)`. Compose multiple recipes with `c()`:
+      later verbs override earlier replace-mode verbs and append to
+      accumulate-mode verbs (`fr_spans`, `fr_styles`).
     contents:
       - fr_recipe
       - c.fr_recipe
@@ -176,7 +222,12 @@ reference:
 
   - title: "Rendering"
     desc: >
-      Produce RTF, PDF, or LaTeX output from a finalized spec.
+      `fr_render(spec, path)` writes RTF, LaTeX source (`.tex`), or PDF
+      (via XeLaTeX). Format is detected from the file extension. PDF requires
+      XeLaTeX or tinytex; call `fr_install_latex_deps()` once to install
+      required LaTeX packages. `fr_backends()` lists registered backends;
+      `fr_register_backend()` / `fr_unregister_backend()` extend the system
+      with custom output formats.
     contents:
       - fr_render
       - fr_backends
@@ -187,7 +238,12 @@ reference:
 
   - title: "Validation and Inspection"
     desc: >
-      Pre-render checks and programmatic access to spec internals.
+      `fr_validate()` checks a spec before rendering: column names, span
+      contiguity, width budget, style index range, font recognition, and
+      listing-specific columns. Returns the spec invisibly (pipeline-safe).
+      `fr_get_*()` getters provide programmatic read access to every spec
+      component for QC scripts. `is.fr_spec()` / `is.fr_col()` test
+      object types.
     contents:
       - fr_validate
       - fr_get_data
@@ -203,7 +259,11 @@ reference:
 
   - title: "Built-in Datasets"
     desc: >
-      Synthetic CDISC ADaM datasets from study TFRM-2024-001 (135 subjects).
+      Synthetic CDISC ADaM datasets from study TFRM-2024-001 (135 subjects,
+      Zomerane vs placebo). Raw ADaM: `adsl`, `adae`, `adtte`, `adcm`,
+      `advs`. Pre-summarized TFL-ready: `tbl_demog`, `tbl_ae_soc`,
+      `tbl_ae_summary`, `tbl_disp`, `tbl_tte`, `tbl_cm`, `tbl_vs` -- each
+      ready for direct use with `fr_table()`.
     contents:
       - adsl
       - adae
