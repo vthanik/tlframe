@@ -129,9 +129,12 @@ measure_text_width_twips <- function(
   afm_name <- resolve_afm_name(font_family, bold = bold, italic = italic)
   char_widths <- afm_metrics[[afm_name]]
 
-  # Build byte-indexed lookup vector (256 entries, one per possible byte value).
-  # AFM names are single-byte characters (0x20-0xFB). This replaces named-vector
-  # lookup with direct integer indexing via charToRaw() — much faster.
+  # Build byte-indexed lookup table (256 entries, one per possible byte value).
+  # AFM names are single-byte Latin-1 characters (0x20-0xFB). For text
+  # measurement, we use charToRaw() for fast byte-level indexing on ASCII
+  # content, but fall back to per-codepoint lookup for multi-byte UTF-8
+  # characters (em dashes, arrows, etc.) that charToRaw() splits into
+  # multiple bytes.
   default_w <- unname(char_widths[" "])
   if (is.na(default_w)) {
     default_w <- 500L
@@ -150,7 +153,27 @@ measure_text_width_twips <- function(
       if (is.na(t) || !nzchar(t)) {
         return(0)
       }
-      sum(lut[as.integer(charToRaw(t))]) * scale
+      # Check for non-ASCII: any byte > 127 that's part of a multi-byte
+      # UTF-8 sequence would produce wrong widths via charToRaw() because
+      # it splits a single character into 2-4 bytes. Use utf8ToInt() for
+      # those characters instead.
+      raw_bytes <- charToRaw(t)
+      if (all(raw_bytes <= as.raw(0x7F))) {
+        # Pure ASCII fast path: byte == codepoint, direct LUT lookup
+        return(sum(lut[as.integer(raw_bytes)]) * scale)
+      }
+      # Mixed content: measure per-codepoint
+      cps <- utf8ToInt(t)
+      total <- 0
+      for (cp in cps) {
+        if (cp <= 255L) {
+          total <- total + lut[cp]
+        } else {
+          # Non-Latin-1 codepoint: use default (space) width
+          total <- total + default_w
+        }
+      }
+      total * scale
     },
     numeric(1),
     USE.NAMES = FALSE
@@ -197,7 +220,8 @@ estimate_col_width <- function(data, col_name, label, page) {
   # Label width: widest line (multi-line aware, strip sentinels)
   label_plain <- label_to_plain(label)
   label_lines <- strsplit(label_plain, "\n", fixed = TRUE)[[1L]]
-  if (length(label_lines) == 0L) {
+  # strsplit("", ...) returns c("") not character(0), so check for empty strings
+  if (length(label_lines) == 0L || all(!nzchar(label_lines))) {
     label_lines <- col_name
   }
   max_label_twips <- max(measure_text_width_twips(
@@ -271,6 +295,13 @@ scale_auto_columns <- function(columns, auto_names, remaining) {
     numeric(1)
   ))
   if (auto_total <= 0 || remaining <= 0) {
+    if (auto_total <= 0) {
+      cli::cli_warn(c(
+        "Auto-width columns have zero estimated width.",
+        "i" = "Columns {.val {auto_names}} may render with no visible width.",
+        "i" = "Set explicit widths via {.fn fr_cols} if needed."
+      ))
+    }
     return(columns)
   }
 

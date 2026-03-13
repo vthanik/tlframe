@@ -1777,8 +1777,8 @@ test_that("resolve_borders handles zero body rows", {
     fg = "#000000"
   )
   borders <- resolve_borders(list(rule), nrow_body = 0L, ncol = 2L)
-  # Should not error; body matrices have 1 row (max(1, 0))
-  expect_equal(nrow(borders$body$bottom), 1L)
+  # Should not error; body matrices have 0 rows (empty table early return)
+  expect_equal(nrow(borders$body$bottom), 0L)
 })
 
 test_that("resolve_borders clips out-of-bound row indices", {

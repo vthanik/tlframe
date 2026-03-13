@@ -114,9 +114,10 @@ resolve_rows_selector <- function(selector, data, call = caller_env()) {
     } else {
       paste0("value ", selector$value)
     }
-    cli_inform(c(
-      "i" = "{.fn fr_rows_matches}: no rows matched in column {.val {col}}.",
-      "i" = "Selector: {pattern_desc}."
+    cli::cli_warn(c(
+      "{.fn fr_rows_matches}: no rows matched in column {.val {col}}.",
+      "i" = "Selector: {pattern_desc}.",
+      "i" = "Styles targeting these rows will have no effect."
     ))
   }
 

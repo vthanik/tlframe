@@ -1241,22 +1241,22 @@ compute_all_decimal_geometry <- function(spec) {
       # NO cross-group padding — each group keeps its natural nchar
 
       # Per-row center_offset (vectorized: one offset per group width)
-      widths_twips <- as.integer(group_max_nc * space_twips)
+      widths_twips <- round(group_max_nc * space_twips)
       center_offset <- pmax(
         0L,
-        as.integer((col_width_twips - widths_twips) / 2)
+        round((col_width_twips - widths_twips) / 2)
       )
-      max_width_twips <- as.integer(max(group_max_nc) * space_twips)
+      max_width_twips <- round(max(group_max_nc) * space_twips)
     } else {
       formatted <- align_decimal_column(vals)
 
       # Compute scalar offset, replicate to vector for consistency
       if (length(formatted) > 0L && any(nzchar(formatted))) {
         max_chars <- max(nchar(formatted))
-        max_width_twips <- as.integer(max_chars * space_twips)
+        max_width_twips <- round(max_chars * space_twips)
         scalar_offset <- max(
           0L,
-          as.integer((col_width_twips - max_width_twips) / 2)
+          round((col_width_twips - max_width_twips) / 2)
         )
       } else {
         max_width_twips <- 0L

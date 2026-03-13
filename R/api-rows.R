@@ -344,6 +344,35 @@ fr_rows <- function(
       arg = "group_label",
       call = call
     )
+    # group_label requires group_by to have any effect
+    effective_group_by <- if (!missing(group_by)) {
+      group_by
+    } else {
+      spec$body$group_by
+    }
+    if (is.null(effective_group_by) || length(effective_group_by) == 0L) {
+      cli_abort(
+        c(
+          "{.arg group_label} requires {.arg group_by} to be set.",
+          "i" = "Set {.code group_by} in this call or a prior {.fn fr_rows} call."
+        ),
+        call = call
+      )
+    }
+  }
+
+  # Warn if multi-level indent_by is set without group_by
+  if (!missing(indent_by) && is.list(indent_by)) {
+    effective_gb <- if (!missing(group_by)) group_by else spec$body$group_by
+    if (is.null(effective_gb) || length(effective_gb) == 0L) {
+      cli::cli_warn(
+        c(
+          "Multi-level {.arg indent_by} typically requires {.arg group_by}.",
+          "i" = "Without {.arg group_by}, indent levels apply but rows are not grouped."
+        ),
+        call = call
+      )
+    }
   }
 
   if (!missing(page_by_bold)) {
@@ -362,6 +391,32 @@ fr_rows <- function(
     page_by_align <- match_arg_fr(
       page_by_align,
       fr_env$valid_aligns,
+      call = call
+    )
+  }
+
+  # Validate page_by and group_by don't share the same column
+  effective_page_by <- if (!missing(page_by) && !is.null(page_by)) {
+    page_by
+  } else {
+    spec$body$page_by
+  }
+  effective_group_by <- if (!missing(group_by) && !is.null(group_by)) {
+    group_by
+  } else {
+    spec$body$group_by
+  }
+  if (
+    !is.null(effective_page_by) &&
+      !is.null(effective_group_by) &&
+      length(intersect(effective_page_by, effective_group_by)) > 0L
+  ) {
+    shared <- intersect(effective_page_by, effective_group_by)
+    cli::cli_warn(
+      c(
+        "{.arg page_by} and {.arg group_by} share column{?s}: {.val {shared}}.",
+        "i" = "{.arg group_by} grouping is applied within each {.arg page_by} page."
+      ),
       call = call
     )
   }

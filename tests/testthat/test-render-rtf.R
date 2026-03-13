@@ -1088,7 +1088,7 @@ test_that("rtf_title_rows appends continuation text to first title", {
     fr_table() |>
     fr_titles("Table 1") |>
     fr_page(continuation = "(continued)")
-  spec <- tlframe:::finalize_spec(spec)
+  spec <- suppressWarnings(tlframe:::finalize_spec(spec))
   colors <- tlframe:::collect_colors(spec)
   color_info <- tlframe:::build_rtf_colortbl(colors)
 
@@ -1940,11 +1940,13 @@ test_that("continuation text does not appear on panel 1 (single-panel table)", {
   tmp <- tempfile(fileext = ".rtf")
   on.exit(unlink(tmp), add = TRUE)
 
-  data.frame(x = 1, stringsAsFactors = FALSE) |>
-    fr_table() |>
-    fr_titles("Title 1", "Subtitle 2") |>
-    fr_page(continuation = "(cont.)") |>
-    fr_render(tmp)
+  suppressWarnings(
+    data.frame(x = 1, stringsAsFactors = FALSE) |>
+      fr_table() |>
+      fr_titles("Title 1", "Subtitle 2") |>
+      fr_page(continuation = "(cont.)") |>
+      fr_render(tmp)
+  )
 
   txt <- rawToChar(readBin(tmp, "raw", file.info(tmp)$size))
   # Panel 1: continuation should NOT appear
@@ -1999,10 +2001,12 @@ test_that("is.fr_col returns TRUE for fr_col objects", {
 # ══════════════════════════════════════════════════════════════════════════════
 
 test_that("fr_rows merges with previous configuration", {
-  spec <- tbl_ae_soc |>
-    fr_table() |>
-    fr_rows(page_by = "soc") |>
-    fr_rows(group_by = "soc")
+  spec <- suppressWarnings(
+    tbl_ae_soc |>
+      fr_table() |>
+      fr_rows(page_by = "soc") |>
+      fr_rows(group_by = "soc")
+  )
 
   # Both should be preserved
   expect_true(length(spec$body$page_by) > 0L)
