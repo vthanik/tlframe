@@ -136,10 +136,38 @@ fig_spec |> fr_render("output/Figure_14_2_1.pdf")
 knitr::include_graphics("figures/preview_figure.png")
 ```
 
+### Multi-page figures
+
+Pass a list of plots to create a multi-page figure. Add a `meta` data frame
+to inject per-page tokens into titles and footnotes:
+
+```{r multi-page-figure, eval = FALSE}
+# Three KM plots --- one per subgroup
+km_plots <- list(p_adults, p_pediatrics, p_geriatrics)
+page_meta <- data.frame(
+  subgroup = c("Adults", "Pediatrics", "Geriatrics"),
+  n        = c(80, 55, 30)
+)
+
+km_plots |>
+  fr_figure(meta = page_meta) |>
+  fr_titles(
+    "Figure 14.1.1 Kaplan-Meier Curve",
+    "Subgroup: {subgroup} (N = {n})"
+  ) |>
+  fr_footnotes("Source: ADTTE") |>
+  fr_render("km_by_subgroup.rtf")
+```
+
+Each `meta` column name becomes a `{token}` resolved dynamically per page.
+The second title line renders as "Subgroup: Adults (N = 80)" on page 1,
+"Subgroup: Pediatrics (N = 55)" on page 2, and so on.
+
 ### Figure parameters
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `plot` | (required) | ggplot2 object or recorded base R plot |
+| `plot` | (required) | ggplot2 object, recorded base R plot, or a list of either |
 | `width` | `NULL` | Plot width in inches (auto-sized from page if `NULL`) |
 | `height` | `NULL` | Plot height in inches (70% of printable height if `NULL`) |
+| `meta` | `NULL` | Data frame with one row per plot; columns become `{token}` names in titles/footnotes |
