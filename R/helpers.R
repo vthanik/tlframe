@@ -313,15 +313,12 @@ apply_fr_theme <- function(spec) {
     spec$header$span_gap <- setup[["header"]]$span_gap
   }
 
-  # Row defaults: page_by_bold, page_by_align, group_cont
+  # Row defaults: page_by_bold, page_by_align
   if (!is.null(setup[["page_by_bold"]])) {
     spec$body$page_by_bold <- setup[["page_by_bold"]]
   }
   if (!is.null(setup[["page_by_align"]])) {
     spec$body$page_by_align <- setup[["page_by_align"]]
-  }
-  if (!is.null(setup[["group_cont"]])) {
-    spec$body$group_cont <- setup[["group_cont"]]
   }
 
   # Footnote separator default

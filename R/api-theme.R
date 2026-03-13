@@ -74,10 +74,6 @@
 #'   * `span_gap` — Logical. Insert gap columns between adjacent spans
 #'     (default `TRUE`). See [fr_header()] for details.
 #'   `NULL` leaves unchanged.
-#' @param group_cont Character scalar appended to group header rows on
-#'   continuation pages when a `group_by` group spans multiple pages
-#'   (e.g. `"(continued)"`). `NULL` leaves unchanged. See [fr_rows()]
-#'   for details.
 #' @param footnote_separator Logical. Whether to draw a separator above the
 #'   footnote block. `NULL` leaves unchanged.
 #'
@@ -200,7 +196,6 @@ fr_theme <- function(
   page_by_bold = NULL,
   page_by_align = NULL,
   header = NULL,
-  group_cont = NULL,
   footnote_separator = NULL
 ) {
   call <- caller_env()
@@ -254,9 +249,6 @@ fr_theme <- function(
   }
   if (!is.null(continuation)) {
     check_scalar_chr(continuation, arg = "continuation", call = call)
-  }
-  if (!is.null(group_cont)) {
-    check_scalar_chr(group_cont, arg = "group_cont", call = call)
   }
   if (!is.null(page_by_bold)) {
     check_scalar_lgl(page_by_bold, arg = "page_by_bold", call = call)
@@ -340,9 +332,6 @@ fr_theme <- function(
   }
   if (!is.null(page_by_align)) {
     theme[["page_by_align"]] <- page_by_align
-  }
-  if (!is.null(group_cont)) {
-    theme[["group_cont"]] <- group_cont
   }
   if (!is.null(footnote_separator)) {
     theme[["footnote_separator"]] <- footnote_separator

@@ -26,7 +26,6 @@ fr_theme(
   page_by_bold = NULL,
   page_by_align = NULL,
   header = NULL,
-  group_cont = NULL,
   footnote_separator = NULL
 )
 }
@@ -100,11 +99,6 @@ See \code{\link[=fr_rows]{fr_rows()}} for details.}
 (default \code{TRUE}). See \code{\link[=fr_header]{fr_header()}} for details.
 \code{NULL} leaves unchanged.
 }}
-
-\item{group_cont}{Character scalar appended to group header rows on
-continuation pages when a \code{group_by} group spans multiple pages
-(e.g. \code{"(continued)"}). \code{NULL} leaves unchanged. See \code{\link[=fr_rows]{fr_rows()}}
-for details.}
 
 \item{footnote_separator}{Logical. Whether to draw a separator above the
 footnote block. \code{NULL} leaves unchanged.}
