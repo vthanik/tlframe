@@ -4,13 +4,14 @@
 \alias{fr_figure}
 \title{Start a tlframe Figure Pipeline}
 \usage{
-fr_figure(plot, width = NULL, height = NULL)
+fr_figure(plot, width = NULL, height = NULL, meta = NULL)
 }
 \arguments{
-\item{plot}{A plot object. Supported types:
+\item{plot}{A plot object or a list of plot objects. Supported types:
 \itemize{
 \item \code{ggplot} object (from ggplot2)
 \item \code{recordedplot} object (from \code{recordPlot()})
+\item A \code{list} of the above for multi-page figures (one plot per page)
 }}
 
 \item{width}{Numeric. Plot width in inches within the page. Default \code{NULL}
@@ -18,6 +19,11 @@ uses the full printable width.}
 
 \item{height}{Numeric. Plot height in inches within the page. Default \code{NULL}
 uses the remaining height after titles and footnotes.}
+
+\item{meta}{A data frame of per-page metadata for multi-page figures.
+Must have exactly one row per plot. Column names become tokens available
+in \code{\link[=fr_titles]{fr_titles()}} and \code{\link[=fr_footnotes]{fr_footnotes()}} via \code{{column_name}} syntax,
+resolved dynamically for each page. Ignored for single-plot figures.}
 }
 \value{
 An \code{fr_spec} object with \code{type = "figure"}.
@@ -43,6 +49,22 @@ in LaTeX with titles/footnotes as DeclareTblrTemplate.
 \item \strong{RTF}: Plot saved as temporary PNG, embedded via \verb{\\\\pict} RTF
 picture group with titles as paragraphs.
 }
+}
+
+\section{Multi-page figures}{
+
+Pass a list of plots and an optional \code{meta} data frame to create multi-page
+figures. Each meta column becomes a token in titles and footnotes, resolved
+per page:
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{plots <- list(p_adults, p_pediatrics, p_geriatrics)
+page_meta <- data.frame(subgroup = c("Adults", "Pediatrics", "Geriatrics"))
+
+plots |>
+  fr_figure(meta = page_meta) |>
+  fr_titles("Figure 14.1.1 Kaplan-Meier Curve", "Subgroup: \{subgroup\}") |>
+  fr_render("km_multi.rtf")
+}\if{html}{\out{</div>}}
 }
 
 \examples{

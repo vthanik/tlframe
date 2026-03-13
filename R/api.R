@@ -346,13 +346,18 @@ fr_listing <- function(data) {
 #' the same titling, footnoting, and page chrome as tables. The plot is
 #' embedded in the rendered output with consistent regulatory formatting.
 #'
-#' @param plot A plot object. Supported types:
+#' @param plot A plot object or a list of plot objects. Supported types:
 #'   * `ggplot` object (from ggplot2)
 #'   * `recordedplot` object (from `recordPlot()`)
+#'   * A `list` of the above for multi-page figures (one plot per page)
 #' @param width Numeric. Plot width in inches within the page. Default `NULL`
 #'   uses the full printable width.
 #' @param height Numeric. Plot height in inches within the page. Default `NULL`
 #'   uses the remaining height after titles and footnotes.
+#' @param meta A data frame of per-page metadata for multi-page figures.
+#'   Must have exactly one row per plot. Column names become tokens available
+#'   in [fr_titles()] and [fr_footnotes()] via `{column_name}` syntax,
+#'   resolved dynamically for each page. Ignored for single-plot figures.
 #'
 #' @return An `fr_spec` object with `type = "figure"`.
 #'
@@ -420,13 +425,102 @@ fr_listing <- function(data) {
 #'   fr_footnotes("Source: ADSL")
 #' spec
 #'
+#' @section Multi-page figures:
+#' Pass a list of plots and an optional `meta` data frame to create multi-page
+#' figures. Each meta column becomes a token in titles and footnotes, resolved
+#' per page:
+#'
+#' ```
+#' plots <- list(p_adults, p_pediatrics, p_geriatrics)
+#' page_meta <- data.frame(subgroup = c("Adults", "Pediatrics", "Geriatrics"))
+#'
+#' plots |>
+#'   fr_figure(meta = page_meta) |>
+#'   fr_titles("Figure 14.1.1 Kaplan-Meier Curve", "Subgroup: {subgroup}") |>
+#'   fr_render("km_multi.rtf")
+#' ```
+#'
 #' @seealso [fr_table()] for summary tables, [fr_listing()] for listings.
 #'
 #' @export
-fr_figure <- function(plot, width = NULL, height = NULL) {
+fr_figure <- function(plot, width = NULL, height = NULL, meta = NULL) {
   call <- caller_env()
 
-  # Validate plot object
+  # ── Multi-page: list of plots ──────────────────────────────────────────────
+  if (
+    is.list(plot) &&
+      !inherits(plot, "ggplot") &&
+      !inherits(plot, "recordedplot")
+  ) {
+    if (length(plot) == 0L) {
+      cli_abort(
+        c(
+          "{.arg plot} list must contain at least one plot.",
+          "i" = "Pass a single plot or a non-empty list of plots."
+        ),
+        call = call
+      )
+    }
+
+    # Validate each element
+    for (i in seq_along(plot)) {
+      p <- plot[[i]]
+      if (!inherits(p, "ggplot") && !inherits(p, "recordedplot")) {
+        cli_abort(
+          c(
+            "Element {i} of {.arg plot} must be a {.cls ggplot} or {.cls recordedplot} object.",
+            "x" = "You supplied {.obj_type_friendly {p}}.",
+            "i" = "Every element of the plot list must be a plot object."
+          ),
+          call = call
+        )
+      }
+    }
+
+    # Validate meta
+    if (!is.null(meta)) {
+      if (!is.data.frame(meta)) {
+        cli_abort(
+          c(
+            "{.arg meta} must be a data frame.",
+            "x" = "You supplied {.obj_type_friendly {meta}}."
+          ),
+          call = call
+        )
+      }
+      if (nrow(meta) != length(plot)) {
+        cli_abort(
+          c(
+            "{.arg meta} must have one row per plot.",
+            "x" = "{.arg plot} has {length(plot)} element{?s} but {.arg meta} has {nrow(meta)} row{?s}."
+          ),
+          call = call
+        )
+      }
+    }
+
+    if (!is.null(width)) {
+      check_positive_num(width, arg = "width", call = call)
+    }
+    if (!is.null(height)) {
+      check_positive_num(height, arg = "height", call = call)
+    }
+
+    spec <- new_fr_spec(
+      data = vctrs::new_data_frame(),
+      type = "figure",
+      plot = plot[[1L]],
+      plots = plot,
+      figure_meta = meta
+    )
+    spec$figure_width <- width
+    spec$figure_height <- height
+    spec <- apply_config(spec)
+    spec <- apply_fr_theme(spec)
+    return(spec)
+  }
+
+  # ── Single plot ────────────────────────────────────────────────────────────
   is_ggplot <- inherits(plot, "ggplot")
   is_recorded <- inherits(plot, "recordedplot")
 
@@ -446,6 +540,15 @@ fr_figure <- function(plot, width = NULL, height = NULL) {
   }
   if (!is.null(height)) {
     check_positive_num(height, arg = "height", call = call)
+  }
+
+  if (!is.null(meta)) {
+    cli::cli_warn(
+      c(
+        "{.arg meta} is ignored for single-plot figures.",
+        "i" = "Pass a list of plots to use per-page metadata."
+      )
+    )
   }
 
   # Create spec with empty data frame
