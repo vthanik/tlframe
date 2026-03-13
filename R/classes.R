@@ -633,8 +633,7 @@ new_fr_body <- function(
   page_by_align = "left",
   sort_by = character(0),
   repeat_cols = character(0),
-  wrap = FALSE,
-  group_cont = NULL
+  wrap = FALSE
 ) {
   structure(
     list(
@@ -646,8 +645,7 @@ new_fr_body <- function(
       page_by_align = page_by_align,
       sort_by = vec_cast(sort_by, character()),
       repeat_cols = vec_cast(repeat_cols, character()),
-      wrap = wrap,
-      group_cont = group_cont
+      wrap = wrap
     ),
     class = "fr_body"
   )

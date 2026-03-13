@@ -14,8 +14,7 @@ fr_rows(
   page_by_align = "left",
   sort_by = NULL,
   repeat_cols = NULL,
-  wrap = FALSE,
-  group_cont = NULL
+  wrap = FALSE
 )
 }
 \arguments{
@@ -59,13 +58,6 @@ block. Suppression is applied in \code{finalize_spec()}.}
 \item{wrap}{Logical. When \code{TRUE}, enables text wrapping in body cells.
 Default \code{FALSE}. For listings with long text fields (e.g., verbatim terms,
 medical history), wrapping prevents cell content from overflowing.}
-
-\item{group_cont}{Character scalar or \code{NULL}. When set and \code{group_by} is
-active, repeats the group header row at the top of each continuation page
-when a group spans multiple pages. The text is appended to the group
-header's display column (e.g., \code{"(continued)"} produces
-\code{"Cardiac disorders (continued)"}). \code{NULL} (default) disables
-continuation headers.}
 }
 \value{
 A modified \code{fr_spec}. Row config stored in \code{spec$body}.
