@@ -169,20 +169,20 @@ fr_page <- function(
   old <- spec$page
 
   spec$page <- new_fr_page(
-    orientation = orientation %||% old$orientation,
-    paper = paper %||% old$paper,
-    margins = margins %||% old$margins,
-    font_family = font_family %||% old$font_family,
-    font_size = font_size %||% old$font_size,
-    orphan_min = orphan_min %||% old$orphan_min,
-    widow_min = widow_min %||% old$widow_min,
-    continuation = if (!is.null(continuation)) {
+    orientation = if (!missing(orientation)) orientation else old$orientation,
+    paper = if (!missing(paper)) paper else old$paper,
+    margins = if (!missing(margins)) margins else old$margins,
+    font_family = if (!missing(font_family)) font_family else old$font_family,
+    font_size = if (!missing(font_size)) font_size else old$font_size,
+    orphan_min = if (!missing(orphan_min)) orphan_min else old$orphan_min,
+    widow_min = if (!missing(widow_min)) widow_min else old$widow_min,
+    continuation = if (!missing(continuation)) {
       continuation
     } else {
       old$continuation
     },
-    col_gap = col_gap %||% old$col_gap,
-    tokens = if (!is.null(tokens)) tokens else old$tokens,
+    col_gap = if (!missing(col_gap)) col_gap else old$col_gap,
+    tokens = if (!missing(tokens)) tokens else old$tokens,
     call = call
   )
   spec

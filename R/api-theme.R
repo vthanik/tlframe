@@ -285,75 +285,33 @@ fr_theme <- function(
 
   theme <- fr_env$theme %||% list()
 
-  if (!is.null(orientation)) {
-    theme[["orientation"]] <- orientation
+  set_if <- function(key, value) {
+    if (!is.null(value)) theme[[key]] <<- value
   }
-  if (!is.null(paper)) {
-    theme[["paper"]] <- paper
-  }
-  if (!is.null(margins)) {
-    theme[["margins"]] <- margins
-  }
-  if (!is.null(col_gap)) {
-    theme[["col_gap"]] <- col_gap
-  }
-  if (!is.null(spaces)) {
-    theme[["spaces"]] <- spaces
-  }
-  if (!is.null(split)) {
-    theme[["split"]] <- split
-  }
-  if (!is.null(stub)) {
-    theme[["stub"]] <- stub
-  }
-  if (!is.null(font_family)) {
-    theme[["font_family"]] <- font_family
-  }
-  if (!is.null(font_size)) {
-    theme[["font_size"]] <- font_size
-  }
-  if (!is.null(pagehead)) {
-    theme[["pagehead"]] <- pagehead
-  }
-  if (!is.null(pagefoot)) {
-    theme[["pagefoot"]] <- pagefoot
-  }
-  if (!is.null(tokens)) {
-    theme[["tokens"]] <- tokens
-  }
-  if (!is.null(hlines)) {
-    theme[["hlines"]] <- hlines
-  }
-  if (!is.null(vlines)) {
-    theme[["vlines"]] <- vlines
-  }
-  if (!is.null(spacing)) {
-    theme[["spacing"]] <- spacing
-  }
-  if (!is.null(header)) {
-    theme[["header"]] <- header
-  }
-  if (!is.null(n_format)) {
-    theme[["n_format"]] <- n_format
-  }
-  if (!is.null(continuation)) {
-    theme[["continuation"]] <- continuation
-  }
-  if (!is.null(page_by_bold)) {
-    theme[["page_by_bold"]] <- page_by_bold
-  }
-  if (!is.null(page_by_align)) {
-    theme[["page_by_align"]] <- page_by_align
-  }
-  if (!is.null(page_by_visible)) {
-    theme[["page_by_visible"]] <- page_by_visible
-  }
-  if (!is.null(group_keep)) {
-    theme[["group_keep"]] <- group_keep
-  }
-  if (!is.null(footnote_separator)) {
-    theme[["footnote_separator"]] <- footnote_separator
-  }
+
+  set_if("orientation", orientation)
+  set_if("paper", paper)
+  set_if("margins", margins)
+  set_if("col_gap", col_gap)
+  set_if("spaces", spaces)
+  set_if("split", split)
+  set_if("stub", stub)
+  set_if("font_family", font_family)
+  set_if("font_size", font_size)
+  set_if("pagehead", pagehead)
+  set_if("pagefoot", pagefoot)
+  set_if("tokens", tokens)
+  set_if("hlines", hlines)
+  set_if("vlines", vlines)
+  set_if("spacing", spacing)
+  set_if("header", header)
+  set_if("n_format", n_format)
+  set_if("continuation", continuation)
+  set_if("page_by_bold", page_by_bold)
+  set_if("page_by_align", page_by_align)
+  set_if("page_by_visible", page_by_visible)
+  set_if("group_keep", group_keep)
+  set_if("footnote_separator", footnote_separator)
 
   fr_env$theme <- theme
   invisible(NULL)

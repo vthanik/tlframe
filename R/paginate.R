@@ -247,8 +247,8 @@ paginate_rows <- function(
     return(list(page_breaks = integer(0), skip_rows = integer(0), n_pages = 0L))
   }
 
-  page_breaks <- integer(0)
-  skip_rows <- integer(0)
+  page_breaks_list <- list()
+  skip_rows_list <- list()
   used <- 0L
 
   # Deferred blank accounting: trailing blanks between groups are not counted
@@ -259,11 +259,11 @@ paginate_rows <- function(
   pending_blank_height <- 0L
 
   # Identify blank rows and group boundaries
-  is_blank <- rowSums(data != "") == 0L
+  is_blank <- detect_blank_rows(data)
   group_by <- intersect(group_by, names(data))
 
   if (length(group_by) > 0L) {
-    keys <- inject(paste(!!!data[group_by], sep = fr_env$group_sep))
+    keys <- build_group_keys(data, group_by)
   } else {
     keys <- rep("__all__", nr)
   }
@@ -295,19 +295,19 @@ paginate_rows <- function(
     } else if (used + group_height <= budget) {
       # Branch 2: group fits without blank — suppress blank at boundary
       if (!is.null(pending_blank_idx)) {
-        skip_rows <- c(skip_rows, pending_blank_idx)
+        skip_rows_list[[length(skip_rows_list) + 1L]] <- pending_blank_idx
       }
       used <- used + group_height
     } else if (group_height <= budget) {
       # Branch 3: group doesn't fit current page — move to next page
-      page_breaks <- c(page_breaks, g_start)
+      page_breaks_list[[length(page_breaks_list) + 1L]] <- g_start
       used <- group_height
     } else {
       # Branch 4: group larger than one page — split with orphan/widow
       # control and blank suppression at page boundaries.
       if (used > 0L) {
         # Start group on a fresh page
-        page_breaks <- c(page_breaks, g_start)
+        page_breaks_list[[length(page_breaks_list) + 1L]] <- g_start
         used <- 0L
       }
 
@@ -317,7 +317,7 @@ paginate_rows <- function(
       while (gi <= n_group) {
         # --- Skip leading blank rows at page start (suppress) ---
         while (gi <= n_group && is_blank[group_rows[gi]] && used == 0L) {
-          skip_rows <- c(skip_rows, group_rows[gi])
+          skip_rows_list[[length(skip_rows_list) + 1L]] <- group_rows[gi]
           gi <- gi + 1L
         }
         if (gi > n_group) {
@@ -376,11 +376,11 @@ paginate_rows <- function(
         gi <- trimmed_end + 1L
         # Skip leading blanks at the top of the next page (suppress them)
         while (gi <= n_group && is_blank[group_rows[gi]]) {
-          skip_rows <- c(skip_rows, group_rows[gi])
+          skip_rows_list[[length(skip_rows_list) + 1L]] <- group_rows[gi]
           gi <- gi + 1L
         }
         if (gi <= n_group) {
-          page_breaks <- c(page_breaks, group_rows[gi])
+          page_breaks_list[[length(page_breaks_list) + 1L]] <- group_rows[gi]
         }
         used <- 0L
       }
@@ -398,13 +398,16 @@ paginate_rows <- function(
 
   # Final pending blank — suppress (no group follows)
   if (!is.null(pending_blank_idx)) {
-    skip_rows <- c(skip_rows, pending_blank_idx)
+    skip_rows_list[[length(skip_rows_list) + 1L]] <- pending_blank_idx
   }
+
+  page_breaks <- unlist(page_breaks_list, use.names = FALSE) %||% integer(0)
+  skip_rows <- unique(unlist(skip_rows_list, use.names = FALSE) %||% integer(0))
 
   n_pages <- length(page_breaks) + 1L
   list(
     page_breaks = page_breaks,
-    skip_rows = unique(skip_rows),
+    skip_rows = skip_rows,
     n_pages = n_pages
   )
 }

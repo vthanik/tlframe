@@ -377,7 +377,8 @@ apply_config <- function(spec) {
         match_arg_fr(columns_cfg$spaces, fr_env$valid_spaces),
         error = function(e) {
           cli_warn(
-            "Config {.field columns.spaces} ignored: {conditionMessage(e)}"
+            "Config {.field columns.spaces} ignored: {conditionMessage(e)}",
+            call = caller_env()
           )
           NULL
         }
@@ -431,13 +432,19 @@ apply_config <- function(spec) {
   if (is.list(rules_cfg)) {
     if (!is.null(rules_cfg$hlines)) {
       spec <- tryCatch(fr_hlines(spec, rules_cfg$hlines), error = function(e) {
-        cli_warn("Config {.field rules.hlines} ignored: {conditionMessage(e)}")
+        cli_warn(
+          "Config {.field rules.hlines} ignored: {conditionMessage(e)}",
+          call = caller_env()
+        )
         spec
       })
     }
     if (!is.null(rules_cfg$vlines) && rules_cfg$vlines != "void") {
       spec <- tryCatch(fr_vlines(spec, rules_cfg$vlines), error = function(e) {
-        cli_warn("Config {.field rules.vlines} ignored: {conditionMessage(e)}")
+        cli_warn(
+          "Config {.field rules.vlines} ignored: {conditionMessage(e)}",
+          call = caller_env()
+        )
         spec
       })
     }

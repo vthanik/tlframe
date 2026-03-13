@@ -889,7 +889,7 @@ fr_env$named_colors <- c(
 
 #' Parse hex color string to integer RGB triple
 #' @noRd
-hex_to_rgb <- function(hex) {
+hex_to_rgb <- function(hex, call = caller_env()) {
   hex <- sub("^#", "", hex)
   if (nchar(hex) == 3L) {
     hex <- paste0(
@@ -902,10 +902,13 @@ hex_to_rgb <- function(hex) {
     )
   }
   if (nchar(hex) != 6L) {
-    cli_abort(c(
-      "Invalid hex color {.val {paste0('#', hex)}}. Expected 3 or 6 hex digits.",
-      "i" = "Example: {.code \"#003366\"} or {.code \"#036\"}."
-    ))
+    cli_abort(
+      c(
+        "Invalid hex color {.val {paste0('#', hex)}}. Expected 3 or 6 hex digits.",
+        "i" = "Example: {.code \"#003366\"} or {.code \"#036\"}."
+      ),
+      call = call
+    )
   }
   c(
     r = strtoi(substr(hex, 1, 2), 16L),
@@ -1125,6 +1128,10 @@ fr_env$latex_rowsep <- "0pt"
 # Used to build composite group keys when page_by/group_by has multiple columns.
 # Unit separator (U+001F) is safe because it never appears in data content.
 fr_env$group_sep <- "\x1f"
+
+# ── Baseline ratio (from LaTeX Companion / Word default) ──────────────────
+# Single spacing = 1.2 * font_size. Used by row_height_twips() in units.R.
+fr_env$baseline_ratio <- 1.2
 
 # ── RTF rendering constants ────────────────────────────────────────────────
 fr_env$rtf_leading_factor <- 1.4

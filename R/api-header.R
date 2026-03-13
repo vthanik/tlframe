@@ -218,19 +218,23 @@ fr_header <- function(
   }
 
   # Preserve existing spans — fr_header replaces everything else
-  old_spans <- spec$header$spans
+  old <- spec$header
 
   spec$header <- new_fr_header(
-    spans = old_spans,
-    repeat_on_page = repeat_on_page %||% spec$header$repeat_on_page,
-    valign = valign %||% spec$header$valign,
-    align = align %||% spec$header$align,
-    align_map = align_map %||% spec$header$align_map,
-    bold = bold %||% spec$header$bold,
-    bg = bg %||% spec$header$bg,
-    fg = fg %||% spec$header$fg,
-    font_size = font_size %||% spec$header$font_size,
-    span_gap = spec$header$span_gap
+    spans = old$spans,
+    repeat_on_page = if (!missing(repeat_on_page)) {
+      repeat_on_page
+    } else {
+      old$repeat_on_page
+    },
+    valign = if (!missing(valign)) valign else old$valign,
+    align = if (!missing(align)) align else old$align,
+    align_map = if (!is.null(align_map)) align_map else old$align_map,
+    bold = if (!missing(bold)) bold else old$bold,
+    bg = if (!missing(bg)) bg else old$bg,
+    fg = if (!missing(fg)) fg else old$fg,
+    font_size = if (!missing(font_size)) font_size else old$font_size,
+    span_gap = old$span_gap
   )
 
   spec

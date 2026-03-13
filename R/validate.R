@@ -258,7 +258,7 @@ validate_n_param <- function(n, format = NULL, call = caller_env()) {
         c(
           "{.arg n} must be a named numeric vector, a named list, or a data frame.",
           "x" = "You supplied {.obj_type_friendly {n}}.",
-          "i" = "See {.fun fr_header} docs for N-count examples."
+          "i" = "See {.fun fr_cols} docs for N-count examples."
         ),
         call = call
       )
@@ -270,28 +270,4 @@ validate_n_param <- function(n, format = NULL, call = caller_env()) {
   }
 
   invisible(NULL)
-}
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Glue-Markup Detection
-# ══════════════════════════════════════════════════════════════════════════════
-
-#' Detect whether a string contains {fr_*(...)} markup expressions
-#' @noRd
-has_fr_markup <- function(x) {
-  is.character(x) && length(x) == 1L && grepl("\\{fr_", x, fixed = FALSE)
-}
-
-#' Markup sentinel markers for render-time resolution
-#' @noRd
-fr_env$sentinel_start <- "\x01"
-fr_env$sentinel_end <- "\x02"
-fr_env$sentinel_pattern <- "\x01([A-Z]+):([^\x02]*)\x02"
-
-
-#' Build a markup sentinel string
-#' @noRd
-markup_sentinel <- function(type, content = "") {
-  paste0(fr_env$sentinel_start, type, ":", content, fr_env$sentinel_end)
 }

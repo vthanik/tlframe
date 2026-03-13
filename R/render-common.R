@@ -3,7 +3,30 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 0. Span Level Count
+# 0. Shared Micro-Helpers
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' Build group keys from data columns
+#' @param data Data frame.
+#' @param cols Character vector of column names.
+#' @return Character vector of length nrow(data), one composite key per row.
+#' @noRd
+build_group_keys <- function(data, cols) {
+  inject(paste(!!!data[cols], sep = fr_env$group_sep))
+}
+
+
+#' Detect blank rows (all cells empty string)
+#' @param data Data frame.
+#' @return Logical vector of length nrow(data).
+#' @noRd
+detect_blank_rows <- function(data) {
+  rowSums(data != "") == 0L
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 0a. Span Level Count
 # ══════════════════════════════════════════════════════════════════════════════
 
 #' Count the number of unique spanner levels
@@ -243,6 +266,9 @@ apply_styles_to_grid <- function(
     if (!is.null(style$align)) {
       grid$align[affected] <- style$align
     }
+    if (!is.null(style$valign) && "valign" %in% names(grid)) {
+      grid$valign[affected] <- style$valign
+    }
     if (!is.null(style$indent) && "indent" %in% names(grid)) {
       grid$indent[affected] <- style$indent
     }
@@ -306,57 +332,13 @@ build_header_cell_grid <- function(
     font_size = rep(default_fs, nc)
   ))
 
-  for (style in cell_styles) {
-    if (style$region != "header") {
-      next
-    }
-
-    # Row mask: match against header row index
-    if (!is.null(style$rows) && !identical(style$rows, "all")) {
-      if (!(header_row_idx %in% style$rows)) next
-    }
-
-    # Column mask
-    if (
-      is.null(style$cols) ||
-        identical(style$cols, "all") ||
-        identical(style$type, "row")
-    ) {
-      col_mask <- rep(TRUE, nc)
-    } else if (is.character(style$cols)) {
-      col_mask <- grid$col_name %in% style$cols
-    } else if (is.numeric(style$cols)) {
-      col_mask <- grid$col_idx %in% style$cols
-    } else {
-      col_mask <- rep(TRUE, nc)
-    }
-    if (!any(col_mask)) {
-      next
-    }
-
-    if (!is.null(style$bold)) {
-      grid$bold[col_mask] <- style$bold
-    }
-    if (!is.null(style$italic)) {
-      grid$italic[col_mask] <- style$italic
-    }
-    if (!is.null(style$underline)) {
-      grid$underline[col_mask] <- style$underline
-    }
-    if (!is.null(style$fg)) {
-      grid$fg[col_mask] <- style$fg
-    }
-    if (!is.null(style$bg)) {
-      grid$bg[col_mask] <- style$bg
-    }
-    if (!is.null(style$font_size)) {
-      grid$font_size[col_mask] <- style$font_size
-    }
-    if (!is.null(style$align)) {
-      grid$align[col_mask] <- style$align
-    }
-    if (!is.null(style$valign)) grid$valign[col_mask] <- style$valign
-  }
+  grid <- apply_styles_to_grid(
+    grid,
+    cell_styles,
+    region = "header",
+    col_names = col_names,
+    header_row_idx = header_row_idx
+  )
 
   grid
 }
@@ -420,7 +402,7 @@ insert_blank_after <- function(data, blank_cols) {
     return(empty)
   }
 
-  keys <- inject(paste(!!!data[blank_cols], sep = fr_env$group_sep))
+  keys <- build_group_keys(data, blank_cols)
 
   # Find rows where the next row has a different key (group boundary)
   boundaries <- which(keys[-length(keys)] != keys[-1L])
@@ -526,10 +508,10 @@ apply_indent_by <- function(spec) {
     group_cols <- intersect(group_cols, names(spec$data))
     if (length(group_cols) > 0L) {
       # Identify blank rows (all cells empty — inserted by blank_after)
-      is_blank <- rowSums(spec$data != "") == 0L
+      is_blank <- detect_blank_rows(spec$data)
 
       # Identify group header rows: first non-blank row of each group
-      keys <- inject(paste(!!!spec$data[group_cols], sep = fr_env$group_sep))
+      keys <- build_group_keys(spec$data, group_cols)
       is_header <- c(TRUE, keys[-length(keys)] != keys[-1L])
 
       # Detail rows: not a header and not blank
@@ -706,10 +688,10 @@ build_keep_mask <- function(
   }
 
   # Skip blank rows (inserted by blank_after)
-  is_blank <- rowSums(data != "") == 0L
+  is_blank <- detect_blank_rows(data)
 
   # Build group key per row
-  keys <- inject(paste(!!!data[keep_cols], sep = fr_env$group_sep))
+  keys <- build_group_keys(data, keep_cols)
 
   mask <- rep(FALSE, nr)
 
@@ -1020,17 +1002,20 @@ latex_escape <- function(text) {
 }
 
 
-#' Escape AND resolve sentinels for LaTeX
+#' Escape and resolve sentinels in text (generic)
 #'
-#' Splits text around sentinel markers, escapes non-sentinel parts,
-#' then resolves sentinels to LaTeX commands.
+#' Splits text around sentinel markers, escapes non-sentinel parts via
+#' `escape_fn`, then resolves sentinel tokens via `resolver_fn`. Both
+#' `rtf_escape_and_resolve()` and `latex_escape_and_resolve()` delegate here.
 #'
 #' @param text Character scalar.
-#' @return Character scalar with LaTeX-safe text and resolved sentinels.
+#' @param escape_fn Function to escape plain text portions.
+#' @param resolver_fn Function to resolve sentinel tokens.
+#' @return Character scalar with escaped text and resolved sentinels.
 #' @noRd
-latex_escape_and_resolve <- function(text) {
+escape_and_resolve <- function(text, escape_fn, resolver_fn) {
   if (!has_sentinel(text)) {
-    return(latex_escape(text))
+    return(escape_fn(text))
   }
 
   pattern <- fr_env$sentinel_pattern
@@ -1041,19 +1026,32 @@ latex_escape_and_resolve <- function(text) {
   parts <- character(0)
   for (i in seq_along(non_sentinels)) {
     if (nzchar(non_sentinels[i])) {
-      parts <- c(parts, latex_escape(non_sentinels[i]))
+      parts <- c(parts, escape_fn(non_sentinels[i]))
     }
     if (i <= length(sentinels)) {
       tok_parts <- regmatches(
         sentinels[i],
         regexec(pattern, sentinels[i], perl = TRUE)
       )[[1L]]
-      resolved <- latex_sentinel_resolver(tok_parts[[2L]], tok_parts[[3L]])
+      resolved <- resolver_fn(tok_parts[[2L]], tok_parts[[3L]])
       parts <- c(parts, resolved)
     }
   }
 
   paste0(parts, collapse = "")
+}
+
+
+#' Escape AND resolve sentinels for LaTeX
+#'
+#' Splits text around sentinel markers, escapes non-sentinel parts,
+#' then resolves sentinels to LaTeX commands.
+#'
+#' @param text Character scalar.
+#' @return Character scalar with LaTeX-safe text and resolved sentinels.
+#' @noRd
+latex_escape_and_resolve <- function(text) {
+  escape_and_resolve(text, latex_escape, latex_sentinel_resolver)
 }
 
 
@@ -1202,36 +1200,7 @@ rtf_escape <- function(text) {
 #' @return Character scalar with RTF-safe text and resolved sentinels.
 #' @noRd
 rtf_escape_and_resolve <- function(text) {
-  if (!has_sentinel(text)) {
-    return(rtf_escape(text))
-  }
-
-  # Split around sentinels: find all sentinel tokens
-
-  pattern <- fr_env$sentinel_pattern
-  # Use regmatches to extract sentinels and non-sentinel parts
-  m <- gregexpr(pattern, text, perl = TRUE)
-  sentinels <- regmatches(text, m)[[1L]]
-  non_sentinels <- regmatches(text, m, invert = TRUE)[[1L]]
-
-  # Escape non-sentinel parts, resolve sentinel parts
-  parts <- character(0)
-  for (i in seq_along(non_sentinels)) {
-    if (nzchar(non_sentinels[i])) {
-      parts <- c(parts, rtf_escape(non_sentinels[i]))
-    }
-    if (i <= length(sentinels)) {
-      # Parse and resolve the sentinel
-      tok_parts <- regmatches(
-        sentinels[i],
-        regexec(pattern, sentinels[i], perl = TRUE)
-      )[[1L]]
-      resolved <- rtf_sentinel_resolver(tok_parts[[2L]], tok_parts[[3L]])
-      parts <- c(parts, resolved)
-    }
-  }
-
-  paste0(parts, collapse = "")
+  escape_and_resolve(text, rtf_escape, rtf_sentinel_resolver)
 }
 
 
