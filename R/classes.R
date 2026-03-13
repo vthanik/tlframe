@@ -1105,6 +1105,8 @@ new_fr_spec <- function(
   ),
   type = "table",
   plot = NULL,
+  plots = NULL,
+  figure_meta = NULL,
   call = caller_env()
 ) {
   if (!is.data.frame(data)) {
@@ -1133,7 +1135,9 @@ new_fr_spec <- function(
       pagefoot = pagefoot,
       spacing = spacing,
       type = type,
-      plot = plot
+      plot = plot,
+      plots = plots,
+      figure_meta = figure_meta
     ),
     class = "fr_spec"
   )
@@ -1171,11 +1175,23 @@ print.fr_spec <- function(x, ..., compact = FALSE) {
   )
   cli::cli_h3("fr_spec: {type_label}")
 
-  # Data summary
+  # Data summary (skip for figures)
   nr <- nrow(x$data)
   nc_data <- ncol(x$data)
   nc_spec <- length(x$columns)
-  cli::cli_text("Data: {nr} row{?s} x {nc_data} column{?s}")
+  if (!identical(x$type, "figure")) {
+    cli::cli_text("Data: {nr} row{?s} x {nc_data} column{?s}")
+  }
+
+  # Figure info
+  if (identical(x$type, "figure")) {
+    n_plots <- if (!is.null(x$plots)) length(x$plots) else 1L
+    cli::cli_text("Plot{?s}: {n_plots} page{?s}")
+    if (!is.null(x$figure_meta)) {
+      meta_cols <- paste(names(x$figure_meta), collapse = ", ")
+      cli::cli_text("Meta: {meta_cols}")
+    }
+  }
 
   # Page config
   orient <- x$page$orientation %||% "landscape"

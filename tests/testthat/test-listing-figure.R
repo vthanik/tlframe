@@ -748,3 +748,114 @@ test_that("fr_listing full pipeline renders to RTF", {
   # 8pt font in body cells
   expect_true(grepl("\\fs16 ", txt, fixed = TRUE))
 })
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# fr_figure — multi-page construction
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("fr_figure accepts list of plots", {
+  p1 <- structure(list(), class = "recordedplot")
+  p2 <- structure(list(), class = "recordedplot")
+  spec <- fr_figure(list(p1, p2))
+  expect_s3_class(spec, "fr_spec")
+  expect_equal(spec$type, "figure")
+  expect_length(spec$plots, 2L)
+  expect_identical(spec$plot, p1) # first plot as default
+})
+
+test_that("fr_figure accepts list of ggplot objects", {
+  g1 <- structure(list(), class = "ggplot")
+  g2 <- structure(list(), class = "ggplot")
+  spec <- fr_figure(list(g1, g2))
+  expect_length(spec$plots, 2L)
+})
+
+test_that("fr_figure accepts mixed plot types in list", {
+  g1 <- structure(list(), class = "ggplot")
+  r1 <- structure(list(), class = "recordedplot")
+  spec <- fr_figure(list(g1, r1))
+  expect_length(spec$plots, 2L)
+})
+
+test_that("fr_figure errors on empty list", {
+  expect_error(fr_figure(list()), "at least one plot")
+})
+
+test_that("fr_figure errors on list with non-plot element", {
+  p1 <- structure(list(), class = "ggplot")
+  expect_error(fr_figure(list(p1, "not a plot")), "Element 2")
+})
+
+test_that("fr_figure list stores width and height", {
+  p1 <- structure(list(), class = "recordedplot")
+  p2 <- structure(list(), class = "recordedplot")
+  spec <- fr_figure(list(p1, p2), width = 6, height = 4)
+  expect_equal(spec$figure_width, 6)
+  expect_equal(spec$figure_height, 4)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# fr_figure — meta parameter
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("fr_figure accepts meta data frame with list of plots", {
+  p1 <- structure(list(), class = "recordedplot")
+  p2 <- structure(list(), class = "recordedplot")
+  meta <- data.frame(subgroup = c("Adults", "Pediatrics"))
+  spec <- fr_figure(list(p1, p2), meta = meta)
+  expect_identical(spec$figure_meta, meta)
+})
+
+test_that("fr_figure errors when meta rows != number of plots", {
+  p1 <- structure(list(), class = "recordedplot")
+  p2 <- structure(list(), class = "recordedplot")
+  meta <- data.frame(subgroup = c("Adults", "Pediatrics", "Geriatrics"))
+  expect_error(fr_figure(list(p1, p2), meta = meta), "one row per plot")
+})
+
+test_that("fr_figure errors when meta is not a data frame", {
+  p1 <- structure(list(), class = "recordedplot")
+  expect_error(fr_figure(list(p1), meta = list(a = 1)), "data frame")
+})
+
+test_that("fr_figure warns when meta used with single plot", {
+  p1 <- structure(list(), class = "recordedplot")
+  meta <- data.frame(subgroup = "Adults")
+  expect_warning(fr_figure(p1, meta = meta), "ignored")
+})
+
+test_that("fr_figure multi-page works with pipeline verbs", {
+  p1 <- structure(list(), class = "recordedplot")
+  p2 <- structure(list(), class = "recordedplot")
+  meta <- data.frame(subgroup = c("Adults", "Pediatrics"))
+  spec <- list(p1, p2) |>
+    fr_figure(meta = meta) |>
+    fr_titles("Figure 14.1.1 KM Curve", "Subgroup: {subgroup}") |>
+    fr_footnotes("Source: ADTTE") |>
+    fr_page(orientation = "landscape")
+  expect_length(spec$meta$titles, 2L)
+  expect_length(spec$plots, 2L)
+  expect_equal(spec$page$orientation, "landscape")
+})
+
+test_that("fr_figure multi-page NULL meta is OK", {
+  p1 <- structure(list(), class = "recordedplot")
+  p2 <- structure(list(), class = "recordedplot")
+  spec <- fr_figure(list(p1, p2))
+  expect_null(spec$figure_meta)
+})
+
+test_that("fr_figure multi-page meta with multiple columns", {
+  p1 <- structure(list(), class = "recordedplot")
+  p2 <- structure(list(), class = "recordedplot")
+  meta <- data.frame(
+    subgroup = c("Adults", "Pediatrics"),
+    n = c(80, 55),
+    stringsAsFactors = FALSE
+  )
+  spec <- fr_figure(list(p1, p2), meta = meta)
+  expect_equal(names(spec$figure_meta), c("subgroup", "n"))
+  expect_equal(nrow(spec$figure_meta), 2L)
+})

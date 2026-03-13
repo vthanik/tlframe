@@ -195,3 +195,167 @@ test_that("fr_figure full pipeline with titles/footnotes/pagehead via fr_render"
   # Landscape orientation applied
   expect_match(content, "lndscpsxn")
 })
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Multi-page figure rendering
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("multi-page figure RTF creates multiple pages with \\sect", {
+  skip_if_not_installed("ggplot2")
+
+  p1 <- ggplot2::ggplot(data.frame(x = 1:5, y = 1:5), ggplot2::aes(x, y)) +
+    ggplot2::geom_point()
+  p2 <- ggplot2::ggplot(data.frame(x = 1:5, y = 5:1), ggplot2::aes(x, y)) +
+    ggplot2::geom_point()
+
+  tmp <- tempfile(fileext = ".rtf")
+  on.exit(unlink(tmp), add = TRUE)
+
+  list(p1, p2) |>
+    fr_figure() |>
+    fr_titles("Figure 1") |>
+    fr_render(tmp)
+
+  expect_true(file.exists(tmp))
+  content <- paste(readLines(tmp, warn = FALSE), collapse = "\n")
+
+  # Two PNG images embedded
+  matches <- gregexpr("\\\\pngblip", content)[[1]]
+  expect_equal(length(matches), 2L)
+
+  # Section break between pages
+  expect_match(content, "\\\\sect")
+
+  # Title appears twice (once per page)
+  title_matches <- gregexpr("Figure 1", content, fixed = TRUE)[[1]]
+  expect_equal(length(title_matches), 2L)
+})
+
+test_that("multi-page figure RTF resolves meta tokens in titles", {
+  skip_if_not_installed("ggplot2")
+
+  p1 <- ggplot2::ggplot(data.frame(x = 1:5, y = 1:5), ggplot2::aes(x, y)) +
+    ggplot2::geom_point()
+  p2 <- ggplot2::ggplot(data.frame(x = 1:5, y = 5:1), ggplot2::aes(x, y)) +
+    ggplot2::geom_point()
+
+  meta <- data.frame(
+    subgroup = c("Adults", "Pediatrics"),
+    stringsAsFactors = FALSE
+  )
+
+  tmp <- tempfile(fileext = ".rtf")
+  on.exit(unlink(tmp), add = TRUE)
+
+  list(p1, p2) |>
+    fr_figure(meta = meta) |>
+    fr_titles("KM Curve", "Subgroup: {subgroup}") |>
+    fr_render(tmp)
+
+  content <- paste(readLines(tmp, warn = FALSE), collapse = "\n")
+
+  # Per-page token resolution
+  expect_match(content, "Subgroup: Adults", fixed = TRUE)
+  expect_match(content, "Subgroup: Pediatrics", fixed = TRUE)
+
+  # Raw token should NOT appear
+  expect_false(grepl("{subgroup}", content, fixed = TRUE))
+})
+
+test_that("multi-page figure RTF resolves meta tokens in footnotes", {
+  skip_if_not_installed("ggplot2")
+
+  p1 <- ggplot2::ggplot(data.frame(x = 1:3, y = 1:3), ggplot2::aes(x, y)) +
+    ggplot2::geom_point()
+  p2 <- ggplot2::ggplot(data.frame(x = 1:3, y = 3:1), ggplot2::aes(x, y)) +
+    ggplot2::geom_point()
+
+  meta <- data.frame(n = c(80, 55), stringsAsFactors = FALSE)
+
+  tmp <- tempfile(fileext = ".rtf")
+  on.exit(unlink(tmp), add = TRUE)
+
+  list(p1, p2) |>
+    fr_figure(meta = meta) |>
+    fr_footnotes("N = {n}") |>
+    fr_render(tmp)
+
+  content <- paste(readLines(tmp, warn = FALSE), collapse = "\n")
+  expect_match(content, "N = 80", fixed = TRUE)
+  expect_match(content, "N = 55", fixed = TRUE)
+})
+
+test_that("multi-page figure RTF with no meta works (no token resolution)", {
+  skip_if_not_installed("ggplot2")
+
+  p1 <- ggplot2::ggplot(data.frame(x = 1:3, y = 1:3), ggplot2::aes(x, y)) +
+    ggplot2::geom_point()
+  p2 <- ggplot2::ggplot(data.frame(x = 1:3, y = 3:1), ggplot2::aes(x, y)) +
+    ggplot2::geom_point()
+
+  tmp <- tempfile(fileext = ".rtf")
+  on.exit(unlink(tmp), add = TRUE)
+
+  list(p1, p2) |>
+    fr_figure() |>
+    fr_titles("Figure 1") |>
+    fr_render(tmp)
+
+  content <- paste(readLines(tmp, warn = FALSE), collapse = "\n")
+  matches <- gregexpr("\\\\pngblip", content)[[1]]
+  expect_equal(length(matches), 2L)
+})
+
+test_that("multi-page figure with multiple meta columns", {
+  skip_if_not_installed("ggplot2")
+
+  p1 <- ggplot2::ggplot(data.frame(x = 1:3, y = 1:3), ggplot2::aes(x, y)) +
+    ggplot2::geom_point()
+  p2 <- ggplot2::ggplot(data.frame(x = 1:3, y = 3:1), ggplot2::aes(x, y)) +
+    ggplot2::geom_point()
+  p3 <- ggplot2::ggplot(
+    data.frame(x = 1:3, y = c(2, 2, 2)),
+    ggplot2::aes(x, y)
+  ) +
+    ggplot2::geom_point()
+
+  meta <- data.frame(
+    subgroup = c("Adults", "Pediatrics", "Geriatrics"),
+    n = c(80, 55, 30),
+    stringsAsFactors = FALSE
+  )
+
+  tmp <- tempfile(fileext = ".rtf")
+  on.exit(unlink(tmp), add = TRUE)
+
+  list(p1, p2, p3) |>
+    fr_figure(meta = meta) |>
+    fr_titles("Figure 14.1.1", "Subgroup: {subgroup} (N={n})") |>
+    fr_render(tmp)
+
+  content <- paste(readLines(tmp, warn = FALSE), collapse = "\n")
+  expect_match(content, "Subgroup: Adults (N=80)", fixed = TRUE)
+  expect_match(content, "Subgroup: Pediatrics (N=55)", fixed = TRUE)
+  expect_match(content, "Subgroup: Geriatrics (N=30)", fixed = TRUE)
+})
+
+test_that("single-plot figure still works after multi-page changes", {
+  skip_if_not_installed("ggplot2")
+
+  p <- ggplot2::ggplot(data.frame(x = 1:5, y = 1:5), ggplot2::aes(x, y)) +
+    ggplot2::geom_point()
+
+  tmp <- tempfile(fileext = ".rtf")
+  on.exit(unlink(tmp), add = TRUE)
+
+  p |>
+    fr_figure() |>
+    fr_titles("Single Figure") |>
+    fr_render(tmp)
+
+  content <- paste(readLines(tmp, warn = FALSE), collapse = "\n")
+  matches <- gregexpr("\\\\pngblip", content)[[1]]
+  expect_equal(length(matches), 1L)
+  expect_match(content, "Single Figure", fixed = TRUE)
+})
