@@ -463,9 +463,10 @@ fr_figure <- function(plot, width = NULL, height = NULL, meta = NULL) {
     }
 
     # Validate each element
+    is_plot <- function(x) inherits(x, "ggplot") || inherits(x, "recordedplot")
     for (i in seq_along(plot)) {
-      p <- plot[[i]]
-      if (!inherits(p, "ggplot") && !inherits(p, "recordedplot")) {
+      if (!is_plot(plot[[i]])) {
+        p <- plot[[i]]
         cli_abort(
           c(
             "Element {i} of {.arg plot} must be a {.cls ggplot} or {.cls recordedplot} object.",
@@ -521,10 +522,9 @@ fr_figure <- function(plot, width = NULL, height = NULL, meta = NULL) {
   }
 
   # ── Single plot ────────────────────────────────────────────────────────────
-  is_ggplot <- inherits(plot, "ggplot")
-  is_recorded <- inherits(plot, "recordedplot")
+  is_plot <- function(x) inherits(x, "ggplot") || inherits(x, "recordedplot")
 
-  if (!is_ggplot && !is_recorded) {
+  if (!is_plot(plot)) {
     cli_abort(
       c(
         "{.arg plot} must be a {.cls ggplot} or {.cls recordedplot} object.",
