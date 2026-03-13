@@ -179,6 +179,7 @@ reference:
       - fr_render
       - fr_backends
       - fr_register_backend
+      - fr_unregister_backend
       - fr_latex_deps
       - fr_install_latex_deps
 
@@ -195,6 +196,8 @@ reference:
       - fr_get_page
       - fr_get_rules
       - fr_get_styles
+      - is.fr_spec
+      - is.fr_col
 
   - title: "Built-in Datasets"
     desc: >
