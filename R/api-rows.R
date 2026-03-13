@@ -166,6 +166,12 @@
 #' @param wrap Logical. When `TRUE`, enables text wrapping in body cells.
 #'   Default `FALSE`. For listings with long text fields (e.g., verbatim terms,
 #'   medical history), wrapping prevents cell content from overflowing.
+#' @param group_cont Character scalar or `NULL`. When set and `group_by` is
+#'   active, repeats the group header row at the top of each continuation page
+#'   when a group spans multiple pages. The text is appended to the group
+#'   header's display column (e.g., `"(continued)"` produces
+#'   `"Cardiac disorders (continued)"`). `NULL` (default) disables
+#'   continuation headers.
 #'
 #' @seealso [fr_page()] to set `orphan_min` / `widow_min`,
 #'   [fr_cols()] to hide structural columns from display.
@@ -181,7 +187,8 @@ fr_rows <- function(
   page_by_align = "left",
   sort_by = NULL,
   repeat_cols = NULL,
-  wrap = FALSE
+  wrap = FALSE,
+  group_cont = NULL
 ) {
   call <- caller_env()
   check_fr_spec(spec, call = call)
@@ -207,6 +214,9 @@ fr_rows <- function(
   }
   if (!missing(wrap)) {
     check_scalar_lgl(wrap, arg = "wrap", call = call)
+  }
+  if (!is.null(group_cont)) {
+    check_scalar_chr(group_cont, arg = "group_cont", call = call)
   }
   if (!missing(page_by_align)) {
     page_by_align <- match_arg_fr(
@@ -237,7 +247,8 @@ fr_rows <- function(
     sort_by = validate_cols(sort_by, "sort_by") %||% old$sort_by,
     repeat_cols = validate_cols(repeat_cols, "repeat_cols") %||%
       old$repeat_cols,
-    wrap = if (!missing(wrap)) wrap else old$wrap
+    wrap = if (!missing(wrap)) wrap else old$wrap,
+    group_cont = group_cont %||% old$group_cont
   )
   spec
 }

@@ -482,6 +482,23 @@ apply_config <- function(spec) {
     }
   }
 
+  # Row defaults (group_cont, page_by_bold, page_by_align)
+  rows_cfg <- cfg$rows
+  if (is.list(rows_cfg)) {
+    if (!is.null(rows_cfg$group_cont) && is.character(rows_cfg$group_cont)) {
+      spec$body$group_cont <- rows_cfg$group_cont
+    }
+    if (!is.null(rows_cfg$page_by_bold)) {
+      spec$body$page_by_bold <- rows_cfg$page_by_bold
+    }
+    if (
+      !is.null(rows_cfg$page_by_align) &&
+        is.character(rows_cfg$page_by_align)
+    ) {
+      spec$body$page_by_align <- rows_cfg$page_by_align
+    }
+  }
+
   # Custom tokens
   if (is.list(cfg$tokens) && length(cfg$tokens) > 0L) {
     existing_tokens <- spec$page$tokens

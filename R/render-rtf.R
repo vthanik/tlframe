@@ -120,6 +120,10 @@ render_rtf <- function(spec, page_groups, col_panels, path) {
       if (has_group_by && nrow(group$data) > 0L) {
         heights <- calculate_row_heights(group$data, vis_columns, spec$page)
         budget <- calculate_page_budget(spec)
+        # Reserve 1 row for continuation headers on split pages
+        if (!is.null(spec$body$group_cont)) {
+          budget <- max(5L, budget - 1L)
+        }
         page_assignments <- paginate_rows(
           heights,
           budget,
@@ -324,6 +328,36 @@ render_rtf <- function(spec, page_groups, col_panels, path) {
         skip_rows <- unique(skip_set)
       }
 
+      # Build continuation map: page_break_row -> group_header_row
+      cont_map <- integer(0)
+      cont_text <- spec$body$group_cont
+      if (!is.null(cont_text) && length(page_breaks) > 0L) {
+        group_keys <- inject(paste(
+          !!!group$data[spec$body$group_by],
+          sep = "|"
+        ))
+        vis_col_names_cont <- names(vis_columns)
+        gdata_cont <- group$data[vis_col_names_cont]
+        is_blank <- rowSums(gdata_cont != "") == 0L
+        is_hdr <- !is_blank &
+          c(TRUE, group_keys[-1L] != group_keys[-length(group_keys)])
+
+        for (pb in page_breaks) {
+          pb_key <- group_keys[pb]
+          # Check if this break is WITHIN a group (not at a group boundary)
+          prev_data <- which(!is_blank & seq_along(group_keys) < pb)
+          if (
+            length(prev_data) > 0L &&
+              group_keys[prev_data[length(prev_data)]] == pb_key
+          ) {
+            hdr <- which(is_hdr & group_keys == pb_key)
+            if (length(hdr) > 0L) {
+              cont_map[as.character(pb)] <- hdr[1L]
+            }
+          }
+        }
+      }
+
       rtf_write(
         con,
         rtf_body_rows(
@@ -334,7 +368,9 @@ render_rtf <- function(spec, page_groups, col_panels, path) {
           borders,
           color_info,
           page_breaks = page_breaks,
-          skip_rows = skip_rows
+          skip_rows = skip_rows,
+          cont_map = cont_map,
+          cont_text = cont_text
         )
       )
 
@@ -1303,7 +1339,9 @@ rtf_body_rows <- function(
   borders,
   color_info,
   page_breaks = integer(0),
-  skip_rows = integer(0)
+  skip_rows = integer(0),
+  cont_map = integer(0),
+  cont_text = NULL
 ) {
   if (nrow(data) == 0L) {
     return("")
@@ -1376,21 +1414,28 @@ rtf_body_rows <- function(
   align_map <- fr_env$align_to_rtf
   valign_map <- fr_env$valign_to_rtf
 
-  lines <- vector("list", nr)
-  for (i in seq_len(nr)) {
-    # Skip rows trimmed at page boundaries
-    if (is_skip[i]) {
-      lines[[i]] <- ""
-      next
+  # Determine which column gets the "(continued)" suffix
+  has_cont <- length(cont_map) > 0L && !is.null(cont_text)
+  cont_col_j <- 0L
+  if (has_cont) {
+    # Prefer indent_by columns, then first visible column
+    indent_cols <- spec$body$indent_by
+    if (length(indent_cols) > 0L) {
+      cont_col_j <- match(indent_cols[1L], col_names, nomatch = 0L)
     }
+    if (cont_col_j == 0L) {
+      cont_col_j <- 1L
+    }
+  }
 
-    # Row properties
-    pagebb_str <- if (is_pagebb[i]) "\\trpagebb" else ""
-    keep_str <- if (isTRUE(keep_mask[i])) "\\trkeep" else ""
-    if (!is.na(row_heights[i])) {
+  # Helper: emit RTF for a single body row
+  emit_body_row <- function(row_i, use_pagebb, cont_suffix = NULL) {
+    pagebb_str <- if (use_pagebb) "\\trpagebb" else ""
+    keep_str <- if (isTRUE(keep_mask[row_i])) "\\trkeep" else ""
+    if (!is.na(row_heights[row_i])) {
       height_str <- paste0(
         "\\trrh",
-        inches_to_twips(row_heights[i]),
+        inches_to_twips(row_heights[row_i]),
         rtf_zero_cell_padding
       )
     } else {
@@ -1398,11 +1443,10 @@ rtf_body_rows <- function(
     }
     row_def <- paste0("\\trowd\\trqc", pagebb_str, keep_str, height_str)
 
-    # Single merged loop: cell definitions + cell contents in one pass
     cell_defs <- vector("list", ncol)
     cell_contents <- vector("list", ncol)
     for (j in seq_len(ncol)) {
-      idx <- (j - 1L) * nr + i
+      idx <- (j - 1L) * nr + row_i
 
       # --- Cell definition (borders, bg, valign) ---
       bg <- cg_bg[idx]
@@ -1412,7 +1456,7 @@ rtf_body_rows <- function(
         if (!is.null(ci)) bg_str <- paste0("\\clcbpat", ci)
       }
       va_str <- valign_map[cg_valign[idx]]
-      border_str <- rtf_cell_border_string(borders$body, i, j, color_info)
+      border_str <- rtf_cell_border_string(borders$body, row_i, j, color_info)
       cell_defs[[j]] <- paste0(
         border_str,
         bg_str,
@@ -1432,7 +1476,6 @@ rtf_body_rows <- function(
 
       fs <- pt_to_half_pt(cg_font_size[idx])
 
-      # Inline formatting
       fmt_on <- ""
       fmt_off <- ""
       if (isTRUE(g_bold)) {
@@ -1448,27 +1491,24 @@ rtf_body_rows <- function(
         fmt_off <- paste0("\\ulnone", fmt_off)
       }
 
-      # Foreground color
       fg_str <- ""
       if (!is.na(g_fg) && g_fg != "#000000") {
         ci <- color_info$index[[g_fg]]
         if (!is.null(ci)) fg_str <- paste0("\\cf", ci, " ")
       }
 
-      # Indentation
       indent_str <- ""
       if (g_indent > 0) {
         indent_str <- paste0("\\li", inches_to_twips(g_indent))
       }
 
-      # Decimal alignment: single cell with left indent for centering
       if (identical(g_align, "decimal") && is_decimal_col[j]) {
         geom <- dec_geom[[col_names[j]]]
-        formatted <- geom$formatted[i]
+        formatted <- geom$formatted[row_i]
         if (nzchar(trimws(formatted))) {
           formatted_esc <- rtf_escape_and_resolve(formatted)
           formatted_esc <- newline_to_rtf_line(formatted_esc)
-          dec_indent <- paste0("\\li", geom$center_offset[i])
+          dec_indent <- paste0("\\li", geom$center_offset[row_i])
           cell_contents[[j]] <- paste0(
             "\\pard\\plain\\intbl\\ql",
             sp_str,
@@ -1488,6 +1528,10 @@ rtf_body_rows <- function(
       } else {
         content <- rtf_escape_and_resolve(cg_content[idx])
         content <- newline_to_rtf_line(content)
+        # Append continuation suffix to the target column
+        if (!is.null(cont_suffix) && j == cont_col_j) {
+          content <- paste0(content, " ", rtf_escape_and_resolve(cont_suffix))
+        }
         cell_contents[[j]] <- paste0(
           "\\pard\\plain\\intbl",
           align_map[[g_align]],
@@ -1505,13 +1549,41 @@ rtf_body_rows <- function(
       }
     }
 
-    lines[[i]] <- paste0(
+    paste0(
       row_def,
       paste0(unlist(cell_defs), collapse = ""),
       "\n",
       paste0(unlist(cell_contents), collapse = ""),
       "\\row\n"
     )
+  }
+
+  lines <- vector("list", nr)
+  for (i in seq_len(nr)) {
+    if (is_skip[i]) {
+      lines[[i]] <- ""
+      next
+    }
+
+    # Check for continuation header before this row
+    cont_hdr_str <- ""
+    if (has_cont && is_pagebb[i]) {
+      i_key <- as.character(i)
+      if (i_key %in% names(cont_map)) {
+        h <- cont_map[[i_key]]
+        # Emit the header row with \trpagebb, with continuation suffix
+        cont_hdr_str <- emit_body_row(
+          h,
+          use_pagebb = TRUE,
+          cont_suffix = cont_text
+        )
+      }
+    }
+
+    # Emit actual row (without \trpagebb if continuation header consumed it)
+    row_has_cont <- nzchar(cont_hdr_str)
+    row_str <- emit_body_row(i, use_pagebb = is_pagebb[i] && !row_has_cont)
+    lines[[i]] <- paste0(cont_hdr_str, row_str)
   }
 
   paste0(lines, collapse = "")
