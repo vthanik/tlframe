@@ -24,24 +24,6 @@ figure_plot_list <- function(spec) {
 }
 
 
-#' Build per-page token map with figure metadata merged in
-#' @noRd
-figure_token_map <- function(spec, page_idx, total_pages, meta_tokens = NULL) {
-  token_map <- build_token_map(
-    page_num = page_idx,
-    total_pages = total_pages,
-    spec = spec
-  )
-
-  # Merge per-page metadata columns
-  if (!is.null(meta_tokens)) {
-    token_map <- c(token_map, meta_tokens)
-  }
-
-  token_map
-}
-
-
 #' Extract metadata row as a named list of character values
 #' @noRd
 meta_row_tokens <- function(spec, page_idx) {
@@ -50,6 +32,26 @@ meta_row_tokens <- function(spec, page_idx) {
   }
   row <- spec$figure_meta[page_idx, , drop = FALSE]
   lapply(as.list(row), as.character)
+}
+
+
+#' Build per-page token map from a base map plus per-page metadata
+#' @noRd
+figure_page_token_map <- function(
+  base_token_map,
+  page_idx,
+  n_pages,
+  meta_tokens = NULL
+) {
+  token_map <- base_token_map
+  token_map[["thepage"]] <- as.character(page_idx)
+  token_map[["total_pages"]] <- as.character(n_pages)
+
+  if (!is.null(meta_tokens)) {
+    token_map <- c(token_map, meta_tokens)
+  }
+
+  token_map
 }
 
 
@@ -97,13 +99,6 @@ save_plot_to_file <- function(
 }
 
 
-#' Resolve tokens in title/footnote content for figure pages
-#' @noRd
-resolve_figure_content <- function(content, token_map) {
-  resolve_tokens(content, token_map, "figure title/footnote")
-}
-
-
 # ══════════════════════════════════════════════════════════════════════════════
 # PDF rendering
 # ══════════════════════════════════════════════════════════════════════════════
@@ -126,18 +121,6 @@ render_figure_pdf <- function(spec, path) {
 
   plot_list <- figure_plot_list(spec)
   n_pages <- length(plot_list)
-
-  # Save all plots to temporary PDFs
-  tmp_plots <- vapply(
-    seq_along(plot_list),
-    function(i) {
-      tmp <- tempfile(fileext = ".pdf")
-      save_plot_to_file(plot_list[[i]], tmp, plot_w, plot_h, device = "pdf")
-      tmp
-    },
-    character(1)
-  )
-  on.exit(unlink(tmp_plots), add = TRUE)
 
   # Build LaTeX document
   font_cmd <- latex_setmainfont(page$font_family)
@@ -266,23 +249,47 @@ render_figure_pdf <- function(spec, path) {
 
   lines <- c(lines, "\\begin{document}")
 
-  # ── Per-page content ─────────────────────────────────────────────────────
+  # ── Pre-process titles/footnotes (hoist label_to_plain out of loop) ──────
   titles <- spec$meta$titles %||% list()
   footnotes <- spec$meta$footnotes %||% list()
+  plain_titles <- lapply(titles, function(t) label_to_plain(t$content))
+  plain_footnotes <- lapply(footnotes, function(fn) label_to_plain(fn$content))
+
+  # Build base token map once (hoists get_source_path/get_timestamp)
+  base_token_map <- build_token_map(
+    page_num = 1L,
+    total_pages = n_pages,
+    spec = spec
+  )
+
+  # ── Per-page content ─────────────────────────────────────────────────────
+  tmp_plots <- character(0)
+  on.exit(unlink(tmp_plots), add = TRUE)
 
   for (pg in seq_len(n_pages)) {
     if (pg > 1L) {
       lines <- c(lines, "\\newpage")
     }
 
-    # Build per-page token map (meta columns merged in)
+    # Save plot to temp file (one at a time)
+    tmp <- tempfile(fileext = ".pdf")
+    save_plot_to_file(plot_list[[pg]], tmp, plot_w, plot_h, device = "pdf")
+    tmp_plots <- c(tmp_plots, tmp)
+
+    # Build per-page token map (only page number + meta differ)
     meta_toks <- meta_row_tokens(spec, pg)
-    page_token_map <- figure_token_map(spec, pg, n_pages, meta_toks)
+    page_token_map <- figure_page_token_map(
+      base_token_map,
+      pg,
+      n_pages,
+      meta_toks
+    )
 
     # Titles (with per-page token resolution)
     if (length(titles) > 0L) {
       fs <- page$font_size
-      for (t in titles) {
+      for (i in seq_along(titles)) {
+        t <- titles[[i]]
         t_fs <- t$font_size %||% fs
         align <- switch(
           t$align %||% "center",
@@ -291,7 +298,11 @@ render_figure_pdf <- function(spec, path) {
           right = "\\raggedleft"
         )
         bold_on <- if (isTRUE(t$bold)) "\\bfseries " else ""
-        content <- resolve_figure_content(label_to_plain(t$content), page_token_map)
+        content <- resolve_tokens(
+          plain_titles[[i]],
+          page_token_map,
+          "figure title"
+        )
         content <- latex_escape(content)
         lines <- c(
           lines,
@@ -315,7 +326,7 @@ render_figure_pdf <- function(spec, path) {
         "\\begin{center}\\includegraphics[width=%.2fin,height=%.2fin]{%s}\\end{center}",
         plot_w,
         plot_h,
-        gsub("\\\\", "/", tmp_plots[[pg]])
+        gsub("\\\\", "/", tmp)
       )
     )
 
@@ -323,7 +334,8 @@ render_figure_pdf <- function(spec, path) {
     if (length(footnotes) > 0L) {
       lines <- c(lines, "\\vspace{6pt}")
       fs <- page$font_size
-      for (fn in footnotes) {
+      for (i in seq_along(footnotes)) {
+        fn <- footnotes[[i]]
         fn_fs <- fn$font_size %||% fs
         align <- switch(
           fn$align %||% "left",
@@ -331,7 +343,11 @@ render_figure_pdf <- function(spec, path) {
           center = "\\centering",
           right = "\\raggedleft"
         )
-        content <- resolve_figure_content(label_to_plain(fn$content), page_token_map)
+        content <- resolve_tokens(
+          plain_footnotes[[i]],
+          page_token_map,
+          "figure footnote"
+        )
         content <- latex_escape(content)
         lines <- c(
           lines,
@@ -392,18 +408,6 @@ render_figure_rtf <- function(spec, path) {
   px_w <- as.integer(plot_w * dpi)
   px_h <- as.integer(plot_h * dpi)
 
-  # Save all plots to temporary PNGs
-  tmp_plots <- vapply(
-    seq_along(plot_list),
-    function(i) {
-      tmp <- tempfile(fileext = ".png")
-      save_plot_to_file(plot_list[[i]], tmp, plot_w, plot_h, dpi = dpi)
-      tmp
-    },
-    character(1)
-  )
-  on.exit(unlink(tmp_plots), add = TRUE)
-
   # RTF dimensions (in twips)
   pic_w <- inches_to_twips(plot_w)
   pic_h <- inches_to_twips(plot_h)
@@ -448,8 +452,19 @@ render_figure_rtf <- function(spec, path) {
   )
 
   fs <- pt_to_half_pt(page$font_size)
+
+  # ── Pre-process titles/footnotes (hoist label_to_plain out of loop) ──────
   titles <- spec$meta$titles %||% list()
   footnotes <- spec$meta$footnotes %||% list()
+  plain_titles <- lapply(titles, function(t) label_to_plain(t$content))
+  plain_footnotes <- lapply(footnotes, function(fn) label_to_plain(fn$content))
+
+  # Build base token map once (hoists get_source_path/get_timestamp)
+  base_token_map <- build_token_map(
+    page_num = 1L,
+    total_pages = n_pages,
+    spec = spec
+  )
 
   # ── Per-page content ─────────────────────────────────────────────────────
   for (pg in seq_len(n_pages)) {
@@ -459,17 +474,31 @@ render_figure_rtf <- function(spec, path) {
       rtf_write(con, paste0("\\sect\n", sect_def))
     }
 
-    # Build per-page token map
+    # Save plot to temp file, embed, then clean up
+    tmp_plot <- tempfile(fileext = ".png")
+    save_plot_to_file(plot_list[[pg]], tmp_plot, plot_w, plot_h, dpi = dpi)
+
+    # Build per-page token map (only page number + meta differ)
     meta_toks <- meta_row_tokens(spec, pg)
-    page_token_map <- figure_token_map(spec, pg, n_pages, meta_toks)
+    page_token_map <- figure_page_token_map(
+      base_token_map,
+      pg,
+      n_pages,
+      meta_toks
+    )
 
     # Titles (with per-page token resolution)
-    for (t in titles) {
+    for (i in seq_along(titles)) {
+      t <- titles[[i]]
       t_fs <- pt_to_half_pt(t$font_size %||% page$font_size)
       align_rtf <- fr_env$align_to_rtf[[t$align %||% "center"]]
       bold_on <- if (isTRUE(t$bold)) "\\b " else ""
       bold_off <- if (isTRUE(t$bold)) "\\b0" else ""
-      content <- resolve_figure_content(label_to_plain(t$content), page_token_map)
+      content <- resolve_tokens(
+        plain_titles[[i]],
+        page_token_map,
+        "figure title"
+      )
       content <- rtf_escape(content)
       rtf_write(
         con,
@@ -492,12 +521,11 @@ render_figure_rtf <- function(spec, path) {
     }
 
     # Read PNG binary data for this page
-    png_data <- readBin(
-      tmp_plots[[pg]],
-      "raw",
-      file.info(tmp_plots[[pg]])$size
-    )
+    png_data <- readBin(tmp_plot, "raw", file.info(tmp_plot)$size)
     hex_data <- paste0(as.character(png_data), collapse = "")
+
+    # Clean up temp file immediately
+    unlink(tmp_plot)
 
     # Embedded PNG picture
     rtf_write(
@@ -521,10 +549,15 @@ render_figure_rtf <- function(spec, path) {
     # Footnotes (with per-page token resolution)
     if (length(footnotes) > 0L) {
       rtf_write(con, paste0("\\pard\\plain\\fs", fs, "\\par\n"))
-      for (fn in footnotes) {
+      for (i in seq_along(footnotes)) {
+        fn <- footnotes[[i]]
         fn_fs <- pt_to_half_pt(fn$font_size %||% page$font_size)
         align_rtf <- fr_env$align_to_rtf[[fn$align %||% "left"]]
-        content <- resolve_figure_content(label_to_plain(fn$content), page_token_map)
+        content <- resolve_tokens(
+          plain_footnotes[[i]],
+          page_token_map,
+          "figure footnote"
+        )
         content <- rtf_escape(content)
         rtf_write(
           con,
