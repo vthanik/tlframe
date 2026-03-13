@@ -212,13 +212,21 @@ compile_xelatex_doc <- function(tex_path) {
 #' @param original_msg Optional error message from tinytex (prepended).
 #' @return Does not return; always aborts via [cli::cli_abort()].
 #' @noRd
-report_latex_failure <- function(log_file, tex_path, original_msg = NULL) {
+report_latex_failure <- function(
+  log_file,
+  tex_path,
+  original_msg = NULL,
+  call = caller_env()
+) {
   if (!file.exists(log_file)) {
-    cli_abort(c(
-      original_msg %||% "XeLaTeX compilation failed.",
-      "i" = "Source file: {.path {tex_path}}",
-      "i" = "No log file found for diagnostics."
-    ))
+    cli_abort(
+      c(
+        original_msg %||% "XeLaTeX compilation failed.",
+        "i" = "Source file: {.path {tex_path}}",
+        "i" = "No log file found for diagnostics."
+      ),
+      call = call
+    )
   }
 
   log_lines <- readLines(log_file, warn = FALSE)
@@ -237,13 +245,16 @@ report_latex_failure <- function(log_file, tex_path, original_msg = NULL) {
 
   if (length(missing_pkgs) > 0L) {
     pkg_list <- paste0("{.pkg ", missing_pkgs, "}", collapse = ", ")
-    cli_abort(c(
-      original_msg %||%
-        "XeLaTeX compilation failed due to missing LaTeX packages.",
-      "x" = paste0("Missing: ", pkg_list),
-      "i" = "Install with: {.code tlframe::fr_install_latex_deps()}",
-      "i" = "Or manually: {.code tinytex::tlmgr_install({deparse(missing_pkgs)})}"
-    ))
+    cli_abort(
+      c(
+        original_msg %||%
+          "XeLaTeX compilation failed due to missing LaTeX packages.",
+        "x" = paste0("Missing: ", pkg_list),
+        "i" = "Install with: {.code tlframe::fr_install_latex_deps()}",
+        "i" = "Or manually: {.code tinytex::tlmgr_install({deparse(missing_pkgs)})}"
+      ),
+      call = call
+    )
   }
 
   # Generic failure: show log tail
@@ -254,12 +265,15 @@ report_latex_failure <- function(log_file, tex_path, original_msg = NULL) {
     fixed = TRUE,
     gsub("}", "}}", log_tail, fixed = TRUE)
   )
-  cli_abort(c(
-    original_msg %||% "XeLaTeX compilation failed.",
-    "i" = "Source file: {.path {tex_path}}",
-    "i" = "Last 20 lines of log:",
-    paste0("  ", safe_log)
-  ))
+  cli_abort(
+    c(
+      original_msg %||% "XeLaTeX compilation failed.",
+      "i" = "Source file: {.path {tex_path}}",
+      "i" = "Last 20 lines of log:",
+      paste0("  ", safe_log)
+    ),
+    call = call
+  )
 }
 
 

@@ -497,17 +497,7 @@ fr_cols <- function(
     val <- expanded_dots[[nm]]
     if (is.character(val)) {
       check_scalar_chr(val, arg = nm, call = call)
-      configured_cols[[nm]] <- structure(
-        list(
-          id = "",
-          label = val,
-          width = NULL,
-          align = NULL,
-          header_align = NULL,
-          visible = NULL
-        ),
-        class = "fr_col"
-      )
+      configured_cols[[nm]] <- fr_col(label = val)
     } else {
       check_fr_col(val, arg = nm, call = call)
       configured_cols[[nm]] <- val

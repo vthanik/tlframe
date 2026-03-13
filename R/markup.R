@@ -533,7 +533,7 @@ fr_newline <- function() new_fr_markup("NEWLINE", "")
 #' @param env Environment for glue evaluation (default: caller's environment).
 #' @return Character scalar with sentinel tokens embedded.
 #' @noRd
-eval_markup <- function(text, env = parent.frame()) {
+eval_markup <- function(text, env = caller_env()) {
   if (!is.character(text) || length(text) != 1L) {
     return(text)
   }
@@ -553,13 +553,37 @@ eval_markup <- function(text, env = parent.frame()) {
 #' @param env Environment for glue evaluation.
 #' @return Character vector with sentinels.
 #' @noRd
-eval_markup_vec <- function(texts, env = parent.frame()) {
+eval_markup_vec <- function(texts, env = caller_env()) {
   vapply(
     texts,
     function(t) eval_markup(t, env = env),
     character(1),
     USE.NAMES = FALSE
   )
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 5b. Glue-Markup Detection & Sentinel Constants
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' Detect whether a string contains {fr_*(...)} markup expressions
+#' @noRd
+has_fr_markup <- function(x) {
+  is.character(x) && length(x) == 1L && grepl("\\{fr_", x, fixed = FALSE)
+}
+
+#' Markup sentinel markers for render-time resolution
+#' @noRd
+fr_env$sentinel_start <- "\x01"
+fr_env$sentinel_end <- "\x02"
+fr_env$sentinel_pattern <- "\x01([A-Z]+):([^\x02]*)\x02"
+
+
+#' Build a markup sentinel string
+#' @noRd
+markup_sentinel <- function(type, content = "") {
+  paste0(fr_env$sentinel_start, type, ":", content, fr_env$sentinel_end)
 }
 
 

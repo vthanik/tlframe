@@ -49,7 +49,7 @@ tlframe_error <- function(message, ..., class = NULL, call = caller_env()) {
 normalise_text <- function(
   x,
   arg = "text",
-  env = parent.frame(),
+  env = caller_env(),
   call = caller_env()
 ) {
   if (!is.character(x) || length(x) != 1L) {

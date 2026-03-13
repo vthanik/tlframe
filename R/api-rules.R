@@ -3,6 +3,37 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Internal constructors
+# ──────────────────────────────────────────────────────────────────────────────
+
+#' Construct an fr_vline_spec object
+#' @noRd
+new_fr_vline_spec <- function(
+  preset,
+  cols = NULL,
+
+  width = 0.5,
+  linestyle = "solid",
+  fg = "#000000",
+  abovepos = NULL,
+  belowpos = NULL
+) {
+  structure(
+    list(
+      preset = preset,
+      cols = cols,
+      width = width,
+      linestyle = linestyle,
+      fg = fg,
+      abovepos = abovepos,
+      belowpos = belowpos
+    ),
+    class = c("fr_vline_spec", "fr_rule")
+  )
+}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Internal helpers for rule filtering
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -380,17 +411,14 @@ fr_vlines <- function(
   }
 
   new_vlines <- list(
-    structure(
-      list(
-        preset = preset,
-        cols = cols,
-        width = resolved_width,
-        linestyle = resolved_linestyle,
-        fg = resolved_color,
-        abovepos = abovepos,
-        belowpos = belowpos
-      ),
-      class = c("fr_vline_spec", "fr_rule")
+    new_fr_vline_spec(
+      preset = preset,
+      cols = cols,
+      width = resolved_width,
+      linestyle = resolved_linestyle,
+      fg = resolved_color,
+      abovepos = abovepos,
+      belowpos = belowpos
     )
   )
 

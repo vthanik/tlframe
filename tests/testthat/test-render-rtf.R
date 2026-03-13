@@ -1134,7 +1134,8 @@ test_that("rtf_page_by_rows produces merged \\trhdr row with group label", {
     fr_rows(page_by = "grp")
   spec <- tlframe:::finalize_spec(spec)
 
-  result <- tlframe:::rtf_page_by_rows(spec, spec$columns, "Group: A")
+  cellx <- tlframe:::rtf_cellx_positions(spec$columns)
+  result <- tlframe:::rtf_page_by_rows(spec, spec$columns, cellx, "Group: A")
   expect_true(grepl("\\trhdr", result, fixed = TRUE))
   expect_true(grepl("Group: A", result, fixed = TRUE))
   expect_true(grepl("\\clmgf", result, fixed = TRUE))
@@ -1150,7 +1151,8 @@ test_that("page_by with bold = TRUE uses bold formatting", {
     fr_rows(page_by = "grp", page_by_bold = TRUE)
   spec <- tlframe:::finalize_spec(spec)
 
-  result <- tlframe:::rtf_page_by_rows(spec, spec$columns, "A")
+  cellx <- tlframe:::rtf_cellx_positions(spec$columns)
+  result <- tlframe:::rtf_page_by_rows(spec, spec$columns, cellx, "A")
   expect_true(grepl("\\\\b ", result))
   expect_true(grepl("\\\\b0", result))
   expect_true(grepl("A", result, fixed = TRUE))
@@ -1175,9 +1177,11 @@ test_that("rtf_col_header_row produces \\trhdr row with all column labels", {
   color_info <- tlframe:::build_rtf_colortbl(colors)
   borders <- tlframe:::resolve_borders(spec$rules, 1L, 2L, 1L)
 
+  cellx <- tlframe:::rtf_cellx_positions(spec$columns)
   result <- tlframe:::rtf_col_header_row(
     spec,
     spec$columns,
+    cellx,
     borders,
     color_info
   )
@@ -1195,10 +1199,12 @@ test_that("rtf_col_header_row respects label_overrides", {
   color_info <- tlframe:::build_rtf_colortbl(colors)
   borders <- tlframe:::resolve_borders(spec$rules, 1L, 2L, 1L)
 
+  cellx <- tlframe:::rtf_cellx_positions(spec$columns)
   overrides <- c(a = "A (N=50)", b = "B (N=60)")
   result <- tlframe:::rtf_col_header_row(
     spec,
     spec$columns,
+    cellx,
     borders,
     color_info,
     label_overrides = overrides
@@ -1365,7 +1371,14 @@ test_that("rtf_spanner_rows returns empty when no spans", {
   color_info <- tlframe:::build_rtf_colortbl(colors)
   borders <- tlframe:::resolve_borders(spec$rules, 1L, 2L, 1L)
 
-  result <- tlframe:::rtf_spanner_rows(spec, spec$columns, borders, color_info)
+  cellx <- tlframe:::rtf_cellx_positions(spec$columns)
+  result <- tlframe:::rtf_spanner_rows(
+    spec,
+    spec$columns,
+    cellx,
+    borders,
+    color_info
+  )
   expect_equal(result, "")
 })
 
@@ -1379,7 +1392,14 @@ test_that("rtf_spanner_rows includes merged cells for span", {
   color_info <- tlframe:::build_rtf_colortbl(colors)
   borders <- tlframe:::resolve_borders(spec$rules, 1L, 3L, 2L)
 
-  result <- tlframe:::rtf_spanner_rows(spec, spec$columns, borders, color_info)
+  cellx <- tlframe:::rtf_cellx_positions(spec$columns)
+  result <- tlframe:::rtf_spanner_rows(
+    spec,
+    spec$columns,
+    cellx,
+    borders,
+    color_info
+  )
   expect_true(grepl("\\clmgf", result, fixed = TRUE))
   expect_true(grepl("\\clmrg", result, fixed = TRUE))
   expect_true(grepl("AB", result, fixed = TRUE))
@@ -1444,7 +1464,14 @@ test_that("rtf_footnote_rows returns empty for no entries", {
   colors <- tlframe:::collect_colors(spec)
   color_info <- tlframe:::build_rtf_colortbl(colors)
 
-  result <- tlframe:::rtf_footnote_rows(spec, spec$columns, list(), color_info)
+  cellx <- tlframe:::rtf_cellx_positions(spec$columns)
+  result <- tlframe:::rtf_footnote_rows(
+    spec,
+    spec$columns,
+    cellx,
+    list(),
+    color_info
+  )
   expect_equal(result, "")
 })
 

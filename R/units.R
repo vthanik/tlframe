@@ -51,11 +51,6 @@ pt_to_twips <- function(pt) as.integer(round(pt * 20))
 # All values in twips (1pt = 20 twips).
 # ══════════════════════════════════════════════════════════════════════════════
 
-#' Baseline skip multiplier (from LaTeX Companion / Word default)
-#' Single spacing = 1.2 * font_size
-#' @noRd
-fr_env$baseline_ratio <- 1.2
-
 #' Calculate row height in twips
 #'
 #' Uses the LaTeX Companion formula adapted for RTF:

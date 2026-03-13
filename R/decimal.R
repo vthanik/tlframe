@@ -18,51 +18,92 @@
 # 1. Type Detection (vectorized)
 # ══════════════════════════════════════════════════════════════════════════════
 
-#' Stat display type patterns
+#' Stat type registry -- single source of truth for all type metadata
 #'
 #' ORDER MATTERS: most specific patterns first to avoid false matches.
 #' E.g. `est_ci` (has comma inside parens) must precede `est_spread`
 #' (parens without comma), which must precede `n_pct`.
 #' @noRd
-stat_type_patterns <- c(
-  missing = "^\\s*$|^[-\u2014\u2013]{1,3}$|^(NA|NE|NC|ND|NR)$",
-  n_over_N_pct = "^\\s*\\d+\\s*/\\s*\\d+\\s*\\(\\s*[<>]?\\d+\\.?\\d*\\s*%?\\s*\\)\\s*$",
-  est_ci = "^\\s*-?\\d+\\.?\\d*\\s*\\(\\s*-?\\d+\\.?\\d*\\s*,\\s*-?\\d+\\.?\\d*\\s*\\)\\s*$",
-  n_pct = "^\\s*\\d+\\s*\\(\\s*[<>]?\\d+\\.?\\d*\\s*%?\\s*\\)\\s*$",
-  est_spread = "^\\s*-?\\d+\\.?\\d*\\s*\\(\\s*-?\\d+\\.?\\d*\\s*\\)\\s*$",
-  int_range = "^\\s*\\d+\\s+[-\u2013\u2014]\\s+\\d+\\s*$",
-  range_pair = "^\\s*-?\\d+\\.?\\d*\\s*,\\s*-?\\d+\\.?\\d*\\s*$",
-  pvalue = "^\\s*[<>=]\\d+\\.\\d+\\s*$",
-  scalar_float = "^\\s*-?\\d+\\.\\d+\\s*$",
-  n_only = "^\\s*\\d+\\s*$"
+stat_type_registry <- list(
+  missing = list(
+    pattern = "^\\s*$|^[-\u2014\u2013]{1,3}$|^(NA|NE|NC|ND|NR)$",
+    family = "missing",
+    richness = 0L
+  ),
+  n_over_N_pct = list(
+    pattern = "^\\s*\\d+\\s*/\\s*\\d+\\s*\\(\\s*[<>]?\\d+\\.?\\d*\\s*%?\\s*\\)\\s*$",
+    family = "count",
+    richness = 3L
+  ),
+  est_ci = list(
+    pattern = "^\\s*-?\\d+\\.?\\d*\\s*\\(\\s*-?\\d+\\.?\\d*\\s*,\\s*-?\\d+\\.?\\d*\\s*\\)\\s*$",
+    family = "estimate",
+    richness = 2L
+  ),
+  n_pct = list(
+    pattern = "^\\s*\\d+\\s*\\(\\s*[<>]?\\d+\\.?\\d*\\s*%?\\s*\\)\\s*$",
+    family = "count",
+    richness = 2L
+  ),
+  est_spread = list(
+    pattern = "^\\s*-?\\d+\\.?\\d*\\s*\\(\\s*-?\\d+\\.?\\d*\\s*\\)\\s*$",
+    family = "estimate",
+    richness = 1L
+  ),
+  int_range = list(
+    pattern = "^\\s*\\d+\\s+[-\u2013\u2014]\\s+\\d+\\s*$",
+    family = "range",
+    richness = 2L
+  ),
+  range_pair = list(
+    pattern = "^\\s*-?\\d+\\.?\\d*\\s*,\\s*-?\\d+\\.?\\d*\\s*$",
+    family = "range",
+    richness = 1L
+  ),
+  pvalue = list(
+    pattern = "^\\s*[<>=]\\d+\\.\\d+\\s*$",
+    family = "float",
+    richness = 2L
+  ),
+  scalar_float = list(
+    pattern = "^\\s*-?\\d+\\.\\d+\\s*$",
+    family = "float",
+    richness = 1L
+  ),
+  n_only = list(
+    pattern = "^\\s*\\d+\\s*$",
+    family = "count",
+    richness = 1L
+  )
 )
 
-#' Type family membership for family-aware dominant type selection
+#' Derived lookup vectors from stat_type_registry
 #' @noRd
-stat_type_family <- c(
-  n_only = "count",
-  n_pct = "count",
-  n_over_N_pct = "count",
-  scalar_float = "float",
-  pvalue = "float",
-  est_spread = "estimate",
-  est_ci = "estimate",
-  range_pair = "range",
-  int_range = "range"
+stat_type_patterns <- vapply(
+  stat_type_registry,
+  `[[`,
+  character(1),
+  "pattern"
 )
 
-#' Richness rank within each family (higher = more complex structure)
 #' @noRd
-stat_type_richness <- c(
-  n_only = 1L,
-  n_pct = 2L,
-  n_over_N_pct = 3L,
-  scalar_float = 1L,
-  pvalue = 2L,
-  est_spread = 1L,
-  est_ci = 2L,
-  range_pair = 1L,
-  int_range = 2L
+stat_type_family <- vapply(
+  stat_type_registry,
+  `[[`,
+  character(1),
+  "family"
+)
+# Remove types without a meaningful family (missing)
+stat_type_family <- stat_type_family[
+  !stat_type_family %in% "missing"
+]
+
+#' @noRd
+stat_type_richness <- vapply(
+  stat_type_registry,
+  `[[`,
+  integer(1),
+  "richness"
 )
 
 #' Tie-breaker priority across families (estimate > range > count > float)
@@ -263,6 +304,263 @@ parse_stat_value <- function(value, type_name) {
     # Fallback for unknown types
     list(type = "unknown", raw = value)
   )
+}
+
+
+#' Batch-parse stat values by type (vectorized regex)
+#'
+#' Groups rows by detected type, applies `stri_match_first_regex()` once per
+#' type group (instead of once per row). Returns a list of named lists with
+#' the same structure as `parse_stat_value()`.
+#'
+#' @param values Character vector of trimmed cell values.
+#' @param types Character vector of detected types (same length as values).
+#' @return List of named lists (same length as values).
+#' @noRd
+parse_stat_values_batch <- function(values, types) {
+  n <- length(values)
+  parsed <- vector("list", n)
+
+  for (tp in unique(types)) {
+    idx <- which(types == tp)
+    vals <- values[idx]
+    k <- length(idx)
+
+    batch <- switch(
+      tp,
+
+      missing = lapply(vals, function(v) list(type = "missing", raw = v)),
+
+      n_only = lapply(vals, function(v) list(type = "n_only", n = v, raw = v)),
+
+      scalar_float = {
+        m <- stringi::stri_match_first_regex(vals, "^(-?)(\\d+)\\.(\\d+)$")
+        mapply(
+          function(sign, int, dec, raw) {
+            list(
+              type = "scalar_float",
+              sign = sign,
+              int = int,
+              dec = dec,
+              raw = raw
+            )
+          },
+          m[, 2],
+          m[, 3],
+          m[, 4],
+          vals,
+          SIMPLIFY = FALSE,
+          USE.NAMES = FALSE
+        )
+      },
+
+      pvalue = {
+        m <- stringi::stri_match_first_regex(vals, "^([<>=])(\\d+)\\.(\\d+)$")
+        mapply(
+          function(prefix, int, dec, raw) {
+            list(
+              type = "pvalue",
+              prefix = prefix,
+              int = int,
+              dec = dec,
+              raw = raw
+            )
+          },
+          m[, 2],
+          m[, 3],
+          m[, 4],
+          vals,
+          SIMPLIFY = FALSE,
+          USE.NAMES = FALSE
+        )
+      },
+
+      n_pct = {
+        m <- stringi::stri_match_first_regex(
+          vals,
+          "^(\\d+)\\s*\\(\\s*([<>]?)(\\d+)\\.?(\\d*)\\s*(%?)\\s*\\)$"
+        )
+        mapply(
+          function(n_val, pct_prefix, pct_int, pct_dec, pct_sign, raw) {
+            list(
+              type = "n_pct",
+              n = n_val,
+              pct_prefix = pct_prefix,
+              pct_int = pct_int,
+              pct_dec = pct_dec,
+              pct_sign = pct_sign,
+              raw = raw
+            )
+          },
+          m[, 2],
+          m[, 3],
+          m[, 4],
+          m[, 5],
+          m[, 6],
+          vals,
+          SIMPLIFY = FALSE,
+          USE.NAMES = FALSE
+        )
+      },
+
+      n_over_N_pct = {
+        m <- stringi::stri_match_first_regex(
+          vals,
+          "^(\\d+)\\s*/\\s*(\\d+)\\s*\\(\\s*([<>]?)(\\d+)\\.?(\\d*)\\s*(%?)\\s*\\)$"
+        )
+        mapply(
+          function(num, den, pct_prefix, pct_int, pct_dec, pct_sign, raw) {
+            list(
+              type = "n_over_N_pct",
+              num = num,
+              den = den,
+              pct_prefix = pct_prefix,
+              pct_int = pct_int,
+              pct_dec = pct_dec,
+              pct_sign = pct_sign,
+              raw = raw
+            )
+          },
+          m[, 2],
+          m[, 3],
+          m[, 4],
+          m[, 5],
+          m[, 6],
+          m[, 7],
+          vals,
+          SIMPLIFY = FALSE,
+          USE.NAMES = FALSE
+        )
+      },
+
+      est_spread = {
+        m <- stringi::stri_match_first_regex(
+          vals,
+          "^(-?)(\\d+)\\.?(\\d*)\\s*\\(\\s*(-?)(\\d+)\\.?(\\d*)\\s*\\)$"
+        )
+        mapply(
+          function(es, ei, ed, ss, si, sd, raw) {
+            list(
+              type = "est_spread",
+              est_sign = es,
+              est_int = ei,
+              est_dec = ed,
+              sprd_sign = ss,
+              sprd_int = si,
+              sprd_dec = sd,
+              raw = raw
+            )
+          },
+          m[, 2],
+          m[, 3],
+          m[, 4],
+          m[, 5],
+          m[, 6],
+          m[, 7],
+          vals,
+          SIMPLIFY = FALSE,
+          USE.NAMES = FALSE
+        )
+      },
+
+      est_ci = {
+        m <- stringi::stri_match_first_regex(
+          vals,
+          "^(-?)(\\d+)\\.?(\\d*)\\s*\\(\\s*(-?)(\\d+)\\.?(\\d*)\\s*,\\s*(-?)(\\d+)\\.?(\\d*)\\s*\\)$"
+        )
+        mapply(
+          function(es, ei, ed, ls, li, ld, hs, hi, hd, raw) {
+            list(
+              type = "est_ci",
+              est_sign = es,
+              est_int = ei,
+              est_dec = ed,
+              lo_sign = ls,
+              lo_int = li,
+              lo_dec = ld,
+              hi_sign = hs,
+              hi_int = hi,
+              hi_dec = hd,
+              raw = raw
+            )
+          },
+          m[, 2],
+          m[, 3],
+          m[, 4],
+          m[, 5],
+          m[, 6],
+          m[, 7],
+          m[, 8],
+          m[, 9],
+          m[, 10],
+          vals,
+          SIMPLIFY = FALSE,
+          USE.NAMES = FALSE
+        )
+      },
+
+      range_pair = {
+        m <- stringi::stri_match_first_regex(
+          vals,
+          "^(-?)(\\d+)\\.?(\\d*)\\s*,\\s*(-?)(\\d+)\\.?(\\d*)$"
+        )
+        mapply(
+          function(ls, li, ld, rs, ri, rd, raw) {
+            list(
+              type = "range_pair",
+              l_sign = ls,
+              l_int = li,
+              l_dec = ld,
+              r_sign = rs,
+              r_int = ri,
+              r_dec = rd,
+              raw = raw
+            )
+          },
+          m[, 2],
+          m[, 3],
+          m[, 4],
+          m[, 5],
+          m[, 6],
+          m[, 7],
+          vals,
+          SIMPLIFY = FALSE,
+          USE.NAMES = FALSE
+        )
+      },
+
+      int_range = {
+        m <- stringi::stri_match_first_regex(
+          vals,
+          "^(\\d+)\\s+([-\u2013\u2014])\\s+(\\d+)$"
+        )
+        mapply(
+          function(left, sep, right, raw) {
+            list(
+              type = "int_range",
+              left = left,
+              sep = sep,
+              right = right,
+              raw = raw
+            )
+          },
+          m[, 2],
+          m[, 3],
+          m[, 4],
+          vals,
+          SIMPLIFY = FALSE,
+          USE.NAMES = FALSE
+        )
+      },
+
+      # unknown fallback
+      lapply(vals, function(v) list(type = "unknown", raw = v))
+    )
+
+    parsed[idx] <- batch
+  }
+
+  parsed
 }
 
 
@@ -831,15 +1129,8 @@ align_decimal_column <- function(content_vec) {
   family_types <- unique(non_skip[families == dominant_family])
   dominant_type <- family_types[which.max(stat_type_richness[family_types])]
 
-  # Parse all values
-  parsed_values <- vector("list", n)
-  for (i in seq_len(n)) {
-    if (types[i] %in% c("missing", "unknown")) {
-      parsed_values[[i]] <- list(type = types[i], raw = content_vec[i])
-    } else {
-      parsed_values[[i]] <- parse_stat_value(content_vec[i], types[i])
-    }
-  }
+  # Parse all values (vectorized per-type batch)
+  parsed_values <- parse_stat_values_batch(content_vec, types)
 
   # Compute column-wide widths from dominant type values
   widths <- compute_stat_widths(parsed_values, dominant_type)
