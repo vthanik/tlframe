@@ -386,13 +386,21 @@ paginate_rows <- function(
       }
     }
 
-    # Defer trailing blank (if it exists between groups)
-    if (g_end < nr && is_blank[g_end + 1L]) {
-      pending_blank_idx <- g_end + 1L
-      pending_blank_height <- row_heights[g_end + 1L]
-    } else {
-      pending_blank_idx <- NULL
-      pending_blank_height <- 0L
+    # Defer trailing blanks (between groups or at end of data)
+    # Capture ALL consecutive blank rows after the group, not just the first
+    pending_blank_idx <- NULL
+    pending_blank_height <- 0L
+    trail <- g_end + 1L
+    while (trail <= nr && is_blank[trail]) {
+      if (is.null(pending_blank_idx)) {
+        # Only the first blank is "deferred" for budget calculation
+        pending_blank_idx <- trail
+        pending_blank_height <- row_heights[trail]
+      } else {
+        # Additional trailing blanks are always suppressed
+        skip_rows_list[[length(skip_rows_list) + 1L]] <- trail
+      }
+      trail <- trail + 1L
     }
   }
 

@@ -1192,7 +1192,7 @@ latex_border_specs <- function(borders, nr, nc, nrow_header) {
           }
           tblr_row <- nrow_header + 1L
           # Only add if not already covered by header bottom
-          if (!any(grepl(paste0("hline\\{", tblr_row, "\\}"), specs))) {
+          if (!any(grepl(paste0("^hline\\{", tblr_row, "\\}"), specs))) {
             specs <- c(
               specs,
               paste0(

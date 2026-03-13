@@ -303,12 +303,24 @@ test_that("fr_rows sets page_by", {
 })
 
 test_that("fr_rows sets all body options", {
-  spec <- fr_table(df_ae) |>
-    fr_rows(
-      page_by = "AEBODSYS",
-      group_by = "AEBODSYS",
-      blank_after = "AEBODSYS"
-    )
+  # page_by == group_by warns but still stores values
+  expect_warning(
+    fr_table(df_ae) |>
+      fr_rows(
+        page_by = "AEBODSYS",
+        group_by = "AEBODSYS",
+        blank_after = "AEBODSYS"
+      ),
+    "page_by.*group_by.*share"
+  )
+  spec <- suppressWarnings(
+    fr_table(df_ae) |>
+      fr_rows(
+        page_by = "AEBODSYS",
+        group_by = "AEBODSYS",
+        blank_after = "AEBODSYS"
+      )
+  )
   expect_equal(spec$body$page_by, "AEBODSYS")
   expect_equal(spec$body$group_by, "AEBODSYS")
   expect_equal(spec$body$blank_after, "AEBODSYS")

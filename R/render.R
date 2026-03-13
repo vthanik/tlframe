@@ -434,6 +434,18 @@ finalize_spec <- function(spec) {
     }
   }
 
+  # Warn if continuation is set but no pagination is configured
+  if (
+    !is.null(spec$page$continuation) &&
+      length(spec$body$page_by) == 0L &&
+      length(spec$body$group_by) == 0L
+  ) {
+    cli::cli_warn(c(
+      "{.arg continuation} label is set but neither {.arg page_by} nor {.arg group_by} is configured.",
+      "i" = "The continuation label only appears on multi-page tables with pagination via {.fn fr_rows}."
+    ))
+  }
+
   # Pre-compute decimal alignment geometry (used by both RTF and LaTeX)
   spec$decimal_geometry <- compute_all_decimal_geometry(spec)
 

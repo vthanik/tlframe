@@ -934,11 +934,30 @@ resolve_borders <- function(rules, nrow_body, ncol, nrow_header = 1L) {
   h_left <- matrix(list(NULL), nrow = nrow_header, ncol = ncol)
   h_right <- matrix(list(NULL), nrow = nrow_header, ncol = ncol)
 
+  # Empty table: return header-only borders (no body rows to process)
+  if (nrow_body == 0L) {
+    empty_body <- list(
+      top = matrix(list(NULL), nrow = 0L, ncol = ncol),
+      bottom = matrix(list(NULL), nrow = 0L, ncol = ncol),
+      left = matrix(list(NULL), nrow = 0L, ncol = ncol),
+      right = matrix(list(NULL), nrow = 0L, ncol = ncol)
+    )
+    return(list(
+      header = list(
+        top = h_top,
+        bottom = h_bottom,
+        left = h_left,
+        right = h_right
+      ),
+      body = empty_body
+    ))
+  }
+
   # Body borders
-  b_top <- matrix(list(NULL), nrow = max(1L, nrow_body), ncol = ncol)
-  b_bottom <- matrix(list(NULL), nrow = max(1L, nrow_body), ncol = ncol)
-  b_left <- matrix(list(NULL), nrow = max(1L, nrow_body), ncol = ncol)
-  b_right <- matrix(list(NULL), nrow = max(1L, nrow_body), ncol = ncol)
+  b_top <- matrix(list(NULL), nrow = nrow_body, ncol = ncol)
+  b_bottom <- matrix(list(NULL), nrow = nrow_body, ncol = ncol)
+  b_left <- matrix(list(NULL), nrow = nrow_body, ncol = ncol)
+  b_right <- matrix(list(NULL), nrow = nrow_body, ncol = ncol)
 
   border_spec <- function(width, linestyle, fg) {
     list(width = width, linestyle = linestyle, fg = fg)
@@ -957,8 +976,8 @@ resolve_borders <- function(rules, nrow_body, ncol, nrow_header = 1L) {
       # Left and right edges
       h_left[seq_len(nrow_header), 1L] <- list(bs)
       h_right[seq_len(nrow_header), ncol] <- list(bs)
-      b_left[seq_len(max(1L, nrow_body)), 1L] <- list(bs)
-      b_right[seq_len(max(1L, nrow_body)), ncol] <- list(bs)
+      b_left[seq_len(nrow_body), 1L] <- list(bs)
+      b_right[seq_len(nrow_body), ncol] <- list(bs)
       next
     }
 
@@ -980,7 +999,7 @@ resolve_borders <- function(rules, nrow_body, ncol, nrow_header = 1L) {
       }
 
       h_rows <- seq_len(nrow_header)
-      b_rows <- seq_len(max(1L, nrow_body))
+      b_rows <- seq_len(nrow_body)
       for (g in gaps) {
         if (g == 0L) {
           # Left edge
@@ -1204,8 +1223,13 @@ escape_and_resolve <- function(text, escape_fn, resolver_fn) {
         sentinels[i],
         regexec(pattern, sentinels[i], perl = TRUE)
       )[[1L]]
-      resolved <- resolver_fn(tok_parts[[2L]], tok_parts[[3L]])
-      parts <- c(parts, resolved)
+      if (length(tok_parts) >= 3L) {
+        resolved <- resolver_fn(tok_parts[[2L]], tok_parts[[3L]])
+        parts <- c(parts, resolved)
+      } else {
+        # Malformed sentinel: pass through unresolved
+        parts <- c(parts, escape_fn(sentinels[i]))
+      }
     }
   }
 
