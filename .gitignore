@@ -19,6 +19,7 @@ screenshots/
 
 # Claude Code config (local only)
 .claude/
+.claudeignore
 CLAUDE.md
 BACKEND.md
 
