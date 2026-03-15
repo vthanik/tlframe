@@ -730,8 +730,10 @@ test_that("rtf_preamble uses font family from spec", {
   color_info <- arframe:::build_rtf_colortbl(colors)
 
   result <- arframe:::rtf_preamble(spec, color_info)
-  expect_true(grepl("Courier New", result, fixed = TRUE))
-  # Courier is fmodern, fixed pitch (prq2)
+  # Font may fall back on systems without Courier New (e.g. bare Linux)
+  resolved <- arframe:::resolve_rtf_font("Courier New")
+  expect_true(grepl(resolved, result, fixed = TRUE))
+  # Resolved font should be mono family (fmodern) with fixed pitch
   expect_true(grepl("fmodern", result, fixed = TRUE))
   expect_true(grepl("fprq1", result, fixed = TRUE))
 })
