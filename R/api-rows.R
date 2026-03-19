@@ -61,10 +61,19 @@
 #'   the grouping column already appears in the table body.
 #' @param group_label Character scalar. Column name into which group header
 #'   values are injected. When `group_by` and `group_label` are both set,
-#'   a header row is inserted at the start of each group: the group value
-#'   appears in the `group_label` column, all other columns are empty, and
-#'   detail rows are indented underneath. Style the header rows via
-#'   [fr_styles()] (e.g., bold). Requires `group_by`.
+#'   a **header row** is inserted at the start of each group: the group's
+#'   value (from `group_by`) appears in the `group_label` column, all other
+#'   columns are empty, and detail rows are indented underneath.
+#'
+#'   When `group_label` is set and `indent_by` is not, `indent_by` is
+#'   **automatically inferred** from `group_label` — so you only need:
+#'   ```r
+#'   fr_rows(group_by = "group", group_label = "stat")
+#'   # indent_by = "stat" is implied — detail rows auto-indented
+#'   ```
+#'
+#'   Style the injected header rows via [fr_styles()] (e.g., bold).
+#'   Requires `group_by`.
 #' @param group_keep Logical. Whether `group_by` groups are kept together
 #'   on the same page via RTF `\keepn` / LaTeX keep-with-next. Default
 #'   `TRUE`. Set `FALSE` for visual-only grouping (blank_after, indent)
@@ -175,8 +184,20 @@
 #'     )
 #'   )
 #'
-#' ## ── group_label: auto-inject group headers into display column ──────
-#' ## When group and display data are in separate columns
+#' ## ── group_label: auto-inject group headers ─────────────────────────
+#' ## group_label creates header rows from group_by values.
+#' ## indent_by is auto-inferred — no need to specify both.
+#' ##
+#' ## Result:
+#' ##   stat           value
+#' ##   Sex                       <- header row (from group column)
+#' ##     Female       27 (60.0)  <- indented detail
+#' ##     Male         18 (40.0)  <- indented detail
+#' ##
+#' ##   Age                       <- header row
+#' ##     Mean (SD)    75.0 (6.8) <- indented detail
+#' ##     Median       74.0
+#' ##     Min, Max     65, 88
 #'
 #' data.frame(
 #'   group = c("Sex", "Sex", "Age", "Age", "Age"),
@@ -188,8 +209,7 @@
 #'   fr_cols(group = fr_col(visible = FALSE)) |>
 #'   fr_rows(
 #'     group_by    = "group",
-#'     group_label = "stat",
-#'     indent_by   = "stat"
+#'     group_label = "stat"
 #'   )
 #'
 #' ## ── sort_by: order a listing by subject and start date ────────────────
@@ -423,10 +443,20 @@ fr_rows <- function(
 
   old <- spec$body
 
+  # Auto-infer indent_by from group_label when not explicitly set.
+  # group_label inserts header rows — detail rows should be indented under them.
+  effective_indent <- validate_indent_by(indent_by) %||% old$indent_by
+  effective_gl <- if (!missing(group_label)) group_label else old$group_label
+  indent_not_set <- is.null(effective_indent) ||
+    (is.character(effective_indent) && length(effective_indent) == 0L)
+  if (indent_not_set && !is.null(effective_gl)) {
+    effective_indent <- effective_gl
+  }
+
   spec$body <- new_fr_body(
     page_by = validate_cols(page_by, "page_by") %||% old$page_by,
     group_by = validate_cols(group_by, "group_by") %||% old$group_by,
-    indent_by = validate_indent_by(indent_by) %||% old$indent_by,
+    indent_by = effective_indent,
     blank_after = validate_cols(blank_after, "blank_after") %||%
       old$blank_after,
     page_by_bold = if (!missing(page_by_bold)) {

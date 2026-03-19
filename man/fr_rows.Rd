@@ -69,10 +69,19 @@ the grouping column already appears in the table body.}
 
 \item{group_label}{Character scalar. Column name into which group header
 values are injected. When \code{group_by} and \code{group_label} are both set,
-a header row is inserted at the start of each group: the group value
-appears in the \code{group_label} column, all other columns are empty, and
-detail rows are indented underneath. Style the header rows via
-\code{\link[=fr_styles]{fr_styles()}} (e.g., bold). Requires \code{group_by}.}
+a \strong{header row} is inserted at the start of each group: the group's
+value (from \code{group_by}) appears in the \code{group_label} column, all other
+columns are empty, and detail rows are indented underneath.
+
+When \code{group_label} is set and \code{indent_by} is not, \code{indent_by} is
+\strong{automatically inferred} from \code{group_label} — so you only need:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{fr_rows(group_by = "group", group_label = "stat")
+# indent_by = "stat" is implied — detail rows auto-indented
+}\if{html}{\out{</div>}}
+
+Style the injected header rows via \code{\link[=fr_styles]{fr_styles()}} (e.g., bold).
+Requires \code{group_by}.}
 
 \item{group_keep}{Logical. Whether \code{group_by} groups are kept together
 on the same page via RTF \verb{\\keepn} / LaTeX keep-with-next. Default
@@ -227,8 +236,20 @@ spec <- data.frame(
     )
   )
 
-## ── group_label: auto-inject group headers into display column ──────
-## When group and display data are in separate columns
+## ── group_label: auto-inject group headers ─────────────────────────
+## group_label creates header rows from group_by values.
+## indent_by is auto-inferred — no need to specify both.
+##
+## Result:
+##   stat           value
+##   Sex                       <- header row (from group column)
+##     Female       27 (60.0)  <- indented detail
+##     Male         18 (40.0)  <- indented detail
+##
+##   Age                       <- header row
+##     Mean (SD)    75.0 (6.8) <- indented detail
+##     Median       74.0
+##     Min, Max     65, 88
 
 data.frame(
   group = c("Sex", "Sex", "Age", "Age", "Age"),
@@ -240,8 +261,7 @@ data.frame(
   fr_cols(group = fr_col(visible = FALSE)) |>
   fr_rows(
     group_by    = "group",
-    group_label = "stat",
-    indent_by   = "stat"
+    group_label = "stat"
   )
 
 ## ── sort_by: order a listing by subject and start date ────────────────
