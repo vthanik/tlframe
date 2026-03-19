@@ -229,8 +229,24 @@ html_embedded_css <- function(spec, viewer = FALSE, knitr = FALSE) {
   mt <- page$margins$top
   mb <- page$margins$bottom
 
-  # Line height calculation: slightly tighter for monospace data
-  lh <- "1.35"
+  # Line height — proportional fonts benefit from slightly more breathing room
+  fam <- classify_font_family(font_family)
+  lh <- if (fam == "modern") "1.35" else "1.45"
+
+  # Convert user spacing settings (blank-line counts) to em units
+  lh_num <- as.numeric(lh)
+  sp_titles_after <- round((spec$spacing$titles_after %||% 1L) * lh_num, 2)
+  sp_fn_before <- round((spec$spacing$footnotes_before %||% 1L) * lh_num, 2)
+  sp_pagehead_after <- round((spec$spacing$pagehead_after %||% 0L) * lh_num, 2)
+  sp_pagefoot_before <- round(
+    (spec$spacing$pagefoot_before %||% 0L) * lh_num,
+    2
+  )
+  sp_page_by_after <- round((spec$spacing$page_by_after %||% 1L) * lh_num, 2)
+
+  # col_gap: half applied to each side of every cell (matches RTF)
+  col_gap <- page$col_gap %||% 4L
+  cell_pad_lr <- round(col_gap / 2, 1)
 
   # Printable content width (used for viewer/knitr fixed-width layout)
   printable <- printable_area_inches(page)
@@ -275,9 +291,9 @@ html_embedded_css <- function(spec, viewer = FALSE, knitr = FALSE) {
   } else {
     body_css <- paste0(
       "body {\n",
-      "  background: #edf2f7;\n",
+      "  background: #f1f5f9;\n",
       "  margin: 0;\n",
-      "  padding: 40px 20px;\n",
+      "  padding: 48px 24px;\n",
       "  -webkit-font-smoothing: antialiased;\n",
       "  -moz-osx-font-smoothing: grayscale;\n",
       "}\n"
@@ -301,8 +317,8 @@ html_embedded_css <- function(spec, viewer = FALSE, knitr = FALSE) {
       ml,
       "in;\n",
       "  background: #ffffff;\n",
-      "  box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.04);\n",
-      "  border-radius: 2px;\n",
+      "  box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.05);\n",
+      "  border-radius: 4px;\n",
       "  display: flex;\n",
       "  flex-direction: column;\n"
     )
@@ -319,7 +335,7 @@ html_embedded_css <- function(spec, viewer = FALSE, knitr = FALSE) {
     "  font-size: ",
     font_size,
     "pt;\n",
-    "  color: #1a202c;\n",
+    "  color: #1e293b;\n",
     "  line-height: ",
     lh,
     ";\n",
@@ -330,11 +346,14 @@ html_embedded_css <- function(spec, viewer = FALSE, knitr = FALSE) {
     "  display: flex;\n",
     "  justify-content: space-between;\n",
     "  align-items: flex-end;\n",
-    "  color: #718096;\n",
+    "  color: #94a3b8;\n",
     "  font-size: ",
     max(font_size - 1, 6),
     "pt;\n",
-    "  padding: 0 0 4px 0;\n",
+    "  padding-bottom: ",
+    sp_pagehead_after,
+    "em;\n",
+    "  letter-spacing: 0.01em;\n",
     "}\n",
     ".ar-chrome-left { text-align: left; }\n",
     ".ar-chrome-center { text-align: center; flex: 1; }\n",
@@ -342,12 +361,15 @@ html_embedded_css <- function(spec, viewer = FALSE, knitr = FALSE) {
 
     # ── Titles ──
     ".ar-titles {\n",
-    "  margin-bottom: 0.4em;\n",
+    "  margin-bottom: ",
+    sp_titles_after,
+    "em;\n",
     "}\n",
     ".ar-title {\n",
     "  margin: 0;\n",
-    "  padding: 1px 0;\n",
-    "  line-height: 1.4;\n",
+    "  padding: 2px 0;\n",
+    "  line-height: 1.5;\n",
+    "  color: #0f172a;\n",
     "}\n",
 
     # ── Table ──
@@ -356,17 +378,23 @@ html_embedded_css <- function(spec, viewer = FALSE, knitr = FALSE) {
     "  table-layout: fixed;\n",
     "  width: 100%;\n",
     "  font-variant-numeric: tabular-nums;\n",
+    "  color: #1e293b;\n",
     "}\n",
     ".ar-table thead th {\n",
     "  font-weight: 600;\n",
     "  vertical-align: bottom;\n",
-    "  padding: 3px 4px;\n",
+    "  padding: 4px ",
+    cell_pad_lr,
+    "pt;\n",
     "  white-space: pre-wrap;\n",
     "  word-wrap: break-word;\n",
+    "  color: #0f172a;\n",
     "}\n",
     ".ar-table tbody td {\n",
     "  vertical-align: top;\n",
-    "  padding: 1.5px 4px;\n",
+    "  padding: 2px ",
+    cell_pad_lr,
+    "pt;\n",
     "  white-space: pre-wrap;\n",
     "  word-wrap: break-word;\n",
     "}\n",
@@ -379,23 +407,30 @@ html_embedded_css <- function(spec, viewer = FALSE, knitr = FALSE) {
     # ── Page-by Labels ──
     ".ar-page-by {\n",
     "  font-weight: 600;\n",
-    "  padding: 4px 0;\n",
-    "  margin-bottom: 0.3em;\n",
+    "  padding: 2px 0;\n",
+    "  margin-bottom: ",
+    sp_page_by_after,
+    "em;\n",
     "}\n",
 
     # ── Footnotes ──
     ".ar-footnotes {\n",
-    "  margin-top: 0.4em;\n",
+    "  margin-top: ",
+    sp_fn_before,
+    "em;\n",
     "}\n",
     ".ar-fn-sep {\n",
     "  border: none;\n",
-    "  border-top: 0.5pt solid #a0aec0;\n",
+    "  border-top: 0.5pt solid #cbd5e1;\n",
     "  margin: 4px 0;\n",
     "}\n",
     ".ar-footnote {\n",
     "  margin: 0;\n",
     "  padding: 1px 0;\n",
-    "  color: #4a5568;\n",
+    "  color: #64748b;\n",
+    "  font-size: ",
+    max(font_size - 1, 6),
+    "pt;\n",
     "}\n",
 
     # ── Section Layout ──
@@ -406,14 +441,16 @@ html_embedded_css <- function(spec, viewer = FALSE, knitr = FALSE) {
     "}\n",
     ".ar-chrome-foot {\n",
     "  margin-top: auto;\n",
-    "  padding-top: 0.5in;\n",
+    "  padding-top: ",
+    sp_pagefoot_before,
+    "em;\n",
     "}\n",
 
     # ── Section Breaks ──
     ".ar-section + .ar-section {\n",
-    "  margin-top: 32px;\n",
-    "  padding-top: 24px;\n",
-    "  border-top: 1.5px dashed #cbd5e0;\n",
+    "  margin-top: 36px;\n",
+    "  padding-top: 28px;\n",
+    "  border-top: 1px solid #e2e8f0;\n",
     "}\n",
 
     # ── Print ──
@@ -458,28 +495,29 @@ html_embedded_css <- function(spec, viewer = FALSE, knitr = FALSE) {
 html_font_stack <- function(font_family) {
   fam_info <- classify_font_family(font_family)
 
-  if (fam_info == "modern") {
-    paste0(
-      "\"",
-      font_family,
-      "\", ",
-      "\"Courier New\", \"Source Code Pro\", monospace"
-    )
-  } else if (fam_info == "swiss") {
-    paste0(
-      "\"",
-      font_family,
-      "\", ",
-      "Calibri, Arial, \"Source Sans 3\", sans-serif"
-    )
-  } else {
-    paste0(
-      "\"",
-      font_family,
-      "\", ",
-      "\"Times New Roman\", \"Source Serif 4\", serif"
-    )
+  # Build fallback chain, skipping the requested font to avoid duplicates
+  quote_font <- function(f) {
+    if (grepl(" ", f, fixed = TRUE)) paste0("\"", f, "\"") else f
   }
+
+  if (fam_info == "modern") {
+    fallbacks <- c("Courier New", "Source Code Pro")
+    generic <- "monospace"
+  } else if (fam_info == "swiss") {
+    fallbacks <- c("Calibri", "Arial", "Source Sans 3")
+    generic <- "sans-serif"
+  } else {
+    fallbacks <- c("Times New Roman", "Source Serif 4")
+    generic <- "serif"
+  }
+
+  # Remove duplicates (e.g., font_family = "Times New Roman" is already in fallbacks)
+  fallbacks <- setdiff(fallbacks, font_family)
+  all_fonts <- c(
+    quote_font(font_family),
+    vapply(fallbacks, quote_font, character(1))
+  )
+  paste0(c(all_fonts, generic), collapse = ", ")
 }
 
 
@@ -1117,7 +1155,23 @@ html_chrome_div <- function(chrome, spec, token_map, context) {
     gsub("\n", "<br>", txt, fixed = TRUE)
   }
 
-  bold_style <- if (isTRUE(chrome$bold)) " style=\"font-weight:bold\"" else ""
+  # Build inline style for bold + custom font_size
+  chrome_style_parts <- character(0)
+  if (isTRUE(chrome$bold)) {
+    chrome_style_parts <- c(chrome_style_parts, "font-weight:bold")
+  }
+  chrome_fs <- chrome$font_size
+  if (!is.null(chrome_fs) && chrome_fs != spec$page$font_size) {
+    chrome_style_parts <- c(
+      chrome_style_parts,
+      paste0("font-size:", chrome_fs, "pt")
+    )
+  }
+  chrome_style <- if (length(chrome_style_parts) > 0L) {
+    paste0(" style=\"", paste0(chrome_style_parts, collapse = ";"), "\"")
+  } else {
+    ""
+  }
 
   spans <- character(0)
   if (has_left) {
@@ -1125,7 +1179,7 @@ html_chrome_div <- function(chrome, spec, token_map, context) {
       spans,
       paste0(
         "<span class=\"ar-chrome-left\"",
-        bold_style,
+        chrome_style,
         ">",
         chrome_escape(chrome$left),
         "</span>"
@@ -1137,7 +1191,7 @@ html_chrome_div <- function(chrome, spec, token_map, context) {
       spans,
       paste0(
         "<span class=\"ar-chrome-center\"",
-        bold_style,
+        chrome_style,
         ">",
         chrome_escape(chrome$center),
         "</span>"
@@ -1149,7 +1203,7 @@ html_chrome_div <- function(chrome, spec, token_map, context) {
       spans,
       paste0(
         "<span class=\"ar-chrome-right\"",
-        bold_style,
+        chrome_style,
         ">",
         chrome_escape(chrome$right),
         "</span>"
