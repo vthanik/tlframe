@@ -231,7 +231,7 @@ html_embedded_css <- function(spec, viewer = FALSE, knitr = FALSE) {
 
   # Line height — proportional fonts benefit from slightly more breathing room
   fam <- classify_font_family(font_family)
-  lh <- if (fam == "modern") "1.35" else "1.45"
+  lh <- if (fam == "modern") "1.35" else "1.4"
 
   # Convert user spacing settings (blank-line counts) to em units
   lh_num <- as.numeric(lh)
@@ -291,9 +291,9 @@ html_embedded_css <- function(spec, viewer = FALSE, knitr = FALSE) {
   } else {
     body_css <- paste0(
       "body {\n",
-      "  background: #f1f5f9;\n",
+      "  background: white;\n",
       "  margin: 0;\n",
-      "  padding: 48px 24px;\n",
+      "  padding: 0;\n",
       "  -webkit-font-smoothing: antialiased;\n",
       "  -moz-osx-font-smoothing: grayscale;\n",
       "}\n"
@@ -316,9 +316,6 @@ html_embedded_css <- function(spec, viewer = FALSE, knitr = FALSE) {
       "in ",
       ml,
       "in;\n",
-      "  background: #ffffff;\n",
-      "  box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.05);\n",
-      "  border-radius: 4px;\n",
       "  display: flex;\n",
       "  flex-direction: column;\n"
     )
@@ -367,8 +364,8 @@ html_embedded_css <- function(spec, viewer = FALSE, knitr = FALSE) {
     "}\n",
     ".ar-title {\n",
     "  margin: 0;\n",
-    "  padding: 2px 0;\n",
-    "  line-height: 1.5;\n",
+    "  padding: 1px 0;\n",
+    "  line-height: 1.4;\n",
     "  color: #0f172a;\n",
     "}\n",
 
@@ -383,16 +380,15 @@ html_embedded_css <- function(spec, viewer = FALSE, knitr = FALSE) {
     ".ar-table thead th {\n",
     "  font-weight: 600;\n",
     "  vertical-align: bottom;\n",
-    "  padding: 4px ",
+    "  padding: 3px ",
     cell_pad_lr,
     "pt;\n",
     "  white-space: pre-wrap;\n",
     "  word-wrap: break-word;\n",
-    "  color: #0f172a;\n",
     "}\n",
     ".ar-table tbody td {\n",
     "  vertical-align: top;\n",
-    "  padding: 2px ",
+    "  padding: 1.5px ",
     cell_pad_lr,
     "pt;\n",
     "  white-space: pre-wrap;\n",
@@ -448,8 +444,8 @@ html_embedded_css <- function(spec, viewer = FALSE, knitr = FALSE) {
 
     # ── Section Breaks ──
     ".ar-section + .ar-section {\n",
-    "  margin-top: 36px;\n",
-    "  padding-top: 28px;\n",
+    "  margin-top: 32px;\n",
+    "  padding-top: 24px;\n",
     "  border-top: 1px solid #e2e8f0;\n",
     "}\n",
 
