@@ -1,14 +1,14 @@
 
 # arframe <img src="man/figures/logo.png" align="right" height="139" alt="" />
 
-> Regulatory-grade clinical tables, listings, and figures in RTF and PDF from a single specification.
+> Regulatory-grade clinical tables, listings, and figures in RTF, PDF, and HTML from a single specification.
 
 <!-- badges: start -->
 [![R-CMD-check](https://img.shields.io/badge/R--CMD--check-passing-brightgreen)](https://github.com/vthanik/arframe)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 <!-- badges: end -->
 
-**arframe** is an R package for pharmaceutical submissions. You describe the output once; arframe renders both RTF and PDF — change the file extension, the output adapts.
+**arframe** is an R package for pharmaceutical submissions. You describe the output once; arframe renders RTF, PDF, and HTML — change the file extension, the output adapts.
 
 ```r
 tbl_demog |>
@@ -35,7 +35,8 @@ The pharmaverse has excellent tools for data derivation (admiral), analysis (Tpl
 |---|---|
 | Native RTF rendering | Direct RTF 1.9.1 — no intermediate HTML or gt layer |
 | Native PDF rendering | Direct tabularray/XeLaTeX — no RMarkdown/Quarto pipeline |
-| Single spec, both formats | Same `fr_spec` object renders to `.rtf` or `.pdf` |
+| HTML preview | Self-contained HTML with paper simulation and viewer integration |
+| Single spec, any format | Same `fr_spec` object renders to `.rtf`, `.pdf`, or `.html` |
 | Group-aware pagination | Keeps groups together, repeats headers, adds continuation text |
 | Decimal alignment | 15-type stat display engine (n/%, mean (SD), CI, p-values, ranges) |
 | Page headers/footers | 3-slot layout with tokens: `{thepage}`, `{total_pages}`, `{program}` |
@@ -151,16 +152,25 @@ Every verb takes an `fr_spec`, returns a modified `fr_spec`. Verb order doesn't 
 | `fr_spans()` | Spanning column headers |
 | `fr_styles()` | Cell/row/column conditional formatting |
 | `fr_spacing()` | Gaps between structural sections |
-| `fr_render()` | Render to RTF, PDF, or LaTeX |
+| `fr_render()` | Render to RTF, PDF, HTML, or LaTeX |
 
 ## Key features
 
-### Dual-format rendering
+### Multi-format rendering
 
 ```r
-fr_render(spec, "output.rtf")  # Native RTF
-fr_render(spec, "output.pdf")  # Native PDF via XeLaTeX
-fr_render(spec, "output.tex")  # LaTeX source
+fr_render(spec, "output.rtf")   # Native RTF
+fr_render(spec, "output.pdf")   # Native PDF via XeLaTeX
+fr_render(spec, "output.html")  # Self-contained HTML preview
+fr_render(spec, "output.tex")   # LaTeX source
+```
+
+### Interactive preview
+
+```r
+# In RStudio/Positron — just print the spec to see it in the Viewer panel
+spec
+# In Rmd/Quarto/pkgdown — tables render inline automatically via knit_print
 ```
 
 ### Automatic N-counts in headers
@@ -235,15 +245,17 @@ fr_style_explain(spec, row = 1, col = "total")  # Debug style cascade
 
 ## Architecture
 
-arframe writes output directly — no intermediate HTML, gt, or huxtable layer:
+arframe writes output directly — no intermediate gt or huxtable layer:
 
 ```
-fr_spec → finalize_spec() → RTF backend → .rtf file
-                            └→ LaTeX backend → .tex → XeLaTeX → .pdf
+fr_spec → finalize_spec() → RTF backend  → .rtf file
+                            ├→ LaTeX backend → .tex → XeLaTeX → .pdf
+                            └→ HTML backend  → .html file
 ```
 
 - **RTF**: Writes RTF 1.9.1 control words directly. Cell-level formatting, decimal alignment, `\trkeep` group protection, R-side pagination.
 - **PDF**: Generates tabularray LaTeX, compiles with XeLaTeX. Falls back to Latin Modern fonts (built into tinytex) on Linux/Docker without Microsoft fonts. Set `ARFRAME_FONT_DIR` to a directory of `.ttf`/`.otf` files for project-local fonts without system-wide installation.
+- **HTML**: Self-contained document with paper simulation (orientation-aware page dimensions, margins). Auto-preview in RStudio/Positron viewer via `print()`. Inline rendering in Rmd/Quarto via `knit_print()`.
 - **Font metrics**: Real Adobe Font Metrics (AFM) for 12 font variants — accurate column width estimation without rendering.
 
 ## Documentation

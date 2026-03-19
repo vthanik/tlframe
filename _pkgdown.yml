@@ -32,8 +32,9 @@ home:
   title: "arframe — Regulatory-Grade Clinical Tables in R"
   description: >
     An R package for pharmaceutical submissions. Describe a table once
-    with an immutable pipeline — arframe renders both RTF and PDF natively.
-    No intermediate HTML, no gt dependency, no RMarkdown pipeline.
+    with an immutable pipeline — arframe renders RTF, PDF, and HTML natively.
+    No gt dependency, no RMarkdown pipeline. Tables auto-preview in the
+    RStudio/Positron Viewer and render inline in pkgdown vignettes.
 
 navbar:
   type: light
@@ -222,14 +223,20 @@ reference:
 
   - title: "Rendering"
     desc: >
-      `fr_render(spec, path)` writes RTF, LaTeX source (`.tex`), or PDF
-      (via XeLaTeX). Format is detected from the file extension. PDF requires
-      XeLaTeX or tinytex; call `fr_install_latex_deps()` once to install
-      required LaTeX packages. `fr_backends()` lists registered backends;
+      `fr_render(spec, path)` writes RTF, HTML (`.html`/`.htm`), LaTeX
+      source (`.tex`), or PDF (via XeLaTeX). Format is detected from the
+      file extension. HTML output is self-contained with paper simulation
+      (orientation-aware page dimensions, margins, and page chrome).
+      `print(spec)` auto-previews in the RStudio/Positron Viewer panel.
+      `knit_print.fr_spec()` renders tables inline in Rmd/Quarto/pkgdown
+      vignettes with scoped CSS. PDF requires XeLaTeX or tinytex; call
+      `fr_install_latex_deps()` once to install required LaTeX packages.
+      `fr_backends()` lists registered backends;
       `fr_register_backend()` / `fr_unregister_backend()` extend the system
       with custom output formats.
     contents:
       - fr_render
+      - knit_print.fr_spec
       - fr_backends
       - fr_register_backend
       - fr_unregister_backend

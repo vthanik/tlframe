@@ -2,6 +2,22 @@
 
 ## New features
 
+### HTML render backend
+
+* New HTML output format: `fr_render(spec, "output.html")` produces a
+  self-contained HTML document with paper simulation (orientation-aware page
+  dimensions, margins, flexbox page footer push-down).
+
+* `print(spec)` auto-previews in the RStudio/Positron Viewer panel via
+  `htmltools::browsable()` — just type the spec to see it, like gt.
+
+* `knit_print.fr_spec()` renders tables inline in R Markdown, Quarto, and
+  pkgdown vignettes with scoped CSS (multiple tables on one page don't
+  conflict).
+
+* All vignettes now show live rendered tables instead of static PNG
+  screenshots.
+
 ### Multi-page figures
 
 * `fr_figure()` now accepts a list of plot objects and an optional `meta`
