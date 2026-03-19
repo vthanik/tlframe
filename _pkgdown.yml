@@ -302,5 +302,6 @@ articles:
   - title: "Advanced"
     navbar: Advanced
     contents:
+      - fonts
       - automation
       - architecture
