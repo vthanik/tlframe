@@ -243,6 +243,7 @@ html_embedded_css <- function(spec, viewer = FALSE, knitr = FALSE) {
       "  background: white;\n",
       "  margin: 0;\n",
       "  padding: 12px 16px;\n",
+      if (knitr) "  max-width: 100%;\n  overflow: hidden;\n" else "",
       "  -webkit-font-smoothing: antialiased;\n",
       "  -moz-osx-font-smoothing: grayscale;\n",
       "}\n"
@@ -447,32 +448,36 @@ html_embedded_css <- function(spec, viewer = FALSE, knitr = FALSE) {
 
 
 #' Build a CSS font stack from the configured font family
+#'
+#' Resolution order per family:
+#'   1. FDA-recommended font (Times New Roman, Calibri/Arial, Courier New)
+#'   2. Adobe open-source fallback (Source Serif 4, Source Sans 3, Source Code Pro)
+#'   3. CSS generic (serif, sans-serif, monospace)
+#'
 #' @noRd
 html_font_stack <- function(font_family) {
-  # Detect font classification
   fam_info <- classify_font_family(font_family)
 
   if (fam_info == "modern") {
-    # Monospace stack
     paste0(
       "\"",
       font_family,
       "\", ",
-      "\"Courier New\", Consolas, \"Liberation Mono\", monospace"
+      "\"Courier New\", \"Source Code Pro\", monospace"
     )
   } else if (fam_info == "swiss") {
     paste0(
       "\"",
       font_family,
       "\", ",
-      "Arial, Helvetica, \"Liberation Sans\", sans-serif"
+      "Calibri, Arial, \"Source Sans 3\", sans-serif"
     )
   } else {
     paste0(
       "\"",
       font_family,
       "\", ",
-      "\"Times New Roman\", Times, \"Liberation Serif\", serif"
+      "\"Times New Roman\", \"Source Serif 4\", serif"
     )
   }
 }

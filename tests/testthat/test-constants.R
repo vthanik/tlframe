@@ -584,19 +584,13 @@ test_that("markup_sentinel roundtrips via sentinel_pattern", {
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Latin Modern font fallback
+# Open-source font fallback
 # ══════════════════════════════════════════════════════════════════════════════
 
-test_that("lm_fallback maps all font family types", {
-  expect_equal(fr_env$lm_fallback[["modern"]], "Latin Modern Mono")
-  expect_equal(fr_env$lm_fallback[["swiss"]], "Latin Modern Sans")
-  expect_equal(fr_env$lm_fallback[["roman"]], "Latin Modern Roman")
-})
-
-test_that("is_system_font_available returns TRUE for Latin Modern fonts", {
-  expect_true(is_system_font_available("Latin Modern Mono"))
-  expect_true(is_system_font_available("Latin Modern Sans"))
-  expect_true(is_system_font_available("Latin Modern Roman"))
+test_that("opensource_fallback maps all font family types", {
+  expect_equal(fr_env$opensource_fallback[["modern"]], "Source Code Pro")
+  expect_equal(fr_env$opensource_fallback[["swiss"]], "Source Sans 3")
+  expect_equal(fr_env$opensource_fallback[["roman"]], "Source Serif 4")
 })
 
 
@@ -642,41 +636,43 @@ test_that("get_font_dir returns path when directory contains .otf files", {
   expect_equal(result, normalizePath(tmp))
 })
 
-test_that("is_system_font_available returns TRUE when ARFRAME_FONT_DIR is set", {
+test_that("is_system_font_available checks ARFRAME_FONT_DIR for matching fonts", {
   tmp <- tempfile("fontdir")
   dir.create(tmp)
-  file.create(file.path(tmp, "test.ttf"))
+  file.create(file.path(tmp, "SourceSerif4-Regular.ttf"))
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
   withr::local_envvar(ARFRAME_FONT_DIR = tmp)
-  expect_true(is_system_font_available("AnyFontName"))
+  expect_true(is_system_font_available("Source Serif 4"))
+  # Non-matching font should fall through to fc-list
 })
 
-test_that("resolve_latex_font returns Latin Modern name directly", {
-  result <- resolve_latex_font("Latin Modern Mono")
-  expect_equal(result, "Latin Modern Mono")
+test_that("resolve_latex_font returns available font as-is", {
+  local_mocked_bindings(is_system_font_available = function(font_name) TRUE)
+  result <- resolve_latex_font("Times New Roman")
+  expect_equal(result, "Times New Roman")
 })
 
-test_that("resolve_latex_font falls back to Latin Modern for unavailable fonts", {
+test_that("resolve_latex_font falls back to open-source for unavailable fonts", {
   local_mocked_bindings(is_system_font_available = function(font_name) {
-    font_name %in% fr_env$lm_fallback
+    font_name %in% fr_env$opensource_fallback
   })
 
   result <- resolve_latex_font("Courier New")
-  expect_equal(result, "Latin Modern Mono")
+  expect_equal(result, "Source Code Pro")
 })
 
 test_that("resolve_latex_font maps families correctly in fallback", {
   local_mocked_bindings(is_system_font_available = function(font_name) {
-    font_name %in% fr_env$lm_fallback
+    font_name %in% fr_env$opensource_fallback
   })
 
   mono <- resolve_latex_font("Courier New")
   sans <- resolve_latex_font("Arial")
   serif <- resolve_latex_font("Times New Roman")
 
-  expect_equal(mono, "Latin Modern Mono")
-  expect_equal(sans, "Latin Modern Sans")
-  expect_equal(serif, "Latin Modern Roman")
+  expect_equal(mono, "Source Code Pro")
+  expect_equal(sans, "Source Sans 3")
+  expect_equal(serif, "Source Serif 4")
 })
 
 
@@ -688,27 +684,44 @@ test_that("resolve_rtf_font returns available font as-is", {
   expect_equal(resolve_rtf_font("Arial"), "Arial")
 })
 
-test_that("resolve_rtf_font falls back to OS default for unavailable fonts", {
+test_that("resolve_rtf_font falls back to open-source font for unavailable fonts", {
   local_mocked_bindings(is_system_font_available = function(font_name) FALSE)
-  defaults <- os_default_fonts()
+
+  expect_warning(
+    result <- resolve_rtf_font("Courier New"),
+    "not found"
+  )
+  expect_equal(result, "Source Code Pro")
+
+  expect_warning(
+    result <- resolve_rtf_font("Arial"),
+    "not found"
+  )
+  expect_equal(result, "Source Sans 3")
+
+  expect_warning(
+    result <- resolve_rtf_font("Times New Roman"),
+    "not found"
+  )
+  expect_equal(result, "Source Serif 4")
+})
+
+test_that("resolve_rtf_font uses open-source fallback when FDA font missing", {
+  local_mocked_bindings(is_system_font_available = function(font_name) {
+    font_name %in% c("Source Code Pro", "Source Sans 3", "Source Serif 4")
+  })
 
   expect_message(
     result <- resolve_rtf_font("Courier New"),
     "not found"
   )
-  expect_equal(result, defaults$mono)
-
-  expect_message(
-    result <- resolve_rtf_font("Arial"),
-    "not found"
-  )
-  expect_equal(result, defaults$sans)
+  expect_equal(result, "Source Code Pro")
 
   expect_message(
     result <- resolve_rtf_font("Times New Roman"),
     "not found"
   )
-  expect_equal(result, defaults$serif)
+  expect_equal(result, "Source Serif 4")
 })
 
 
@@ -770,36 +783,30 @@ test_that("resolve_afm_name falls back to modern for unknown font names", {
 
 test_that("resolve_afm_name resolves all font names in each family", {
   # Modern family fonts
-  for (fn in c(
-    "Courier",
-    "Consolas",
-    "Lucida Console",
-    "DejaVu Sans Mono",
-    "Liberation Mono"
-  )) {
+  for (fn in c("Courier", "Source Code Pro", "Consolas")) {
     expect_equal(resolve_afm_name(fn), "Courier", info = paste0("Font: ", fn))
   }
   # Swiss family fonts
   for (fn in c(
-    "Helvetica",
     "Calibri",
+    "Arial",
+    "Helvetica",
+    "Source Sans 3",
     "Verdana",
     "Tahoma",
     "Segoe UI",
-    "DejaVu Sans",
-    "Liberation Sans"
+    "Noto Sans"
   )) {
     expect_equal(resolve_afm_name(fn), "Helvetica", info = paste0("Font: ", fn))
   }
   # Roman family fonts
   for (fn in c(
     "Times",
+    "Source Serif 4",
     "Georgia",
     "Palatino",
-    "Book Antiqua",
     "Cambria",
-    "DejaVu Serif",
-    "Liberation Serif"
+    "Noto Serif"
   )) {
     expect_equal(
       resolve_afm_name(fn),
@@ -814,7 +821,7 @@ test_that("resolve_afm_name resolves all font names in each family", {
 
 test_that("get_rtf_font_family returns correct family for all font names", {
   # Modern fonts
-  for (fn in c("Courier New", "Courier", "Consolas", "Lucida Console")) {
+  for (fn in c("Courier New", "Courier", "Source Code Pro", "Consolas")) {
     expect_equal(
       get_rtf_font_family(fn),
       "fmodern",

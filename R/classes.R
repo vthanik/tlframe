@@ -63,7 +63,7 @@ new_fr_page <- function(
   }
 
   if (is.null(font_family)) {
-    font_family <- os_default_fonts()$mono
+    font_family <- os_default_fonts()$serif
   }
 
   # Validate continuation: NULL or character scalar

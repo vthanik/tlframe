@@ -14,7 +14,7 @@ page:
   paper: letter
   orientation: landscape
   margins: [1.0, 0.75, 1.0, 0.75]
-  font_family: "Courier New"
+  font_family: "Times New Roman"
   font_size: 9
   continuation: ~
   col_gap: 4

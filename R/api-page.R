@@ -25,13 +25,28 @@
 #'   * Length 2: `c(vertical, horizontal)` — top/bottom vs left/right.
 #'   * Length 4: `c(top, right, bottom, left)` — CSS order.
 #'   * Named list: `list(top=1, bottom=1, left=0.75, right=0.75)`.
-#' @param font_family Font family name. Defaults to the OS monospace font
-#'   (`"Courier New"` on Windows/macOS, `"Latin Modern Mono"` on Linux).
-#'   Regulatory submissions typically use Courier New 9pt.
-#'   Set the `ARFRAME_FONT_DIR` environment variable to a directory
-#'   containing `.ttf`/`.otf` files to make custom fonts available for
-#'   PDF rendering without system-wide installation. Ideal for Docker,
-#'   CI, or project-local fonts. See `vignette("automation")` for examples.
+#' @param font_family Font family name. Default: `"Times New Roman"` (FDA
+#'   recommended for submission documents).
+#'
+#'   ## Font Resolution Order
+#'
+#'   arframe resolves fonts in this priority:
+#'
+#'   1. **FDA-recommended** — Times New Roman (serif), Calibri/Arial
+#'      (sans-serif), Courier New (monospace)
+#'   2. **`ARFRAME_FONT_DIR`** — custom fonts from the directory specified
+#'      by this environment variable (`.ttf`/`.otf` files). Ideal for Docker,
+#'      CI, or project-local fonts.
+#'   3. **Adobe open-source** (SIL OFL, free) — Source Serif 4 (serif),
+#'      Source Sans 3 (sans-serif), Source Code Pro (monospace).
+#'      Install from Google Fonts or <https://github.com/adobe-fonts>.
+#'   4. **CSS generic** — `serif`, `sans-serif`, `monospace` (HTML only;
+#'      RTF/PDF viewers substitute the closest available font).
+#'
+#'   Three font families are supported:
+#'   * **Serif** (roman): `"Times New Roman"`, `"Source Serif 4"`, `"Georgia"`, etc.
+#'   * **Sans-serif** (swiss): `"Calibri"`, `"Arial"`, `"Source Sans 3"`, etc.
+#'   * **Monospace** (modern): `"Courier New"`, `"Source Code Pro"`, `"Consolas"`, etc.
 #' @param font_size Font size in points. Default `9`. Typical pharma range:
 #'   7–10 pt.
 #' @param orphan_min Minimum body rows to keep at the **bottom** of a page

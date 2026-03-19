@@ -124,7 +124,7 @@ render_latex <- function(spec, page_groups, col_panels, path) {
 # LaTeX Document Components
 # ══════════════════════════════════════════════════════════════════════════════
 
-#' Build \\setmainfont command, with Latin Modern fallback for missing fonts
+#' Build \\setmainfont command, with open-source fallback for missing fonts
 #' @noRd
 latex_setmainfont <- function(font_name) {
   resolved <- resolve_latex_font(font_name)

@@ -34,16 +34,23 @@ fr_env <- new.env(parent = emptyenv())
 # 1. Font Family Classification
 # ══════════════════════════════════════════════════════════════════════════════
 
+# Font Resolution Order (per family):
+#   1. FDA-recommended (Times New Roman, Calibri/Arial, Courier New)
+#   2. ARFRAME_FONT_DIR (user-supplied custom fonts)
+#   3. Adobe open-source (Source Serif 4, Source Sans 3, Source Code Pro)
+#   4. CSS generic fallback (serif, sans-serif, monospace)
+#
+# The `names` vector defines the classification membership — any font listed
+# under a family will be recognised and mapped to the correct AFM metrics,
+# RTF family keyword, and LaTeX font command.
+
 fr_env$fonts <- list(
   modern = list(
     names = c(
       "Courier New",
       "Courier",
-      "Consolas",
-      "Lucida Console",
-      "DejaVu Sans Mono",
-      "Liberation Mono",
-      "Latin Modern Mono"
+      "Source Code Pro",
+      "Consolas"
     ),
     rtf_family = "fmodern",
     rtf_prq = 1L,
@@ -56,15 +63,15 @@ fr_env$fonts <- list(
 
   swiss = list(
     names = c(
+      "Calibri",
       "Arial",
       "Helvetica",
-      "Calibri",
+      "Source Sans 3",
+      "Source Sans Pro",
       "Verdana",
       "Tahoma",
       "Segoe UI",
-      "DejaVu Sans",
-      "Liberation Sans",
-      "Latin Modern Sans"
+      "Noto Sans"
     ),
     rtf_family = "fswiss",
     rtf_prq = 2L,
@@ -79,13 +86,12 @@ fr_env$fonts <- list(
     names = c(
       "Times New Roman",
       "Times",
+      "Source Serif 4",
+      "Source Serif Pro",
       "Georgia",
       "Palatino",
-      "Book Antiqua",
       "Cambria",
-      "DejaVu Serif",
-      "Liberation Serif",
-      "Latin Modern Roman"
+      "Noto Serif"
     ),
     rtf_family = "froman",
     rtf_prq = 2L,
@@ -98,12 +104,14 @@ fr_env$fonts <- list(
 )
 
 
-# Latin Modern fallback map: family type -> Latin Modern font name
-# Latin Modern is always available in any tinytex/texlive installation
-fr_env$lm_fallback <- c(
-  modern = "Latin Modern Mono",
-  swiss = "Latin Modern Sans",
-  roman = "Latin Modern Roman"
+# Adobe open-source fallback map: family type -> Source font name
+# These are SIL OFL licensed; users install them via Google Fonts or GitHub.
+# Used when FDA-recommended fonts (Times New Roman, Calibri, Courier New) and
+# ARFRAME_FONT_DIR fonts are not available on the system.
+fr_env$opensource_fallback <- c(
+  modern = "Source Code Pro",
+  swiss = "Source Sans 3",
+  roman = "Source Serif 4"
 )
 
 # CTAN packages required by the LaTeX/PDF backend (preamble + tabularray)
@@ -140,33 +148,42 @@ get_font_dir <- function() {
 }
 
 
-#' Check if a system font is available for XeLaTeX
+#' Check if a system font is available
 #'
-#' Latin Modern fonts always return `TRUE` (built into tinytex/texlive).
-#' If `ARFRAME_FONT_DIR` is set and contains font files, returns `TRUE`
-#' (trust the user — XeLaTeX resolves names via `OSFONTDIR`).
 #' On Windows, standard fonts are always present. On Linux/macOS, checks
-#' via `fc-list`.
+#' via `fc-list`. Also checks `ARFRAME_FONT_DIR` for user-supplied fonts.
 #'
 #' @param font_name Character scalar. Font name to check.
 #' @return Logical scalar.
 #' @noRd
 is_system_font_available <- function(font_name) {
-  # Latin Modern fonts are always available in tinytex/texlive
-  if (font_name %in% fr_env$lm_fallback) {
-    return(TRUE)
-  }
-
-  # Custom font directory set — trust the user
-  if (!is.null(get_font_dir())) {
-    return(TRUE)
-  }
-
   os <- tolower(Sys.info()[["sysname"]])
 
   # Windows always has standard fonts (Courier New, Arial, Times New Roman)
   if (os == "windows") {
     return(TRUE)
+  }
+
+  # Check ARFRAME_FONT_DIR for custom fonts
+  font_dir <- get_font_dir()
+  if (!is.null(font_dir)) {
+    # Look for font files matching the name
+    font_files <- list.files(
+      font_dir,
+      pattern = "\\.(ttf|otf)$",
+      ignore.case = TRUE,
+      full.names = FALSE
+    )
+    # Check if any file name contains the font name (case-insensitive)
+    font_key <- tolower(gsub("\\s+", "", font_name))
+    file_keys <- tolower(gsub(
+      "[\\s_-]+",
+      "",
+      tools::file_path_sans_ext(font_files)
+    ))
+    if (any(grepl(font_key, file_keys, fixed = TRUE))) {
+      return(TRUE)
+    }
   }
 
   # Linux/macOS: use fc-list to check (cached per session)
@@ -218,11 +235,13 @@ get_system_font_list <- function() {
 }
 
 
-#' Resolve a font for LaTeX rendering, with Latin Modern fallback
+#' Resolve a font for LaTeX rendering
 #'
-#' If the requested font is available on the system, returns it as-is.
-#' Otherwise, falls back to the equivalent Latin Modern font (always
-#' available in tinytex/texlive).
+#' Resolution order:
+#'   1. Requested font (if available on system)
+#'   2. Adobe open-source fallback (Source Serif 4 / Source Sans 3 / Source Code Pro)
+#'   3. If neither found, returns the open-source name anyway and lets XeLaTeX
+#'      fall back to its default serif/sans/mono
 #'
 #' @param font_name Character scalar. Requested font name.
 #' @return Character scalar. The resolved font name for fontspec.
@@ -232,24 +251,35 @@ resolve_latex_font <- function(font_name) {
     return(font_name)
   }
 
-  # Determine family type and map to Latin Modern equivalent
-  fam <- lookup_font_family(font_name)
-  lm_name <- fr_env$lm_fallback[[fam]]
+  # Try Adobe open-source fallback
 
-  cli::cli_inform(c(
-    "i" = "Font {.val {font_name}} not found on system.",
-    "*" = "Falling back to {.val {lm_name}} (tinytex built-in)."
+  fam <- lookup_font_family(font_name)
+  os_name <- fr_env$opensource_fallback[[fam]]
+
+  if (is_system_font_available(os_name)) {
+    cli::cli_inform(c(
+      "i" = "Font {.val {font_name}} not found on system.",
+      "*" = "Falling back to {.val {os_name}}."
+    ))
+    return(os_name)
+  }
+
+  cli::cli_warn(c(
+    "!" = "Font {.val {font_name}} not found on system.",
+    "i" = "Install {.val {os_name}} (free, SIL OFL) or set {.envvar ARFRAME_FONT_DIR}.",
+    "i" = "XeLaTeX will use its default font."
   ))
 
-  lm_name
+  os_name
 }
 
 
-#' Resolve a font for RTF rendering, with OS-appropriate fallback
+#' Resolve a font for RTF rendering
 #'
-#' If the requested font is available on the system, returns it as-is.
-#' Otherwise, falls back to the OS default font for the same family type
-#' (e.g., Courier New, Arial, or Times New Roman on Windows).
+#' Resolution order:
+#'   1. Requested font (if available on system)
+#'   2. Adobe open-source fallback (Source Serif 4 / Source Sans 3 / Source Code Pro)
+#'   3. Returns the open-source name (Word/viewer will substitute)
 #'
 #' @param font_name Character scalar. Requested font name.
 #' @return Character scalar. The resolved font name for RTF.
@@ -259,45 +289,58 @@ resolve_rtf_font <- function(font_name) {
     return(font_name)
   }
 
-  # Map to OS default of same family type
+  # Try Adobe open-source fallback
   fam <- lookup_font_family(font_name)
-  defaults <- os_default_fonts()
-  fallback <- switch(
-    fam,
-    modern = defaults$mono,
-    swiss = defaults$sans,
-    roman = defaults$serif
-  )
+  os_name <- fr_env$opensource_fallback[[fam]]
 
-  cli::cli_inform(c(
-    "i" = "Font {.val {font_name}} not found on system.",
-    "*" = "Falling back to {.val {fallback}} for RTF output."
+  if (is_system_font_available(os_name)) {
+    cli::cli_inform(c(
+      "i" = "Font {.val {font_name}} not found on system.",
+      "*" = "Falling back to {.val {os_name}} for RTF output."
+    ))
+    return(os_name)
+  }
+
+  cli::cli_warn(c(
+    "!" = "Font {.val {font_name}} not found on system.",
+    "i" = "Install {.val {os_name}} (free, SIL OFL) or set {.envvar ARFRAME_FONT_DIR}.",
+    "i" = "RTF viewer will substitute the closest available font."
   ))
 
-  fallback
+  os_name
 }
 
 
 #' OS-aware default font triplet (mono, sans, serif)
+#'
+#' Returns FDA-recommended fonts as first choice, with Adobe open-source
+#' fallbacks for systems without Microsoft fonts installed.
+#'
 #' @return Named list: `mono`, `sans`, `serif`
 #' @noRd
 os_default_fonts <- function() {
   os <- tolower(Sys.info()[["sysname"]])
-  if (os == "windows") {
-    list(mono = "Courier New", sans = "Arial", serif = "Times New Roman")
-  } else if (os == "darwin") {
-    list(mono = "Courier New", sans = "Helvetica", serif = "Times New Roman")
+  if (os == "windows" || os == "darwin") {
+    list(mono = "Courier New", sans = "Calibri", serif = "Times New Roman")
   } else {
-    # Prefer Microsoft fonts if installed; fall back to Latin Modern
-    if (is_system_font_available("Courier New")) {
-      list(mono = "Courier New", sans = "Arial", serif = "Times New Roman")
-    } else {
-      list(
-        mono = "Latin Modern Mono",
-        sans = "Latin Modern Sans",
-        serif = "Latin Modern Roman"
-      )
-    }
+    # Linux: prefer FDA fonts if installed, else Adobe open-source
+    list(
+      mono = if (is_system_font_available("Courier New")) {
+        "Courier New"
+      } else {
+        "Source Code Pro"
+      },
+      sans = if (is_system_font_available("Calibri")) {
+        "Calibri"
+      } else {
+        "Source Sans 3"
+      },
+      serif = if (is_system_font_available("Times New Roman")) {
+        "Times New Roman"
+      } else {
+        "Source Serif 4"
+      }
+    )
   }
 }
 

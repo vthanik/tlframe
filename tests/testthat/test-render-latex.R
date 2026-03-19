@@ -10,12 +10,12 @@ test_that("latex_setmainfont produces valid \\setmainfont command", {
   expect_false(grepl("Path=", cmd, fixed = TRUE))
 })
 
-test_that("latex_setmainfont uses Latin Modern fallback for missing fonts", {
+test_that("latex_setmainfont uses open-source fallback for missing fonts", {
   local_mocked_bindings(is_system_font_available = function(font_name) {
-    font_name %in% fr_env$lm_fallback
+    font_name %in% fr_env$opensource_fallback
   })
   cmd <- latex_setmainfont("Courier New")
-  expect_match(cmd, "Latin Modern Mono")
+  expect_match(cmd, "Source Code Pro")
   expect_false(grepl("Path=", cmd, fixed = TRUE))
 })
 
@@ -781,22 +781,22 @@ test_that("latex_body_rows handles n_pct with decimal percentage", {
 # Additional coverage tests
 # ══════════════════════════════════════════════════════════════════════════════
 
-# -- latex_setmainfont -- Latin Modern fallback for different font families --
+# -- latex_setmainfont -- open-source fallback for different font families --
 
-test_that("latex_setmainfont uses Latin Modern Sans for Arial fallback", {
+test_that("latex_setmainfont uses Source Sans 3 for Arial fallback", {
   local_mocked_bindings(is_system_font_available = function(font_name) {
-    font_name %in% fr_env$lm_fallback
+    font_name %in% fr_env$opensource_fallback
   })
   cmd <- latex_setmainfont("Arial")
-  expect_equal(cmd, "\\setmainfont{Latin Modern Sans}")
+  expect_equal(cmd, "\\setmainfont{Source Sans 3}")
 })
 
-test_that("latex_setmainfont uses Latin Modern Roman for Times New Roman fallback", {
+test_that("latex_setmainfont uses Source Serif 4 for Times New Roman fallback", {
   local_mocked_bindings(is_system_font_available = function(font_name) {
-    font_name %in% fr_env$lm_fallback
+    font_name %in% fr_env$opensource_fallback
   })
   cmd <- latex_setmainfont("Times New Roman")
-  expect_equal(cmd, "\\setmainfont{Latin Modern Roman}")
+  expect_equal(cmd, "\\setmainfont{Source Serif 4}")
 })
 
 test_that("latex_setmainfont system font produces simple command", {
@@ -806,7 +806,7 @@ test_that("latex_setmainfont system font produces simple command", {
 })
 
 
-# -- resolve_latex_font -- Latin Modern fallback ----------------------------
+# -- resolve_latex_font -- open-source fallback ----------------------------
 
 test_that("resolve_latex_font returns system font when available", {
   local_mocked_bindings(is_system_font_available = function(font_name) TRUE)
@@ -814,28 +814,28 @@ test_that("resolve_latex_font returns system font when available", {
   expect_equal(result, "Arial")
 })
 
-test_that("resolve_latex_font falls back to Latin Modern Mono for Courier New", {
+test_that("resolve_latex_font falls back to Source Code Pro for Courier New", {
   local_mocked_bindings(is_system_font_available = function(font_name) {
-    font_name %in% fr_env$lm_fallback
+    font_name %in% fr_env$opensource_fallback
   })
   result <- resolve_latex_font("Courier New")
-  expect_equal(result, "Latin Modern Mono")
+  expect_equal(result, "Source Code Pro")
 })
 
-test_that("resolve_latex_font falls back to Latin Modern Sans for Arial", {
+test_that("resolve_latex_font falls back to Source Sans 3 for Arial", {
   local_mocked_bindings(is_system_font_available = function(font_name) {
-    font_name %in% fr_env$lm_fallback
+    font_name %in% fr_env$opensource_fallback
   })
   result <- resolve_latex_font("Arial")
-  expect_equal(result, "Latin Modern Sans")
+  expect_equal(result, "Source Sans 3")
 })
 
-test_that("resolve_latex_font falls back to Latin Modern Roman for Times New Roman", {
+test_that("resolve_latex_font falls back to Source Serif 4 for Times New Roman", {
   local_mocked_bindings(is_system_font_available = function(font_name) {
-    font_name %in% fr_env$lm_fallback
+    font_name %in% fr_env$opensource_fallback
   })
   result <- resolve_latex_font("Times New Roman")
-  expect_equal(result, "Latin Modern Roman")
+  expect_equal(result, "Source Serif 4")
 })
 
 

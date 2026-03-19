@@ -35,13 +35,31 @@ or \code{"legal"} (8.5 × 14 in).}
 \item Named list: \code{list(top=1, bottom=1, left=0.75, right=0.75)}.
 }}
 
-\item{font_family}{Font family name. Defaults to the OS monospace font
-(\code{"Courier New"} on Windows/macOS, \code{"Latin Modern Mono"} on Linux).
-Regulatory submissions typically use Courier New 9pt.
-Set the \code{ARFRAME_FONT_DIR} environment variable to a directory
-containing \code{.ttf}/\code{.otf} files to make custom fonts available for
-PDF rendering without system-wide installation. Ideal for Docker,
-CI, or project-local fonts. See \code{vignette("automation")} for examples.}
+\item{font_family}{Font family name. Default: \code{"Times New Roman"} (FDA
+recommended for submission documents).
+\subsection{Font Resolution Order}{
+
+arframe resolves fonts in this priority:
+\enumerate{
+\item \strong{FDA-recommended} — Times New Roman (serif), Calibri/Arial
+(sans-serif), Courier New (monospace)
+\item \strong{\code{ARFRAME_FONT_DIR}} — custom fonts from the directory specified
+by this environment variable (\code{.ttf}/\code{.otf} files). Ideal for Docker,
+CI, or project-local fonts.
+\item \strong{Adobe open-source} (SIL OFL, free) — Source Serif 4 (serif),
+Source Sans 3 (sans-serif), Source Code Pro (monospace).
+Install from Google Fonts or \url{https://github.com/adobe-fonts}.
+\item \strong{CSS generic} — \code{serif}, \code{sans-serif}, \code{monospace} (HTML only;
+RTF/PDF viewers substitute the closest available font).
+}
+
+Three font families are supported:
+\itemize{
+\item \strong{Serif} (roman): \code{"Times New Roman"}, \code{"Source Serif 4"}, \code{"Georgia"}, etc.
+\item \strong{Sans-serif} (swiss): \code{"Calibri"}, \code{"Arial"}, \code{"Source Sans 3"}, etc.
+\item \strong{Monospace} (modern): \code{"Courier New"}, \code{"Source Code Pro"}, \code{"Consolas"}, etc.
+}
+}}
 
 \item{font_size}{Font size in points. Default \code{9}. Typical pharma range:
 7–10 pt.}
