@@ -1394,12 +1394,31 @@ knit_print.fr_spec <- function(x, ...) {
 
   # Finalize + render to HTML fragment (not a full document)
   if (identical(x$type, "figure")) {
-    # Figures need the full render path — use temp file
+    # Figures need the full render path — use temp file, then strip wrapper
     tmp <- tempfile(fileext = ".html")
     on.exit(unlink(tmp), add = TRUE)
     x$.viewer <- TRUE
+    x$.knitr <- TRUE
     fr_render(x, tmp)
     html <- paste0(readLines(tmp, warn = FALSE), collapse = "\n")
+    # Strip the full document wrapper — extract body content
+    html <- sub(".*<body>\\s*", "", html)
+    html <- sub("\\s*</body>.*", "", html)
+    # Wrap in a scoped container
+    uid <- paste0(
+      "arframe-fig-",
+      format(
+        as.integer(Sys.time()) * 1000 + sample(999, 1),
+        scientific = FALSE
+      )
+    )
+    html <- paste0(
+      "<div id=\"",
+      uid,
+      "\" style=\"max-width:100%;overflow-x:auto\">\n",
+      html,
+      "\n</div>"
+    )
     return(knitr::asis_output(html))
   }
 

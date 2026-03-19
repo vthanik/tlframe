@@ -764,7 +764,12 @@ render_figure_html <- function(spec, path) {
   }
 
   body <- paste0(sections, collapse = "\n")
-  doc <- html_document(body, spec, viewer = isTRUE(spec$.viewer))
+  doc <- html_document(
+    body,
+    spec,
+    viewer = isTRUE(spec$.viewer),
+    knitr = isTRUE(spec$.knitr)
+  )
   writeLines(doc, path, useBytes = TRUE)
 }
 

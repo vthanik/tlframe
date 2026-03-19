@@ -102,8 +102,8 @@ render_html <- function(spec, page_groups, col_panels, path) {
 
 #' Build complete HTML document with embedded CSS
 #' @noRd
-html_document <- function(body, spec, viewer = FALSE) {
-  css <- html_embedded_css(spec, viewer = viewer)
+html_document <- function(body, spec, viewer = FALSE, knitr = FALSE) {
+  css <- html_embedded_css(spec, viewer = viewer, knitr = knitr)
   paste0(
     "<!DOCTYPE html>\n",
     "<html lang=\"en\">\n",
@@ -132,7 +132,7 @@ html_document <- function(body, spec, viewer = FALSE) {
 #' arframe outputs on the same page don't collide.
 #' @noRd
 html_fragment <- function(body, spec) {
-  css <- html_embedded_css(spec, viewer = TRUE)
+  css <- html_embedded_css(spec, knitr = TRUE)
 
   # Generate a unique container ID
   uid <- paste0(
@@ -211,7 +211,7 @@ scope_css <- function(css, uid) {
 
 #' Build premium CSS string from spec page settings
 #' @noRd
-html_embedded_css <- function(spec, viewer = FALSE) {
+html_embedded_css <- function(spec, viewer = FALSE, knitr = FALSE) {
   page <- spec$page
   font_family <- page$font_family
   font_size <- page$font_size
@@ -236,8 +236,8 @@ html_embedded_css <- function(spec, viewer = FALSE) {
   printable <- printable_area_inches(page)
   pw <- printable[["width"]]
 
-  # Viewer mode: clean layout for IDE panels (no page simulation)
-  if (viewer) {
+  # Viewer/knitr mode: clean layout (no page simulation)
+  if (viewer || knitr) {
     body_css <- paste0(
       "body {\n",
       "  background: white;\n",
@@ -247,16 +247,30 @@ html_embedded_css <- function(spec, viewer = FALSE) {
       "  -moz-osx-font-smoothing: grayscale;\n",
       "}\n"
     )
-    page_css <- paste0(
-      ".ar-page {\n",
-      "  width: ",
-      pw,
-      "in;\n",
-      "  margin: 0 auto;\n",
-      "  padding: 0;\n",
-      "  display: flex;\n",
-      "  flex-direction: column;\n"
-    )
+    # Knitr: fluid width to fit pkgdown/Rmd container
+    # Viewer: fixed printable width centered in panel
+    if (knitr) {
+      page_css <- paste0(
+        ".ar-page {\n",
+        "  max-width: 100%;\n",
+        "  margin: 0;\n",
+        "  padding: 0;\n",
+        "  overflow-x: auto;\n",
+        "  display: flex;\n",
+        "  flex-direction: column;\n"
+      )
+    } else {
+      page_css <- paste0(
+        ".ar-page {\n",
+        "  width: ",
+        pw,
+        "in;\n",
+        "  margin: 0 auto;\n",
+        "  padding: 0;\n",
+        "  display: flex;\n",
+        "  flex-direction: column;\n"
+      )
+    }
   } else {
     body_css <- paste0(
       "body {\n",
