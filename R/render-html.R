@@ -217,7 +217,15 @@ html_embedded_css <- function(spec, viewer = FALSE, knitr = FALSE) {
   font_size <- page$font_size
 
   # Build a system font stack based on the configured font
-  font_stack <- html_font_stack(font_family)
+  # Knitr/pkgdown: override to web-optimized sans-serif for screen readability
+  if (knitr) {
+    font_stack <- paste0(
+      "\"Source Sans 3\", \"Calibri\", \"Helvetica Neue\", ",
+      "Arial, sans-serif"
+    )
+  } else {
+    font_stack <- html_font_stack(font_family)
+  }
 
   # Full page dimensions (for the white card to simulate a real page)
   dims <- paper_dims_twips(page$paper, page$orientation)
@@ -376,6 +384,11 @@ html_embedded_css <- function(spec, viewer = FALSE, knitr = FALSE) {
     "  width: 100%;\n",
     "  font-variant-numeric: tabular-nums;\n",
     "  color: #1e293b;\n",
+    "}\n",
+    # Reset Bootstrap .table styles (pkgdown injects Bootstrap 5)
+    ".ar-table th, .ar-table td {\n",
+    "  border: none;\n",
+    "  background: none;\n",
     "}\n",
     ".ar-table thead th {\n",
     "  font-weight: 600;\n",
