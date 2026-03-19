@@ -164,26 +164,10 @@ is_system_font_available <- function(font_name) {
     return(TRUE)
   }
 
-  # Check ARFRAME_FONT_DIR for custom fonts
-  font_dir <- get_font_dir()
-  if (!is.null(font_dir)) {
-    # Look for font files matching the name
-    font_files <- list.files(
-      font_dir,
-      pattern = "\\.(ttf|otf)$",
-      ignore.case = TRUE,
-      full.names = FALSE
-    )
-    # Check if any file name contains the font name (case-insensitive)
-    font_key <- tolower(gsub("\\s+", "", font_name))
-    file_keys <- tolower(gsub(
-      "[\\s_-]+",
-      "",
-      tools::file_path_sans_ext(font_files)
-    ))
-    if (any(grepl(font_key, file_keys, fixed = TRUE))) {
-      return(TRUE)
-    }
+  # Custom font directory set — trust the user
+  # (XeLaTeX resolves names via OSFONTDIR; RTF embeds the name for the viewer)
+  if (!is.null(get_font_dir())) {
+    return(TRUE)
   }
 
   # Linux/macOS: use fc-list to check (cached per session)
@@ -247,30 +231,7 @@ get_system_font_list <- function() {
 #' @return Character scalar. The resolved font name for fontspec.
 #' @noRd
 resolve_latex_font <- function(font_name) {
-  if (is_system_font_available(font_name)) {
-    return(font_name)
-  }
-
-  # Try Adobe open-source fallback
-
-  fam <- lookup_font_family(font_name)
-  os_name <- fr_env$opensource_fallback[[fam]]
-
-  if (is_system_font_available(os_name)) {
-    cli::cli_inform(c(
-      "i" = "Font {.val {font_name}} not found on system.",
-      "*" = "Falling back to {.val {os_name}}."
-    ))
-    return(os_name)
-  }
-
-  cli::cli_warn(c(
-    "!" = "Font {.val {font_name}} not found on system.",
-    "i" = "Install {.val {os_name}} (free, SIL OFL) or set {.envvar ARFRAME_FONT_DIR}.",
-    "i" = "XeLaTeX will use its default font."
-  ))
-
-  os_name
+  resolve_font(font_name, "XeLaTeX will use its default font.")
 }
 
 
@@ -285,6 +246,21 @@ resolve_latex_font <- function(font_name) {
 #' @return Character scalar. The resolved font name for RTF.
 #' @noRd
 resolve_rtf_font <- function(font_name) {
+  resolve_font(
+    font_name,
+    "RTF viewer will substitute the closest available font."
+  )
+}
+
+
+#' Shared font resolution logic for all backends
+#'
+#' @param font_name Character scalar. Requested font name.
+#' @param fallback_hint Character scalar. Backend-specific hint for the warning
+#'   when no font is found (e.g., "XeLaTeX will use its default font.").
+#' @return Character scalar. The resolved font name.
+#' @noRd
+resolve_font <- function(font_name, fallback_hint) {
   if (is_system_font_available(font_name)) {
     return(font_name)
   }
@@ -296,7 +272,7 @@ resolve_rtf_font <- function(font_name) {
   if (is_system_font_available(os_name)) {
     cli::cli_inform(c(
       "i" = "Font {.val {font_name}} not found on system.",
-      "*" = "Falling back to {.val {os_name}} for RTF output."
+      "*" = "Falling back to {.val {os_name}}."
     ))
     return(os_name)
   }
@@ -304,7 +280,7 @@ resolve_rtf_font <- function(font_name) {
   cli::cli_warn(c(
     "!" = "Font {.val {font_name}} not found on system.",
     "i" = "Install {.val {os_name}} (free, SIL OFL) or set {.envvar ARFRAME_FONT_DIR}.",
-    "i" = "RTF viewer will substitute the closest available font."
+    "i" = fallback_hint
   ))
 
   os_name

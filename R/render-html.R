@@ -486,12 +486,7 @@ html_font_stack <- function(font_family) {
 #' Classify a font family name into modern/swiss/roman
 #' @noRd
 classify_font_family <- function(font_family) {
-  for (fam_name in names(fr_env$fonts)) {
-    if (font_family %in% fr_env$fonts[[fam_name]]$names) {
-      return(fam_name)
-    }
-  }
-  "modern" # default to monospace for pharma
+  lookup_font_family(font_family)
 }
 
 

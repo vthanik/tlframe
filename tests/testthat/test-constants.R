@@ -636,14 +636,14 @@ test_that("get_font_dir returns path when directory contains .otf files", {
   expect_equal(result, normalizePath(tmp))
 })
 
-test_that("is_system_font_available checks ARFRAME_FONT_DIR for matching fonts", {
+test_that("is_system_font_available returns TRUE when ARFRAME_FONT_DIR is set", {
   tmp <- tempfile("fontdir")
   dir.create(tmp)
-  file.create(file.path(tmp, "SourceSerif4-Regular.ttf"))
+  file.create(file.path(tmp, "test.ttf"))
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
   withr::local_envvar(ARFRAME_FONT_DIR = tmp)
-  expect_true(is_system_font_available("Source Serif 4"))
-  # Non-matching font should fall through to fc-list
+  # Trust the user — any font name returns TRUE when custom dir is set
+  expect_true(is_system_font_available("AnyFontName"))
 })
 
 test_that("resolve_latex_font returns available font as-is", {
