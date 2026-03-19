@@ -187,7 +187,21 @@ scope_css <- function(css, uid) {
       result[i] <- sub("^body", prefix, line)
     } else if (grepl("^\\.ar-", line)) {
       # .ar-foo { ... } → #uid .ar-foo { ... }
-      result[i] <- paste0(prefix, " ", line)
+      # Handle comma-separated selectors: .ar-a, .ar-b → #uid .ar-a, #uid .ar-b
+      if (grepl(",", line, fixed = TRUE)) {
+        # Split "selector1, selector2 {" into selectors + opening brace
+        brace <- ""
+        sel_line <- line
+        if (grepl("\\{", line)) {
+          brace <- sub(".*?(\\{.*)$", " \\1", line)
+          sel_line <- sub("\\s*\\{.*$", "", line)
+        }
+        parts <- trimws(strsplit(sel_line, ",", fixed = TRUE)[[1L]])
+        scoped <- paste0(prefix, " ", parts, collapse = ", ")
+        result[i] <- paste0(scoped, brace)
+      } else {
+        result[i] <- paste0(prefix, " ", line)
+      }
     } else if (in_media && grepl("^\\s+\\.ar-", line)) {
       # indented .ar- in @media
       indent <- sub("^(\\s+).*", "\\1", line)
