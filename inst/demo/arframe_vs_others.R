@@ -1,11 +1,13 @@
 # ============================================================================
-# arframe vs gt vs tfrmt vs flextable — Head-to-Head Comparison
+# arframe vs tfrmt + gt + docorator — Head-to-Head Comparison
 # Table 14.3.1: Treatment-Emergent AEs by SOC/PT (the hardest CSR table)
 # ============================================================================
 #
-# This script builds the same production AE table four ways.
-# Run each section to see the difference in complexity, output quality,
-# and regulatory fitness.
+# This script builds the same production AE table two ways:
+#   A) arframe alone (1 package, ~30 lines)
+#   B) tfrmt + gt + docorator (3 packages, ~130 lines)
+#
+# PRIMARY OUTPUT: PDF — the standard at GSK and many sponsors.
 #
 # WHY this table?
 #   - SOC/PT hierarchy with indentation (MedDRA)
@@ -15,31 +17,19 @@
 #   - N-counts in column headers with format control
 #   - Pageheader / pagefooter with program name and page X of Y
 #   - Decimal alignment across columns
-#   - RTF output required for FDA/EMA eCTD submission
+#   - PDF output with exact font control
 #
-# If a package can produce this table to submission quality in RTF,
+# If a package can produce this table to submission quality in PDF,
 # it can handle anything in a CSR.
-
-# ── 0. Common data ──────────────────────────────────────────────────────────
-# arframe ships synthetic CDISC ADaM data + pre-summarized TFL tables.
-# We use tbl_ae_soc (already sorted by descending incidence).
 
 library(arframe)
 
 # Population N-counts (reusable across all safety tables)
 n_safety <- c(placebo = 45, zom_50mg = 45, zom_100mg = 45, total = 135)
 
-# Preview the data
-head(tbl_ae_soc, 12)
-#   soc                              pt             row_type placebo ...
-#   <NA>                             Any TEAE       total    40 (88.9)
-#   Gastrointestinal disorders       Gastrointestin soc      28 (62.2)
-#   Gastrointestinal disorders       Nausea         pt       12 (26.7)
-#   ...
-
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║  1. arframe — 30 lines, submission-ready RTF                           ║
+# ║  A. arframe — 1 package, ~30 lines, PDF + RTF + HTML from one spec    ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 fr_theme(
@@ -84,294 +74,302 @@ ae_arframe <- tbl_ae_soc |>
     "Sorted by descending total incidence."
   )
 
-# Render to RTF (submission), PDF, and HTML (review)
-ae_arframe |> fr_render(file.path(tempdir(), "Table_14_3_1.rtf"))
-ae_arframe |> fr_render(file.path(tempdir(), "Table_14_3_1.pdf"))
-ae_arframe  # HTML preview in viewer
+# One spec -> three formats
+ae_arframe |> fr_render(file.path(tempdir(), "arframe_14_3_1.pdf"))
+ae_arframe |> fr_render(file.path(tempdir(), "arframe_14_3_1.rtf"))
+ae_arframe  # HTML in viewer
+
+cat("\n== arframe ==\n")
+cat("Packages needed:   1 (arframe)\n")
+cat("Lines of code:     ~30\n")
+cat("PDF backend:       XeLaTeX + tabularray (native typesetting)\n")
+cat("Decimal alignment: YES (tabularray column type)\n")
+cat("N-counts:          Automatic from named vector\n")
+cat("Page headers:      Built-in (fancyhdr)\n")
+cat("Page X of Y:       Built-in (lastpage)\n")
+cat("Continuation:      Built-in ('(continued)' on page 2+)\n")
+cat("Theme:             Study-wide, set once, all tables inherit\n")
+cat("Output:            .pdf + .rtf + .html from SAME spec\n\n")
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║  2. gt — ~100 lines, NO submission-quality RTF                         ║
+# ║  B. tfrmt + gt + docorator — 3 packages, ~130 lines                   ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 #
-# gt is a great presentation tool, but it was not designed for
-# regulatory submissions. Here's what you'd need to write:
-
-if (requireNamespace("gt", quietly = TRUE)) {
-
-  library(gt)
-
-  # gt cannot: decimal-align, paginate RTF, add continuation headers,
-  # do page X of Y, or produce multi-page RTF with repeating headers.
-  # This is the closest approximation:
-
-  ae_data <- tbl_ae_soc
-  ae_data$indent <- ifelse(ae_data$row_type == "pt", 1L, 0L)
-
-  ae_gt <- ae_data |>
-    gt(groupname_col = "soc") |>
-    cols_hide(c(row_type, indent)) |>
-    cols_label(
-      pt        = "System Organ Class / Preferred Term",
-      placebo   = paste0("Placebo\n(N=", n_safety["placebo"], ")"),
-      zom_50mg  = paste0("Zomerane 50mg\n(N=", n_safety["zom_50mg"], ")"),
-      zom_100mg = paste0("Zomerane 100mg\n(N=", n_safety["zom_100mg"], ")"),
-      total     = paste0("Total\n(N=", n_safety["total"], ")")
-    ) |>
-    cols_align(align = "center", columns = c(placebo, zom_50mg, zom_100mg, total)) |>
-    # gt has no decimal alignment — center is the fallback
-    tab_style(
-      style = cell_text(weight = "bold"),
-      locations = cells_row_groups()
-    ) |>
-    tab_style(
-      style = cell_text(weight = "bold"),
-      locations = cells_body(rows = row_type == "total")
-    ) |>
-    tab_style(
-      style = cell_text(indent = px(20)),
-      locations = cells_body(columns = pt, rows = row_type == "pt")
-    ) |>
-    tab_header(
-      title = "Table 14.3.1",
-      subtitle = "Treatment-Emergent Adverse Events by SOC and Preferred Term"
-    ) |>
-    tab_footnote("MedDRA version 26.0.") |>
-    tab_footnote("Subjects counted once per SOC and Preferred Term.") |>
-    tab_footnote("Sorted by descending total incidence.") |>
-    tab_options(
-      table.font.size = px(12),
-      # gt cannot set Courier New for RTF
-      # gt cannot do landscape orientation
-      # gt cannot do page headers/footers
-      # gt cannot do "Page X of Y"
-      # gt cannot do "(continued)" on subsequent pages
-      # gt cannot do repeating column headers on new pages
-      column_labels.font.weight = "bold"
-    )
-
-  # gt RTF output is single-page — no pagination, no repeating headers
-  # gtsave(ae_gt, file.path(tempdir(), "gt_ae.rtf"))  # flat, non-paginated
-
-  cat("gt: Renders HTML well, but RTF is single-page with no pagination,\n")
-  cat("    no decimal alignment, no page headers/footers, no continuation.\n")
-  cat("    NOT suitable for eCTD submission.\n")
-}
-
-
-# ╔══════════════════════════════════════════════════════════════════════════╗
-# ║  3. tfrmt — ~120 lines, requires separate data pipeline                ║
-# ╚══════════════════════════════════════════════════════════════════════════╝
+# The pharmaverse TLF stack:
+#   1) tfrmt  — defines format spec (number formats, row groups, ordering)
+#   2) gt     — renders the table (HTML, limited RTF)
+#   3) docorator — wraps gt output with page headers/footers, renders PDF
 #
-# tfrmt defines a table *format specification* but does NOT render RTF.
-# It produces gt objects (inheriting gt's RTF limitations).
-# The format layer is verbose because you define format strings per row type.
+# Each package handles one slice of what arframe does in a single pipeline.
+# The data must be reshaped to ARD format before tfrmt can use it.
 
-if (requireNamespace("tfrmt", quietly = TRUE) &&
-    requireNamespace("tibble", quietly = TRUE)) {
-
-  library(tfrmt)
-  library(tibble)
-
-  # tfrmt requires ARD (Analysis Results Data) format — a separate
-  # data pipeline from the summary stats you already computed.
-  # You need: group, label, column, param, value — one row per stat.
-  # This is a significant data reshaping step that arframe does NOT require.
-
-  cat("\ntfrmt: Requires ARD-format input (group/label/column/param/value).\n")
-  cat("       Produces gt objects — same RTF limitations as gt.\n")
-  cat("       No page headers/footers, no page X of Y, no continuation.\n")
-  cat("       No decimal alignment in RTF output.\n")
-  cat("       Format spec is powerful but verbose (~120 lines for this table).\n")
-  cat("       NOT suitable for direct eCTD submission.\n")
-
-  # Skeleton of what the tfrmt spec looks like:
-  #
-  # tfrmt(
-  #   group  = soc,
-  #   label  = pt,
-  #   column = treatment,
-  #   param  = param,
-  #   value  = value,
-  #   body_plan = body_plan(
-  #     frmt_structure(group_val = ".default", label_val = ".default",
-  #       frmt_combine("{n} ({pct})",
-  #         n   = frmt("xx"),
-  #         pct = frmt("xx.x")))
-  #   ),
-  #   row_grp_plan = row_grp_plan(
-  #     row_grp_structure(group_val = ".default", element_block(post_space = " "))
-  #   ),
-  #   col_plan = col_plan(pt, placebo, zom_50mg, zom_100mg, total)
-  # )
-  #
-  # Then: print_to_gt(tfrmt_spec, ard_data) |> gtsave("out.rtf")
-}
-
-
-# ╔══════════════════════════════════════════════════════════════════════════╗
-# ║  4. flextable + officer — ~150 lines, closest competitor for RTF       ║
-# ╚══════════════════════════════════════════════════════════════════════════╝
+# ── Step 0: Reshape data to ARD format ──────────────────────────────────
+# tfrmt requires Analysis Results Data: one row per statistic.
+# arframe takes your summary table as-is. This reshape is extra work.
 #
-# flextable + officer is the most common R approach for paginated RTF.
-# It can produce multi-page RTF but requires manual construction of
-# every formatting detail.
+# tbl_ae_soc has columns: soc, pt, row_type, placebo, zom_50mg, zom_100mg, total
+# tfrmt needs:  group, label, column, param, value
+#
+# In practice this reshape happens in the analysis pipeline (e.g. Tplyr/cardinal),
+# but the point is: tfrmt cannot consume the wide summary table directly.
 
-if (requireNamespace("flextable", quietly = TRUE) &&
-    requireNamespace("officer", quietly = TRUE)) {
+cat("== tfrmt + gt + docorator ==\n\n")
 
-  library(flextable)
-  library(officer)
+cat("── Step 0: Data reshape (tfrmt requires ARD format) ──\n")
+cat("tfrmt cannot use wide summary data directly.\n")
+cat("You must reshape to: group | label | column | param | value\n")
+cat("This adds ~20 lines of tidyr::pivot_longer or reshape().\n\n")
 
-  ae_data <- tbl_ae_soc
+# Simulated ARD reshape (showing the concept):
+# ard <- tbl_ae_soc |>
+#   tidyr::pivot_longer(
+#     cols = c(placebo, zom_50mg, zom_100mg, total),
+#     names_to = "column",
+#     values_to = "value"
+#   ) |>
+#   dplyr::mutate(param = "n_pct")  # tfrmt needs a param column
 
-  # Step 1: Manually format column headers with N-counts (no built-in N format)
-  col_labels <- c(
-    pt        = "System Organ Class\n  Preferred Term",
-    placebo   = paste0("Placebo\n(N=", n_safety["placebo"], ")"),
-    zom_50mg  = paste0("Zomerane\n50mg\n(N=", n_safety["zom_50mg"], ")"),
-    zom_100mg = paste0("Zomerane\n100mg\n(N=", n_safety["zom_100mg"], ")"),
-    total     = paste0("Total\n(N=", n_safety["total"], ")")
-  )
 
-  # Step 2: Remove structural columns, build flextable
-  display_data <- ae_data[, c("pt", "placebo", "zom_50mg", "zom_100mg", "total")]
+cat("── Step 1: tfrmt format spec (~40 lines) ──\n")
+cat(paste0(
+  '
+# library(tfrmt)
+# library(tibble)
+#
+# ae_tfrmt <- tfrmt(
+#   group  = soc,
+#   label  = pt,
+#   column = column,
+#   param  = param,
+#   value  = value,
+#
+#   # Number formatting per statistic type
+#   body_plan = body_plan(
+#     frmt_structure(
+#       group_val = ".default",
+#       label_val = ".default",
+#       frmt("x (xx.x)")
+#     )
+#   ),
+#
+#   # Row grouping and spacing
+#   row_grp_plan = row_grp_plan(
+#     row_grp_structure(
+#       group_val = ".default",
+#       element_block(post_space = " ")
+#     )
+#   ),
+#
+#   # Column ordering
+#   col_plan = col_plan(
+#     pt,
+#     placebo, zom_50mg, zom_100mg, total
+#   ),
+#
+#   # Column labels with N-counts (manual)
+#   col_style_plan = col_style_plan(
+#     col_style_structure(
+#       col = placebo,   width = 120, align = "center"
+#     ),
+#     col_style_structure(
+#       col = zom_50mg,  width = 120, align = "center"
+#     ),
+#     col_style_structure(
+#       col = zom_100mg, width = 120, align = "center"
+#     ),
+#     col_style_structure(
+#       col = total,     width = 120, align = "center"
+#     )
+#   )
+# )
+#
+# # Render to gt object
+# ae_gt <- print_to_gt(ae_tfrmt, ard_data)
+'
+))
 
-  ft <- flextable(display_data) |>
-    set_header_labels(values = as.list(col_labels)) |>
-    # Step 3: Manual font, size, alignment for every column
-    font(fontname = "Courier New", part = "all") |>
-    fontsize(size = 9, part = "all") |>
-    align(j = 2:5, align = "center", part = "all") |>
-    align(j = 1, align = "left", part = "body") |>
-    # flextable has NO decimal alignment — center is the fallback
-    bold(part = "header") |>
-    # Step 4: Manually identify and bold SOC rows and total row
-    bold(i = which(ae_data$row_type %in% c("soc", "total")), part = "body") |>
-    # Step 5: Manually indent PT rows (no indent_by equivalent)
-    padding(
-      i = which(ae_data$row_type == "pt"),
-      j = 1, padding.left = 20
-    ) |>
-    # Step 6: Manual borders (no hline presets)
-    hline_top(border = fp_border(width = 1), part = "header") |>
-    hline_bottom(border = fp_border(width = 1), part = "header") |>
-    hline_bottom(border = fp_border(width = 1), part = "body") |>
-    # Step 7: Width — manual calculation required
-    width(j = 1, width = 3.5) |>
-    autofit()
+cat("\nNOTE: tfrmt has no decimal alignment — only left/center/right.\n")
+cat("NOTE: N-counts in headers require manual paste0() or col_style_plan.\n")
+cat("NOTE: SOC bold requires post-processing the gt object.\n\n")
 
-  # Step 8: Build Word document with officer for pagination
-  # (flextable alone can't do page headers, footers, or "Page X of Y")
-  doc <- read_docx() |>
-    body_add_par("TFRM-2024-001", style = "Header") |>
-    # officer has no direct RTF output with page X of Y in headers
-    # You typically write to .docx, then convert to RTF externally
-    body_add_par("Table 14.3.1", style = "heading 1") |>
-    body_add_par(
-      "Treatment-Emergent Adverse Events by SOC and Preferred Term"
-    ) |>
-    body_add_flextable(ft) |>
-    body_add_par("MedDRA version 26.0.") |>
-    body_add_par("Subjects counted once per SOC and Preferred Term.")
 
-  # print(doc, target = file.path(tempdir(), "flex_ae.docx"))
+cat("── Step 2: gt post-processing (~30 lines) ──\n")
+cat(paste0(
+  '
+# # tfrmt produces a gt object, but it lacks:
+# # - SOC row bolding (tfrmt has no conditional row styling)
+# # - "Any TEAE" total row bolding
+# # - PT indentation (tfrmt groups but does not indent)
+# # You must manually add these to the gt object:
+#
+# ae_gt <- ae_gt |>
+#   gt::tab_style(
+#     style = gt::cell_text(weight = "bold"),
+#     locations = gt::cells_row_groups()
+#   ) |>
+#   gt::tab_style(
+#     style = gt::cell_text(weight = "bold"),
+#     locations = gt::cells_body(rows = row_type == "total")
+#   ) |>
+#   gt::tab_style(
+#     style = gt::cell_text(indent = gt::px(20)),
+#     locations = gt::cells_body(columns = pt, rows = row_type == "pt")
+#   ) |>
+#   gt::tab_header(
+#     title = "Table 14.3.1",
+#     subtitle = "TEAEs by SOC and Preferred Term"
+#   ) |>
+#   gt::tab_footnote("MedDRA version 26.0.") |>
+#   gt::tab_footnote("Subjects counted once per SOC and PT.") |>
+#   gt::tab_footnote("Sorted by descending total incidence.")
+'
+))
 
-  cat("\nflextable + officer:\n")
-  cat("  ~150 lines for the same table.\n")
-  cat("  No decimal alignment, no auto N-counts, no indent_by shorthand.\n")
-  cat("  Pagination via officer (.docx), not native RTF.\n")
-  cat("  No continuation headers, no page X of Y in RTF.\n")
-  cat("  Usable for internal review, NOT ideal for eCTD.\n")
-}
+cat("\nNOTE: gt has no page-level features — no headers, footers, pagination.\n")
+cat("NOTE: gt cannot do decimal alignment.\n")
+cat("NOTE: gt cannot add continuation text on page 2+.\n\n")
+
+
+cat("── Step 3: docorator wrapping (~20 lines) ──\n")
+cat(paste0(
+  '
+# library(docorator)
+#
+# # docorator adds the document shell that gt lacks:
+# ae_doc <- ae_gt |>
+#   as_docorator(
+#     orientation = "landscape",
+#     margin = list(top = 1, bottom = 1, left = 1, right = 1)
+#   ) |>
+#   fancyhead(
+#     left  = "TFRM-2024-001",
+#     right = "CONFIDENTIAL"
+#   ) |>
+#   fancyfoot(
+#     left  = "t_14_3_1.R",
+#     right = "Page \\\\thepage\\\\ of \\\\lastpage"
+#   )
+#
+# # Finally render to PDF
+# render_pdf(ae_doc, file.path(tempdir(), "docorator_14_3_1.pdf"))
+'
+))
+
+cat("\nNOTE: docorator PDF uses RMarkdown/Quarto + LaTeX — not direct XeLaTeX.\n")
+cat("NOTE: docorator auto-scales gt tables to fit the page.\n")
+cat("NOTE: docorator cannot add continuation text on subsequent pages.\n")
+cat("NOTE: docorator has no control over repeating column headers.\n")
+cat("NOTE: The gt table inside is still center-aligned, not decimal-aligned.\n\n")
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║  5. Feature Comparison Matrix                                          ║
+# ║  C. Side-by-Side Summary                                              ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+cat("================================================================\n")
+cat("  SIDE-BY-SIDE: arframe vs tfrmt + gt + docorator\n")
+cat("================================================================\n\n")
+
+summary_lines <- c(
+  "                              arframe          tfrmt + gt + docorator",
+  "                              ───────          ──────────────────────",
+  "Packages needed               1                3 (tfrmt + gt + docorator)",
+  "Lines of code                 ~30              ~130 (+ data reshape)",
+  "Input data format             Wide summary     ARD (one row per stat)",
+  "Data reshape needed           NO               YES (pivot_longer)",
+  "PDF backend                   XeLaTeX native   RMarkdown + LaTeX (docorator)",
+  "RTF output                    Native           gt::gtsave (single-page)",
+  "HTML output                   Native           gt (native)",
+  "One spec, all formats         YES              NO (different pipelines)",
+  "",
+  "── Table Features ──",
+  "Decimal alignment             YES              NO (center only)",
+  "N-counts in headers           Automatic        Manual paste0()",
+  "SOC/PT indent_by              1 line           Manual gt::tab_style()",
+  "Three-level indent            1 line           NOT POSSIBLE",
+  "Conditional row bold          fr_row_style()   Manual gt::tab_style()",
+  "group_by keep-together        YES              NO",
+  "Spanning headers              fr_spans()       gt::tab_spanner()",
+  "",
+  "── Page Features ──",
+  "Multi-page pagination         YES              Partial (docorator)",
+  "Repeating column headers      YES              NO",
+  "Continuation text             YES              NO",
+  "Page X of Y                   YES              YES (docorator)",
+  "Pageheader / pagefooter       Built-in         docorator layer",
+  "Landscape orientation         Built-in         docorator layer",
+  "",
+  "── Workflow ──",
+  "Study-wide theme              fr_theme()       NOT POSSIBLE",
+  "YAML config (_arframe.yml)    YES              NO",
+  "Batch render 20 tables        for loop         Manual per-table docorator wrap",
+  "Column splitting (wide)       YES              NOT POSSIBLE",
+  "page_by (per-param pages)     YES              NOT POSSIBLE"
+)
+
+for (line in summary_lines) cat(line, "\n")
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  D. Feature Comparison as PDF (arframe eating its own dog food)        ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 comparison <- data.frame(
   Feature = c(
-    "Lines of code (AE SOC/PT table)",
-    "Native RTF output",
-    "Multi-page pagination",
-    "Repeating column headers",
-    "Continuation text ('continued')",
-    "Page X of Y",
-    "Pageheader / pagefooter",
+    "Packages needed",
+    "Lines of code (AE SOC/PT)",
+    "Data reshape required",
+    "Native PDF (typeset)",
+    "PDF backend",
+    "Native RTF",
+    "Native HTML",
+    "One spec -> all formats",
     "Decimal alignment",
     "N-counts in headers (auto)",
     "SOC/PT indent_by",
     "Three-level indent (SOC/HLT/PT)",
     "Conditional row bold",
     "group_by keep-together",
-    "page_by (separate pages per param)",
-    "Column splitting (wide tables)",
     "Spanning headers",
-    "Study-level theme (set once)",
-    "YAML config (_arframe.yml)",
-    "PDF output (XeLaTeX)",
-    "HTML output (viewer + knitr)",
-    "Designed for ICH E3 / eCTD",
+    "Multi-page pagination",
+    "Repeating column headers",
+    "Continuation text",
+    "Page X of Y",
+    "Pageheader / pagefooter",
+    "Study-wide theme",
+    "YAML config",
+    "page_by (per-param pages)",
+    "Column splitting (wide tables)",
+    "Batch render (loop)",
     "No tidyverse dependency"
   ),
   arframe = c(
-    "~30", "YES", "YES", "YES", "YES", "YES", "YES", "YES", "YES",
+    "1", "~30", "NO", "YES", "XeLaTeX", "YES", "YES", "YES",
+    "YES", "YES", "YES", "YES", "YES", "YES", "YES",
     "YES", "YES", "YES", "YES", "YES", "YES", "YES", "YES", "YES",
-    "YES", "YES", "YES", "YES"
+    "YES", "YES"
   ),
-  gt = c(
-    "~100", "Partial", "NO", "NO", "NO", "NO", "NO", "NO", "Manual",
-    "Manual CSS", "NO", "YES", "NO", "NO", "NO", "YES", "NO", "NO",
-    "NO", "YES", "NO", "NO"
-  ),
-  tfrmt = c(
-    "~120", "Via gt", "NO", "NO", "NO", "NO", "NO", "NO", "Manual",
-    "Via gt", "NO", "Via gt", "NO", "NO", "NO", "Via gt", "NO", "NO",
-    "NO", "Via gt", "NO", "NO"
-  ),
-  flextable = c(
-    "~150", "Via officer", "Via officer", "YES", "NO", "Partial",
-    "Via officer", "NO", "Manual", "Manual pad", "Manual pad", "YES",
-    "NO", "NO", "NO", "YES", "NO", "NO", "NO", "YES", "NO", "NO"
+  pharmaverse = c(
+    "3", "~130", "YES", "Partial", "RMarkdown", "Single-page", "YES", "NO",
+    "NO", "Manual", "Manual", "NO", "Manual", "NO", "YES",
+    "Partial", "NO", "NO", "YES", "docorator", "NO", "NO", "NO", "NO",
+    "Manual", "NO"
   ),
   stringsAsFactors = FALSE
 )
 
-cat("\n")
-cat("================================================================\n")
-cat("  FEATURE COMPARISON: arframe vs gt vs tfrmt vs flextable\n")
-cat("================================================================\n\n")
-
-# Print as a formatted comparison
-max_feat <- max(nchar(comparison$Feature))
-fmt <- paste0("%-", max_feat + 2, "s %-10s %-10s %-10s %-10s\n")
-cat(sprintf(fmt, "Feature", "arframe", "gt", "tfrmt", "flextable"))
-cat(paste(rep("-", max_feat + 44), collapse = ""), "\n")
-for (i in seq_len(nrow(comparison))) {
-  cat(sprintf(
-    fmt,
-    comparison$Feature[i],
-    comparison$arframe[i],
-    comparison$gt[i],
-    comparison$tfrmt[i],
-    comparison$flextable[i]
-  ))
-}
-
-# Show it as an arframe table too (eating our own dog food)
 comparison_spec <- comparison |>
   fr_table() |>
   fr_titles(
-    "arframe vs Other R Packages",
-    list("Feature Comparison for Regulatory TLF Production", bold = TRUE)
+    "arframe vs pharmaverse TLF stack",
+    list("Feature Comparison: arframe vs tfrmt + gt + docorator", bold = TRUE),
+    "PDF as Primary Output"
   ) |>
   fr_cols(
-    Feature   = fr_col("Feature", width = 3.2, align = "left"),
-    arframe   = fr_col("arframe",   width = 1.0, align = "center"),
-    gt        = fr_col("gt",        width = 1.0, align = "center"),
-    tfrmt     = fr_col("tfrmt",     width = 1.0, align = "center"),
-    flextable = fr_col("flextable", width = 1.0, align = "center")
+    Feature    = fr_col("Feature", width = 3.0, align = "left"),
+    arframe    = fr_col("arframe\n(1 package)", width = 1.5, align = "center"),
+    pharmaverse = fr_col("tfrmt + gt +\ndocorator", width = 1.5, align = "center")
   ) |>
   fr_header(bold = TRUE, align = "center") |>
   fr_hlines("header") |>
@@ -379,20 +377,33 @@ comparison_spec <- comparison |>
   fr_styles(
     fr_style_if(
       condition = ~ .x == "YES",
-      cols = c("arframe", "gt", "tfrmt", "flextable"),
+      cols = c("arframe", "pharmaverse"),
       bold = TRUE
+    ),
+    fr_style_if(
+      condition = ~ .x == "NO",
+      cols = c("arframe", "pharmaverse"),
+      fg = "red"
     )
   )
 
-comparison_spec  # preview in viewer
+comparison_spec  # HTML preview
+comparison_spec |> fr_render(file.path(tempdir(), "Package_Comparison.pdf"))
+
+cat("\nComparison PDF written to:", file.path(tempdir(), "Package_Comparison.pdf"), "\n")
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║  6. Bonus: Full Study Program in 8 Tables                             ║
+# ║  E. Full Study Program — 7 Tables, All as PDF                         ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 #
-# A real CSR has 15–30 tables. Here's the core 8, each under 20 lines,
-# all sharing one theme. This is what the SAS team writes 2000+ lines for.
+# A real CSR has 15–30 tables. Here's the core 7, each under 20 lines,
+# all sharing one theme. With tfrmt + gt + docorator, each table needs:
+#   - ARD data reshape
+#   - tfrmt spec
+#   - gt post-processing
+#   - docorator wrapping
+# That's 4 steps x 7 tables = 28 code blocks vs 7 pipelines below.
 
 fr_theme_reset()
 fr_theme(
@@ -543,7 +554,7 @@ t_14_3_6 <- tbl_vs[tbl_vs$timepoint == "Week 24", ] |>
   ) |>
   fr_footnotes("CFB = Change from Baseline.")
 
-# ── Batch render all 8 tables ──
+# ── Batch render all 7 tables ──
 tables <- list(
   "Table_14_1_1"   = t_14_1_1,
   "Table_14_1_4"   = t_14_1_4,
@@ -558,13 +569,16 @@ outdir <- file.path(tempdir(), "csr_tables")
 dir.create(outdir, showWarnings = FALSE)
 
 for (nm in names(tables)) {
+  tables[[nm]] |> fr_render(file.path(outdir, paste0(nm, ".pdf")))
   tables[[nm]] |> fr_render(file.path(outdir, paste0(nm, ".rtf")))
 }
 
-cat("\n7 submission-quality RTF tables written to:\n", outdir, "\n")
-cat("\nTotal R code: ~200 lines (including theme, N-counts, all 7 tables).\n")
-cat("Equivalent SAS: ~2000+ lines of PROC REPORT + ODS RTF macros.\n")
-cat("Equivalent gt/tfrmt: NOT possible (no paginated RTF output).\n")
-cat("Equivalent flextable: ~1000+ lines (manual formatting per table).\n")
+cat("\n7 submission-quality tables written to:\n", outdir, "\n")
+cat("  -> 7 PDFs (XeLaTeX, typeset quality)\n")
+cat("  -> 7 RTFs (for eCTD if needed)\n")
+cat("\n── Bottom Line ──\n")
+cat("arframe:    ~200 lines total for 7 tables (theme + pipelines + batch render)\n")
+cat("pharmaverse: ~900+ lines (ARD reshape + tfrmt + gt fixups + docorator per table)\n")
+cat("SAS:        ~2000+ lines of PROC REPORT + ODS PDF macros\n")
 
 fr_theme_reset()
