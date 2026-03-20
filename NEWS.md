@@ -2,6 +2,8 @@
 
 ## New features
 
+* `fr_wide_ard()` converts ARD (Analysis Results Data) from cards/cardx into wide summary data frames for `fr_table()`. Supports multi-row continuous output (named vector format specs), per-variable decimal precision, hierarchical SOC/PT structures, custom format functions (including `p.value < 0.001` threshold), and all 60+ cards/cardx stat types. Zero dependency on cards — duck-types on column names.
+
 * `fr_rows(group_bold = TRUE)` bolds group header rows injected by `group_label`. Also available via `fr_theme(group_bold = TRUE)` for study-wide defaults.
 
 ## Breaking changes

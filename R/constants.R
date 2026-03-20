@@ -1198,3 +1198,53 @@ fr_env$linestyle_latex <- c(
 # ══════════════════════════════════════════════════════════════════════════════
 
 fr_env$backends <- list()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 10. ARD (Analysis Results Data) Constants
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Sentinels that represent real display rows — do NOT filter
+fr_env$ard_keep_sentinels <- c("..ard_hierarchical_overall..")
+
+# Internal context values to filter out
+fr_env$ard_internal_contexts <- c("tabulate", "attributes", "total_n")
+
+# Stat names that always produce character values (not numeric)
+fr_env$ard_char_stat_names <- c(
+  "method",
+  "alternative",
+  "label",
+  "class",
+  "conf.type"
+)
+
+# Stat names that produce logical values
+fr_env$ard_logical_stat_names <- c("paired", "var.equal", "correct", "conf.int")
+
+# Standard ARD column names — anything else is a renamed group/variable column
+fr_env$ard_standard_cols <- c(
+  "variable",
+  "variable_level",
+  "group1",
+  "group1_level",
+  "group2",
+  "group2_level",
+  "group3",
+  "group3_level",
+  "group4",
+  "group4_level",
+  "group5",
+  "group5_level",
+  "group6",
+  "group6_level",
+
+  "context",
+  "stat_name",
+  "stat_label",
+  "stat",
+  "fmt_fun",
+  "warning",
+  "error",
+  "stat_fmt"
+)

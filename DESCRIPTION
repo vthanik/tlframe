@@ -33,6 +33,7 @@ Imports:
     vctrs (>= 0.6.0),
     yaml (>= 2.3.0)
 Suggests:
+    cards,
     ggplot2 (>= 3.4.0),
     htmltools,
     knitr,

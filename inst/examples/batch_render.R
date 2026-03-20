@@ -14,7 +14,7 @@ library(dplyr, warn.conflicts = FALSE)
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║  Study Setup (shared by both methods)                                  ║
+# ║  Study Setup (shared by both methods)                                    ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 fr_theme_reset()
@@ -35,7 +35,7 @@ dir.create(outdir, showWarnings = FALSE)
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║  METHOD 1: Excel/CSV Manifest                                         ║
+# ║  METHOD 1: Excel/CSV Manifest                                            ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 #
 # In production, this data frame would come from:
@@ -216,7 +216,7 @@ cat("Output:", outdir, "\n\n")
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║  METHOD 2: R List Registry — Functional Batch                          ║
+# ║  METHOD 2: R List Registry — Functional Batch                            ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 #
 # For teams that prefer R over Excel, define a registry of table specs.
@@ -387,7 +387,7 @@ for (nm in selected) {
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║  Comparison: Method 1 vs Method 2                                      ║
+# ║  Comparison: Method 1 vs Method 2                                        ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 cat("\n══════════════════════════════════════════════════════════════\n")

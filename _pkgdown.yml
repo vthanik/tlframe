@@ -58,6 +58,15 @@ footer:
     right: built_with
 
 reference:
+  - title: "Data Conversion"
+    desc: >
+      `fr_wide_ard()` converts Analysis Results Data (ARD) from packages like
+      cards and cardx into wide summary data frames ready for `fr_table()`.
+      Supports multi-row continuous output, per-variable decimals, hierarchical
+      SOC/PT structures, and all cards/cardx stat types. No dependency on cards.
+    contents:
+      - fr_wide_ard
+
   - title: "Pipeline Entry Points"
     desc: >
       Every arframe pipeline starts here. `fr_table()` creates a spec object
