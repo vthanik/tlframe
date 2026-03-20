@@ -52,13 +52,16 @@ cat("═════════════════════════
 # ── The manifest (would be an Excel file in production) ──────────────────
 
 manifest <- data.frame(
-  table_id   = c("Table_14_1_1",   "Table_14_1_4",   "Table_14_3_1",      "Table_14_3_1_1"),
-  title1     = c("Table 14.1.1",   "Table 14.1.4",   "Table 14.3.1",      "Table 14.3.1.1"),
-  title2     = c("Demographics and Baseline Characteristics",
+  # GSK naming: t_{domain}_{shell}{seq}_{variant}
+  # domain: sp = study population, saf = safety
+  # shell:  dmt = demographics, dst = disposition, ae = adverse event
+  table_id   = c("t_sp_dmt01",     "t_sp_dst01",     "t_saf_ae01_all",    "t_saf_ae01_summ"),
+  table_num  = c("Table 14.1.1",   "Table 14.1.4",    "Table 14.3.1",       "Table 14.3.1.1"),
+  title      = c("Summary of Demographic and Baseline Characteristics",
                   "Subject Disposition",
-                  "TEAEs by SOC and Preferred Term",
-                  "Overall Summary of TEAEs"),
-  population = c("ITT Population", "All Randomized",  "Safety Population", "Safety Population"),
+                  "Summary of Adverse Events by System Organ Class and Preferred Term",
+                  "Overall Summary of Treatment-Emergent Adverse Events"),
+  popfl      = c("MFASFL",         "ENRLFL",          "SAFFL",             "SAFFL"),
   dataset    = c("tbl_demog",      "tbl_disp",        "tbl_ae_soc",        "tbl_ae_summary"),
   n_pool     = c("n_itt",          "n_itt",           "n_safety",          "n_safety"),
   footnote1  = c("Percentages based on N per treatment group.",
@@ -73,13 +76,13 @@ manifest <- data.frame(
   indent_by  = c(NA,               NA,                "pt",                NA),
   bold_rows  = c(NA,               NA,                "row_type:soc,total", NA),
   blank_after = c("group",         NA,                NA,                  NA),
-  title2_bold = c(FALSE,           FALSE,             TRUE,                FALSE),
+  title_bold = c(FALSE,            FALSE,             TRUE,                FALSE),
   continuation = c(FALSE,          FALSE,             TRUE,                FALSE),
   stringsAsFactors = FALSE
 )
 
 cat("Manifest (would be read from Excel):\n")
-print(manifest[, c("table_id", "dataset", "n_pool", "group_by")])
+print(manifest[, c("table_id", "table_num", "popfl", "dataset", "n_pool")])
 cat("\n")
 
 # ── Column definitions per dataset (could also come from Excel) ──────────
@@ -147,11 +150,16 @@ build_table_from_manifest <- function(row, col_defs) {
   # Start pipeline
   spec <- data |> fr_table()
 
+  # Population label from flag
+  pop_map <- c(SAFFL = "Safety Population", MFASFL = "mFAS Population",
+               ENRLFL = "Enrolled Population", FASFL = "FAS Population")
+  pop_label <- unname(pop_map[row$popfl]) %||% row$popfl
+
   # Titles
-  if (isTRUE(row$title2_bold)) {
-    spec <- spec |> fr_titles(row$title1, list(row$title2, bold = TRUE), row$population)
+  if (isTRUE(row$title_bold)) {
+    spec <- spec |> fr_titles(row$table_num, list(row$title, bold = TRUE), pop_label)
   } else {
-    spec <- spec |> fr_titles(row$title1, row$title2, row$population)
+    spec <- spec |> fr_titles(row$table_num, row$title, pop_label)
   }
 
   # Continuation
@@ -223,11 +231,11 @@ cat("═════════════════════════
 
 table_registry <- list(
 
-  "Table_14_1_1" = function() {
+  "t_sp_dmt01" = function() {
     tbl_demog |>
       fr_table() |>
-      fr_titles("Table 14.1.1", "Demographics and Baseline Characteristics",
-                "ITT Population") |>
+      fr_titles("Table 14.1.1", "Summary of Demographic and Baseline Characteristics",
+                "mFAS Population") |>
       fr_cols(
         characteristic = fr_col("", width = 2.5),
         placebo   = fr_col("Placebo",        align = "decimal"),
@@ -242,10 +250,10 @@ table_registry <- list(
                    "MMSE = Mini-Mental State Examination.")
   },
 
-  "Table_14_1_4" = function() {
+  "t_sp_dst01" = function() {
     tbl_disp |>
       fr_table() |>
-      fr_titles("Table 14.1.4", "Subject Disposition", "All Randomized") |>
+      fr_titles("Table 14.1.4", "Subject Disposition", "Enrolled Population") |>
       fr_cols(
         category  = fr_col("", width = 2.5),
         placebo   = fr_col("Placebo",        align = "decimal"),
@@ -257,11 +265,12 @@ table_registry <- list(
       fr_footnotes("Percentages based on N randomized per arm.")
   },
 
-  "Table_14_3_1" = function() {
+  "t_saf_ae01_all" = function() {
     tbl_ae_soc |>
       fr_table() |>
       fr_titles("Table 14.3.1",
-                list("TEAEs by SOC and Preferred Term", bold = TRUE),
+                list("Summary of Adverse Events by System Organ Class and Preferred Term",
+                     bold = TRUE),
                 "Safety Population") |>
       fr_page(continuation = "(continued)") |>
       fr_cols(
@@ -284,11 +293,12 @@ table_registry <- list(
                    "Sorted by descending total incidence.")
   },
 
-  "Table_14_3_1_1" = function() {
+  "t_saf_ae01_summ" = function() {
     tbl_ae_summary |>
       fr_table() |>
       fr_titles("Table 14.3.1.1",
-                "Overall Summary of TEAEs", "Safety Population") |>
+                "Overall Summary of Treatment-Emergent Adverse Events",
+                "Safety Population") |>
       fr_cols(
         category  = fr_col("", width = 3.5),
         zom_50mg  = fr_col("Zomerane\n50mg",  align = "decimal"),
@@ -300,12 +310,12 @@ table_registry <- list(
       fr_footnotes("Subjects may be counted in more than one category.")
   },
 
-  "Table_14_2_1" = function() {
+  "t_eff_efft01" = function() {
     tbl_tte |>
       fr_table() |>
       fr_titles("Table 14.2.1",
                 list("Time to Study Withdrawal", bold = TRUE),
-                "ITT Population") |>
+                "mFAS Population") |>
       fr_cols(
         section   = fr_col(visible = FALSE),
         statistic = fr_col("", width = 3.5),
@@ -324,11 +334,11 @@ table_registry <- list(
                    "NE = Not Estimable.")
   },
 
-  "Table_14_4_1" = function() {
+  "t_sp_cmt01" = function() {
     tbl_cm |>
       fr_table() |>
       fr_titles("Table 14.4.1",
-                list("Concomitant Medications by Category", bold = TRUE),
+                list("Concomitant Medications by Category and Agent", bold = TRUE),
                 "Safety Population") |>
       fr_cols(
         category   = fr_col(visible = FALSE),
@@ -368,7 +378,7 @@ cat("Output:", outdir2, "\n\n")
 # ── Selective render (run just one or a few) ─────────────────────────────
 
 cat("── Selective render: run just 2 tables ──\n")
-selected <- c("Table_14_1_1", "Table_14_3_1")
+selected <- c("t_sp_dmt01", "t_saf_ae01_all")
 for (nm in selected) {
   table_registry[[nm]]() |>
     fr_render(file.path(outdir2, paste0(nm, "_rerun.pdf")))
@@ -394,7 +404,7 @@ cat("  - Complex tables (styles, indent_by) need encoding convention\n\n")
 cat("Method 2 (R List Registry):\n")
 cat("  + Full R expressiveness — any arframe feature available\n")
 cat("  + Each table is self-contained and readable\n")
-cat("  + Easy to run selectively: table_registry[['Table_14_3_1']]()\n")
+cat("  + Easy to run selectively: table_registry[['t_saf_ae01_all']]()\n")
 cat("  + Version-controlled in git alongside the analysis code\n")
 cat("  - Titles/footnotes changes require editing R code\n\n")
 
