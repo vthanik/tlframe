@@ -171,10 +171,10 @@ test_that("group_by alone does NOT auto-insert blank rows", {
     val = c("x", "y", "z", "w"),
     stringsAsFactors = FALSE
   )
-  spec <- df |> fr_table() |> fr_rows(group_by = "grp")
+  spec <- df |> fr_table() |> fr_rows(group_by = "grp", blank_after = "grp")
   spec <- finalize_spec(spec)
-  # group_by auto-implies blank_after — a blank row is inserted between groups
-  # 4 original rows + 1 blank row between groups A and B = 5
+  # blank_after inserts a blank row between groups A and B
+  # 4 original rows + 1 blank row = 5
   expect_equal(nrow(spec$data), 5L)
 })
 
@@ -494,6 +494,178 @@ test_that("range_pair aligns with estimate in est_spread-dominant column", {
   expect_true(nchar(result[1]) == nchar(result[2]))
 })
 
+
+# --- New type detection tests ---
+
+test_that("detect_stat_type identifies BLQ/INF/-INF as missing", {
+  expect_equal(detect_stat_type("BLQ"), "missing")
+  expect_equal(detect_stat_type("INF"), "missing")
+  expect_equal(detect_stat_type("-INF"), "missing")
+})
+
+test_that("detect_stat_type identifies est_ci with missing tokens", {
+  expect_equal(detect_stat_type("14.3 (11.2, NR)"), "est_ci")
+  expect_equal(detect_stat_type("NR (NR, NR)"), "est_ci")
+  expect_equal(detect_stat_type("0.087 (0.034, NR)"), "est_ci")
+  expect_equal(detect_stat_type("3.120 (1.840, INF)"), "est_ci")
+})
+
+test_that("detect_stat_type identifies est_ci_bracket", {
+  expect_equal(detect_stat_type("0.0 [0.0, 0.0]"), "est_ci_bracket")
+  expect_equal(detect_stat_type("53.0 [45.0, 60.0]"), "est_ci_bracket")
+  expect_equal(detect_stat_type("102.0 [88.4, 116.2]"), "est_ci_bracket")
+})
+
+test_that("detect_stat_type identifies est_spread_pct", {
+  expect_equal(detect_stat_type("0.10 (8.7%)"), "est_spread_pct")
+  expect_equal(detect_stat_type("52.43 (23.4%)"), "est_spread_pct")
+  expect_equal(detect_stat_type("1240.40 (23.4%)"), "est_spread_pct")
+})
+
+test_that("detect_stat_type identifies n_over_N", {
+  expect_equal(detect_stat_type("0/120"), "n_over_N")
+  expect_equal(detect_stat_type("1/120"), "n_over_N")
+  expect_equal(detect_stat_type("108/120"), "n_over_N")
+})
+
+test_that("detect_stat_type identifies n_over_float", {
+  expect_equal(detect_stat_type("0/234.6"), "n_over_float")
+  expect_equal(detect_stat_type("12/234.6"), "n_over_float")
+  expect_equal(detect_stat_type("108/234.6"), "n_over_float")
+})
+
+test_that("detect_stat_type identifies est_ci_pval", {
+  expect_equal(
+    detect_stat_type("-0.08 (-0.21, 0.05) 0.194"),
+    "est_ci_pval"
+  )
+  expect_equal(
+    detect_stat_type("12.40 (9.80, 15.00) <0.001"),
+    "est_ci_pval"
+  )
+})
+
+test_that("detect_stat_type identifies n_pct_rate", {
+  expect_equal(detect_stat_type("0 (0.0) 0.00"), "n_pct_rate")
+  expect_equal(detect_stat_type("3 (2.5) 1.28"), "n_pct_rate")
+  expect_equal(detect_stat_type("42 (35.0) 17.94"), "n_pct_rate")
+})
+
+test_that("detect_stat_type identifies n_over_N_pct_ci", {
+  expect_equal(
+    detect_stat_type("0/120 (0.0) [0.0, 3.0]"),
+    "n_over_N_pct_ci"
+  )
+  expect_equal(
+    detect_stat_type("12/120 (10.0) [5.6, 16.9]"),
+    "n_over_N_pct_ci"
+  )
+})
+
+test_that("detect_stat_type identifies est_spread_pct_ci", {
+  expect_equal(
+    detect_stat_type("8.1 (24.2%) (7.3, 8.9)"),
+    "est_spread_pct_ci"
+  )
+  expect_equal(
+    detect_stat_type("1240.4 (23.4%) (1124.2, 1368.8)"),
+    "est_spread_pct_ci"
+  )
+})
+
+# --- New type alignment tests ---
+
+test_that("align_decimal_column: est_ci with missing tokens all same nchar", {
+  vals <- c("14.3 (11.2, NR)", "0.087 (0.034, NR)", "NR (NR, NR)")
+  result <- align_decimal_column(vals)
+  nchars <- nchar(result)
+  expect_true(all(nchars == nchars[1]))
+  expect_true(nchars[1] > 0L)
+})
+
+test_that("align_decimal_column: est_ci_bracket values all same nchar", {
+  vals <- c("0.0 [0.0, 0.0]", "53.0 [45.0, 60.0]", "102.0 [88.4, 116.2]")
+  result <- align_decimal_column(vals)
+  nchars <- nchar(result)
+  expect_true(all(nchars == nchars[1]))
+})
+
+test_that("align_decimal_column: est_spread_pct values all same nchar", {
+  vals <- c("0.10 (8.7%)", "52.43 (23.4%)", "1240.40 (23.4%)")
+  result <- align_decimal_column(vals)
+  nchars <- nchar(result)
+  expect_true(all(nchars == nchars[1]))
+})
+
+test_that("align_decimal_column: n_over_N values all same nchar", {
+  vals <- c("0/120", "1/120", "108/120")
+  result <- align_decimal_column(vals)
+  nchars <- nchar(result)
+  expect_true(all(nchars == nchars[1]))
+})
+
+test_that("align_decimal_column: n_over_float values all same nchar", {
+  vals <- c("0/234.6", "12/234.6", "108/234.6")
+  result <- align_decimal_column(vals)
+  nchars <- nchar(result)
+  expect_true(all(nchars == nchars[1]))
+})
+
+test_that("align_decimal_column: est_ci_pval compound all same nchar", {
+  vals <- c(
+    "-0.08 (-0.21, 0.05) 0.194",
+    "12.40 (9.80, 15.00) <0.001"
+  )
+  result <- align_decimal_column(vals)
+  nchars <- nchar(result)
+  expect_true(all(nchars == nchars[1]))
+})
+
+test_that("align_decimal_column: n_pct_rate compound all same nchar", {
+  vals <- c("0 (0.0) 0.00", "3 (2.5) 1.28", "42 (35.0) 17.94")
+  result <- align_decimal_column(vals)
+  nchars <- nchar(result)
+  expect_true(all(nchars == nchars[1]))
+})
+
+test_that("align_decimal_column: n_over_N_pct_ci compound all same nchar", {
+  vals <- c(
+    "0/120 (0.0) [0.0, 3.0]",
+    "12/120 (10.0) [5.6, 16.9]",
+    "120/120 (100.0) [97.0, 100.0]"
+  )
+  result <- align_decimal_column(vals)
+  nchars <- nchar(result)
+  expect_true(all(nchars == nchars[1]))
+})
+
+test_that("align_decimal_column: est_spread_pct_ci compound all same nchar", {
+  vals <- c(
+    "8.1 (24.2%) (7.3, 8.9)",
+    "1240.4 (23.4%) (1124.2, 1368.8)"
+  )
+  result <- align_decimal_column(vals)
+  nchars <- nchar(result)
+  expect_true(all(nchars == nchars[1]))
+})
+
+# --- Cross-type fallback: est_ci_bracket <-> est_ci ---
+
+test_that("est_ci_bracket aligns with est_ci dominant: delimiters swap", {
+  vals <- c("5.0 [3.0, 7.0]", "10.0 (8.0, 12.0)", "15.0 (13.0, 17.0)")
+  result <- align_decimal_column(vals)
+  nchars <- nchar(result)
+  expect_true(all(nchars == nchars[1]))
+})
+
+# --- Cross-type fallback: n_over_N in n_over_N_pct ---
+
+test_that("n_over_N aligns in n_over_N_pct dominant column", {
+  vals <- c("0/120", "3/45 (6.7)", "10/45 (22.2)")
+  result <- align_decimal_column(vals)
+  nchars <- nchar(result)
+  expect_true(all(nchars == nchars[1]))
+})
 
 # --- Phase 1: New pattern detection tests ---
 
