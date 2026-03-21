@@ -21,7 +21,7 @@ build_group_keys <- function(data, cols) {
 #' @return Logical vector of length nrow(data).
 #' @noRd
 detect_blank_rows <- function(data) {
-  rowSums(data != "") == 0L
+  rowSums(data != "" & !is.na(data)) == 0L
 }
 
 
