@@ -459,7 +459,7 @@ test_that("compute_all_decimal_geometry aligns per page_by independently", {
   expect_true(all(nchar(dbp) == nchar(dbp[1])))
 })
 
-test_that("per-group center_offset varies by group formatted width", {
+test_that("group_by uses global alignment (groups share a page)", {
   df <- data.frame(
     section = c("A", "A", "B", "B"),
     stat = c(
@@ -477,10 +477,123 @@ test_that("per-group center_offset varies by group formatted width", {
   spec <- finalize_spec(spec)
   geom <- spec$decimal_geometry$stat
   expect_equal(length(geom$center_offset), nrow(spec$data))
-  # Group A (n_pct) is narrower than Group B (est_ci), so gets larger offset
-  a_rows <- which(spec$data$section == "A")
-  b_rows <- which(spec$data$section == "B")
-  expect_true(all(geom$center_offset[a_rows] > geom$center_offset[b_rows]))
+  # group_by does not split alignment — all rows share one global alignment
+  # so center_offset is uniform across all rows
+  expect_equal(length(unique(geom$center_offset)), 1L)
+})
+
+test_that("page_by orig_rows: page 2 uses correct global indices", {
+  # Core bug: page 2 rows used local index i instead of global orig_rows[i]
+  df <- data.frame(
+    param = c("SBP", "SBP", "SBP", "DBP", "DBP", "DBP"),
+    stat = c("45", "136.8 (17.61)", "136.6", "45", "80.2 (10.30)", "79.5"),
+    stringsAsFactors = FALSE
+  )
+  spec <- df |>
+    fr_table() |>
+    fr_cols(stat = fr_col("Stat", align = "decimal", width = 3))
+  spec$body$page_by <- "param"
+  spec <- finalize_spec(spec)
+
+  # Simulate what prepare_pages does
+  pages <- prepare_pages(spec)
+  expect_equal(length(pages), 2L)
+
+  # Page 2 (DBP) should have orig_rows pointing to rows 4,5,6
+  page2_data <- pages[[2]]$data
+  orig <- attr(page2_data, "orig_rows")
+  expect_equal(orig, 4:6)
+
+  # The formatted values at orig indices should match DBP content
+  geom <- spec$decimal_geometry$stat
+  dbp_formatted <- geom$formatted[orig]
+  expect_true(all(nzchar(trimws(dbp_formatted))))
+})
+
+test_that("page_by with same stat types: smart global alignment", {
+  # VS table: all params have same stat types (n_only + est_spread + scalar_float)
+  # → smart check detects same patterns → global alignment → consistent widths
+  df <- data.frame(
+    param = c("SBP", "SBP", "SBP", "DBP", "DBP", "DBP"),
+    stat = c("45", "136.8 (17.61)", "136.6", "45", "80.2 (10.30)", "79.5"),
+    stringsAsFactors = FALSE
+  )
+  spec <- df |>
+    fr_table() |>
+    fr_cols(stat = fr_col("Stat", align = "decimal", width = 3))
+  spec$body$page_by <- "param"
+  spec <- finalize_spec(spec)
+  geom <- spec$decimal_geometry$stat
+
+  # Same stat type patterns → global alignment → uniform nchar
+  expect_equal(
+    length(unique(nchar(geom$formatted[nzchar(geom$formatted)]))),
+    1L
+  )
+  # Uniform center_offset (all rows get same scalar offset)
+  expect_equal(length(unique(geom$center_offset)), 1L)
+})
+
+test_that("page_by with different stat types: per-page alignment", {
+  # Different type patterns per page → per-group alignment preserved
+  df <- data.frame(
+    param = c("Weight", "Weight", "Pulse", "Pulse"),
+    stat = c("78.42 (12.35)", "80.10 (11.50)", "72 (8)", "68 (7)"),
+    stringsAsFactors = FALSE
+  )
+  spec <- df |>
+    fr_table() |>
+    fr_cols(stat = fr_col("Stat", align = "decimal", width = 3))
+  spec$body$page_by <- "param"
+  spec <- finalize_spec(spec)
+  geom <- spec$decimal_geometry$stat
+
+  # Different decimal precision per page → per-group alignment
+  wt <- geom$formatted[df$param == "Weight"]
+  pl <- geom$formatted[df$param == "Pulse"]
+  # Within each page, nchar is uniform
+  expect_equal(length(unique(nchar(wt))), 1L)
+  expect_equal(length(unique(nchar(pl))), 1L)
+  # But nchar differs between pages (different precision)
+  expect_false(nchar(wt[1]) == nchar(pl[1]))
+})
+
+test_that("AE table: no page_by, group_by=soc → global alignment", {
+  # AE-style: group_by for SOC labels, but alignment should be global
+  df <- data.frame(
+    soc = c("SOC1", "SOC1", "SOC2", "SOC2"),
+    stat = c("100 (100%)", "78 (50%)", "8 (3%)", "0"),
+    stringsAsFactors = FALSE
+  )
+  spec <- df |>
+    fr_table() |>
+    fr_rows(group_by = "soc") |>
+    fr_cols(stat = fr_col("Stat", align = "decimal", width = 3))
+  spec <- finalize_spec(spec)
+  geom <- spec$decimal_geometry$stat
+
+  # Global alignment: uniform nchar and center_offset across all SOC groups
+  non_blank <- nzchar(trimws(geom$formatted))
+  expect_equal(length(unique(nchar(geom$formatted[non_blank]))), 1L)
+  expect_equal(length(unique(geom$center_offset)), 1L)
+})
+
+test_that("demographics: no page_by, no group_by → global alignment", {
+  # Demographics: mixed types, single global alignment
+  df <- data.frame(
+    stat = c("143", "75.7 (8.19)", "77.0", "54, 89"),
+    stringsAsFactors = FALSE
+  )
+  spec <- df |>
+    fr_table() |>
+    fr_cols(stat = fr_col("Stat", align = "decimal", width = 3))
+  spec <- finalize_spec(spec)
+  geom <- spec$decimal_geometry$stat
+
+  # All formatted values should be the same nchar (global alignment)
+  expect_equal(length(unique(nchar(geom$formatted))), 1L)
+  # Single center_offset value
+  expect_equal(length(unique(geom$center_offset)), 1L)
 })
 
 test_that("range_pair aligns with estimate in est_spread-dominant column", {

@@ -1509,6 +1509,7 @@ latex_body_rows <- function(
 
   # Pre-compute which columns are decimal-aligned
   is_decimal <- col_names %in% names(dec_geom %||% list())
+  orig_rows <- attr(data, "orig_rows")
 
   # Pre-extract cell_grid columns as vectors for O(1) indexed access.
   # Grid is column-major (build_cell_grid): cell (i, j) → index (j-1)*nr + i.
@@ -1542,7 +1543,8 @@ latex_body_rows <- function(
       if (is_decimal[j]) {
         # Decimal alignment via pre-formatted string with centering offset
         geom <- dec_geom[[col_names[j]]]
-        formatted <- geom$formatted[i]
+        ri <- if (!is.null(orig_rows)) orig_rows[i] else i
+        formatted <- geom$formatted[ri]
         if (!nzchar(trimws(formatted))) {
           cells[j] <- ""
           next
@@ -1550,7 +1552,7 @@ latex_body_rows <- function(
         formatted_esc <- latex_escape_and_resolve(formatted)
         # Replace spaces with ~ (non-breaking) for LaTeX alignment preservation
         formatted_esc <- gsub(" ", "~", formatted_esc, fixed = TRUE)
-        offset_pt <- round(geom$center_offset[i] / 20, 1)
+        offset_pt <- round(geom$center_offset[ri] / 20, 1)
         cells[j] <- paste0("\\hspace{", offset_pt, "pt}", formatted_esc)
       } else {
         # Standard cell handling

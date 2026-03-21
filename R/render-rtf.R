@@ -1226,6 +1226,7 @@ rtf_body_rows <- function(
   # Use pre-computed decimal geometry from finalize_spec()
   dec_geom <- spec$decimal_geometry
   is_decimal_col <- col_names %in% names(dec_geom %||% list())
+  orig_rows <- attr(data, "orig_rows")
 
   empty_cell <- "\\pard\\intbl\\cell"
 
@@ -1356,11 +1357,12 @@ rtf_body_rows <- function(
       # Decimal alignment: single cell with left indent for centering
       if (identical(g_align, "decimal") && is_decimal_col[j]) {
         geom <- dec_geom[[col_names[j]]]
-        formatted <- geom$formatted[i]
+        ri <- if (!is.null(orig_rows)) orig_rows[i] else i
+        formatted <- geom$formatted[ri]
         if (nzchar(trimws(formatted))) {
           formatted_esc <- rtf_escape_and_resolve(formatted)
           formatted_esc <- newline_to_rtf_line(formatted_esc)
-          dec_indent <- paste0("\\li", geom$center_offset[i])
+          dec_indent <- paste0("\\li", geom$center_offset[ri])
           cell_contents[[j]] <- paste0(
             "\\pard\\plain\\intbl",
             keepn_str,

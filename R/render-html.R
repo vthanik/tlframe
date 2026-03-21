@@ -1144,6 +1144,7 @@ html_body_rows <- function(data, vis_columns, cell_grid, borders, spec) {
   # Decimal geometry
   dec_geom <- spec$decimal_geometry
   is_decimal_col <- col_names %in% names(dec_geom %||% list())
+  orig_rows <- attr(data, "orig_rows")
 
   rows <- vector("list", nr)
   for (i in seq_len(nr)) {
@@ -1203,7 +1204,8 @@ html_body_rows <- function(data, vis_columns, cell_grid, borders, spec) {
       # Content: decimal or regular
       if (identical(cg_align[idx], "decimal") && is_decimal_col[j]) {
         geom <- dec_geom[[col_names[j]]]
-        formatted <- geom$formatted[i]
+        ri <- if (!is.null(orig_rows)) orig_rows[i] else i
+        formatted <- geom$formatted[ri]
         if (nzchar(trimws(formatted))) {
           content <- html_escape_and_resolve(formatted)
           content <- gsub("\n", "<br>", content, fixed = TRUE)

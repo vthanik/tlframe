@@ -1195,6 +1195,7 @@ prepare_pages <- function(spec) {
   lapply(unique_keys, function(k) {
     mask <- keys == k
     group_data <- spec$data[mask, , drop = FALSE]
+    attr(group_data, "orig_rows") <- which(mask)
     group_overrides <- resolve_group_labels(spec, group_data, k)
     list(
       data = group_data,

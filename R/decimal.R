@@ -1303,10 +1303,12 @@ rebuild_stat_aligned <- function(parsed, widths, dominant_type) {
           est_ci = ,
           est_ci_bracket = ,
           est_ci_pval = ,
-          est_spread_pct_ci =
-            if (isTRUE(widths$has_est_dec)) 1L + widths$w_est_dec else 0L,
-          scalar_float =
-            if (isTRUE(widths$has_dec)) 1L + widths$w_dec else 0L,
+          est_spread_pct_ci = if (isTRUE(widths$has_est_dec)) {
+            1L + widths$w_est_dec
+          } else {
+            0L
+          },
+          scalar_float = if (isTRUE(widths$has_dec)) 1L + widths$w_dec else 0L,
           pvalue = 1L + widths$w_dec,
           0L
         )
@@ -2047,15 +2049,9 @@ compute_all_decimal_geometry <- function(spec) {
   result <- list()
 
   # Hoist invariants outside the column loop
+  # Only split by page_by — group_by rows share a page and should align together
   pb <- spec$body$page_by
-  gb <- spec$body$group_by
-  align_key <- if (length(pb) > 0L) {
-    pb
-  } else if (length(gb) > 0L) {
-    gb
-  } else {
-    character(0)
-  }
+  align_key <- if (length(pb) > 0L) pb else character(0)
   space_twips <- measure_text_width_twips(
     " ",
     spec$page$font_family,
@@ -2087,28 +2083,61 @@ compute_all_decimal_geometry <- function(spec) {
         ))
       }
       unique_groups <- unique(group_labels)
-      formatted <- character(length(vals))
-      group_max_nc <- integer(length(vals))
-      for (grp in unique_groups) {
-        mask <- group_labels == grp
-        grp_formatted <- align_decimal_column(vals[mask])
-        formatted[mask] <- grp_formatted
-        grp_nc <- if (any(nzchar(grp_formatted))) {
-          max(nchar(grp_formatted))
-        } else {
-          0L
-        }
-        group_max_nc[mask] <- grp_nc
-      }
-      # NO cross-group padding — each group keeps its natural nchar
 
-      # Per-row center_offset (vectorized: one offset per group width)
-      widths_twips <- round(group_max_nc * space_twips)
-      center_offset <- pmax(
-        0L,
-        round((col_width_twips - widths_twips) / 2)
-      )
-      max_width_twips <- round(max(group_max_nc) * space_twips)
+      # Smart global fallback: check if all groups have the same stat type
+      # pattern. If so, use global alignment for consistent widths across pages.
+      use_global <- FALSE
+      if (length(unique_groups) > 1L) {
+        type_sigs <- vapply(
+          unique_groups,
+          function(grp) {
+            grp_vals <- vals[group_labels == grp]
+            grp_types <- detect_stat_types(grp_vals[nzchar(grp_vals)])
+            paste(sort(unique(grp_types)), collapse = ",")
+          },
+          character(1)
+        )
+        use_global <- length(unique(type_sigs)) == 1L
+      }
+
+      if (use_global) {
+        # All groups have same stat types — align globally for consistency
+        formatted <- align_decimal_column(vals)
+        if (length(formatted) > 0L && any(nzchar(formatted))) {
+          max_nc <- max(nchar(formatted))
+          max_width_twips <- round(max_nc * space_twips)
+          scalar_offset <- max(
+            0L,
+            round((col_width_twips - max_width_twips) / 2)
+          )
+        } else {
+          max_width_twips <- 0L
+          scalar_offset <- 0L
+        }
+        center_offset <- rep(scalar_offset, length(formatted))
+      } else {
+        formatted <- character(length(vals))
+        group_max_nc <- integer(length(vals))
+        for (grp in unique_groups) {
+          mask <- group_labels == grp
+          grp_formatted <- align_decimal_column(vals[mask])
+          formatted[mask] <- grp_formatted
+          grp_nc <- if (any(nzchar(grp_formatted))) {
+            max(nchar(grp_formatted))
+          } else {
+            0L
+          }
+          group_max_nc[mask] <- grp_nc
+        }
+
+        # Per-row center_offset (vectorized: one offset per group width)
+        widths_twips <- round(group_max_nc * space_twips)
+        center_offset <- pmax(
+          0L,
+          round((col_width_twips - widths_twips) / 2)
+        )
+        max_width_twips <- round(max(group_max_nc) * space_twips)
+      }
     } else {
       formatted <- align_decimal_column(vals)
 
