@@ -731,10 +731,15 @@ fr_wide_ard <- function(
         wide$variable[wide$variable == v] <- label[[v]]
       }
     }
-    # Also apply labels to soc column (hierarchical output)
+    # Also apply labels to soc and pt columns (hierarchical output)
     if ("soc" %in% names(wide)) {
       for (v in names(label)) {
         wide$soc[wide$soc == v] <- label[[v]]
+      }
+    }
+    if ("pt" %in% names(wide)) {
+      for (v in names(label)) {
+        wide$pt[wide$pt == v] <- label[[v]]
       }
     }
   }
@@ -941,8 +946,8 @@ build_hierarchical_wide <- function(df, statistic, hierarchy, call) {
       idx <- idx + 1L
       result_rows[[idx]] <- data.frame(
         soc = "..ard_hierarchical_overall..",
-        pt = "",
-        row_type = "soc",
+        pt = "..ard_hierarchical_overall..",
+        row_type = "overall",
         arm = arm_val,
         cell_text = cell,
         stringsAsFactors = FALSE
@@ -990,7 +995,7 @@ build_hierarchical_wide <- function(df, statistic, hierarchy, call) {
       idx <- idx + 1L
       result_rows[[idx]] <- data.frame(
         soc = soc,
-        pt = "",
+        pt = soc,
         row_type = "soc",
         arm = arm_val,
         cell_text = cell,
@@ -1390,7 +1395,9 @@ format_stat_with_decimals <- function(value, stat_name, d) {
   #   >0 and <1   -> "<1"    (not "0" — subjects exist)
   #   >99 and <100 -> ">99"   (not "100" — not all subjects)
   if (is_pct && d == 0L) {
-    if (value > 0 && value < 1) return("<1")
+    if (value > 0 && value < 1) {
+      return("<1")
+    }
     if (value > 99 && value < 100) return(">99")
   }
   sprintf(paste0("%.", d, "f"), value)

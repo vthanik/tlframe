@@ -943,6 +943,141 @@ test_that("..ard_hierarchical_overall.. is relabelable via label", {
   expect_equal(wide$variable[1L], "Any TEAE")
 })
 
+test_that("hierarchical SOC rows have SOC name in pt column", {
+  rows <- list(
+    # SOC-level rows
+    ard_row2(
+      "AEBODSYS",
+      "n",
+      10,
+      group1_level = "Placebo",
+      group2 = "AEBODSYS",
+      group2_level = NA_character_,
+      variable_level = "Cardiac disorders",
+      context = "hierarchical"
+    ),
+    ard_row2(
+      "AEBODSYS",
+      "p",
+      0.22,
+      group1_level = "Placebo",
+      group2 = "AEBODSYS",
+      group2_level = NA_character_,
+      variable_level = "Cardiac disorders",
+      context = "hierarchical"
+    ),
+    # PT-level rows
+    ard_row2(
+      "AEDECOD",
+      "n",
+      5,
+      group1_level = "Placebo",
+      group2 = "AEBODSYS",
+      group2_level = "Cardiac disorders",
+      variable_level = "Bradycardia",
+      context = "hierarchical"
+    ),
+    ard_row2(
+      "AEDECOD",
+      "p",
+      0.11,
+      group1_level = "Placebo",
+      group2 = "AEBODSYS",
+      group2_level = "Cardiac disorders",
+      variable_level = "Bradycardia",
+      context = "hierarchical"
+    )
+  )
+  ard <- do.call(rbind, rows)
+
+  wide <- fr_wide_ard(ard, statistic = "{n} ({p}%)")
+
+  soc_rows <- wide[wide$row_type == "soc", ]
+  # pt should equal soc (not empty string)
+  expect_true(all(soc_rows$pt == soc_rows$soc))
+  expect_true(all(nzchar(soc_rows$pt)))
+})
+
+test_that("hierarchical overall row has label in pt column", {
+  rows <- list(
+    # Overall row
+    ard_row2(
+      "..ard_hierarchical_overall..",
+      "n",
+      35,
+      group1_level = "Placebo",
+      group2 = "AEBODSYS",
+      group2_level = NA_character_,
+      variable_level = NA_character_,
+      context = "hierarchical"
+    ),
+    ard_row2(
+      "..ard_hierarchical_overall..",
+      "p",
+      0.78,
+      group1_level = "Placebo",
+      group2 = "AEBODSYS",
+      group2_level = NA_character_,
+      variable_level = NA_character_,
+      context = "hierarchical"
+    ),
+    # SOC row (needed to trigger hierarchical detection)
+    ard_row2(
+      "AEBODSYS",
+      "n",
+      10,
+      group1_level = "Placebo",
+      group2 = "AEBODSYS",
+      group2_level = NA_character_,
+      variable_level = "Cardiac disorders",
+      context = "hierarchical"
+    ),
+    ard_row2(
+      "AEBODSYS",
+      "p",
+      0.22,
+      group1_level = "Placebo",
+      group2 = "AEBODSYS",
+      group2_level = NA_character_,
+      variable_level = "Cardiac disorders",
+      context = "hierarchical"
+    ),
+    # PT row
+    ard_row2(
+      "AEDECOD",
+      "n",
+      5,
+      group1_level = "Placebo",
+      group2 = "AEBODSYS",
+      group2_level = "Cardiac disorders",
+      variable_level = "Bradycardia",
+      context = "hierarchical"
+    ),
+    ard_row2(
+      "AEDECOD",
+      "p",
+      0.11,
+      group1_level = "Placebo",
+      group2 = "AEBODSYS",
+      group2_level = "Cardiac disorders",
+      variable_level = "Bradycardia",
+      context = "hierarchical"
+    )
+  )
+  ard <- do.call(rbind, rows)
+
+  wide <- fr_wide_ard(
+    ard,
+    statistic = "{n} ({p}%)",
+    label = c("..ard_hierarchical_overall.." = "Any TEAE")
+  )
+
+  overall_row <- wide[wide$row_type == "overall", ]
+  expect_equal(nrow(overall_row), 1L)
+  expect_equal(overall_row$pt, "Any TEAE")
+  expect_equal(overall_row$soc, "Any TEAE")
+})
+
 test_that("..ard_total_n.. is filtered out", {
   ard <- make_continuous_ard()
   internal_rows <- do.call(
