@@ -2089,6 +2089,18 @@ compute_all_decimal_geometry <- function(spec) {
     spec$page$font_size
   )
 
+  # Pre-compute group labels once (shared across all decimal columns)
+  has_align_key <- length(align_key) > 0L &&
+    all(align_key %in% names(spec$data))
+  if (has_align_key) {
+    group_labels <- if (length(align_key) == 1L) {
+      as.character(spec$data[[align_key]])
+    } else {
+      inject(paste(!!!spec$data[align_key], sep = fr_env$group_sep))
+    }
+    unique_groups <- unique(group_labels)
+  }
+
   for (nm in col_names) {
     col <- columns[[nm]]
     if (!identical(col$align, "decimal")) {
@@ -2101,65 +2113,47 @@ compute_all_decimal_geometry <- function(spec) {
     vals <- as.character(spec$data[[nm]])
     vals[is.na(vals)] <- ""
 
-    # Group-aware alignment: split by page_by/group_by for independent alignment
     col_width_twips <- inches_to_twips(col$width)
 
-    if (length(align_key) > 0L && all(align_key %in% names(spec$data))) {
-      if (length(align_key) == 1L) {
-        group_labels <- as.character(spec$data[[align_key]])
-      } else {
-        group_labels <- inject(paste(
-          !!!spec$data[align_key],
-          sep = fr_env$group_sep
-        ))
-      }
-      unique_groups <- unique(group_labels)
+    # Decide: per-group or global alignment
+    use_per_group <- FALSE
+    if (has_align_key && length(unique_groups) > 1L) {
+      # Smart check: compare stat type signatures across groups.
+      # Exclude filler types (n_only, missing, unknown) that appear in every group.
+      type_sigs <- vapply(
+        unique_groups,
+        function(grp) {
+          grp_types <- detect_stat_types(vals[group_labels == grp])
+          sig_types <- setdiff(grp_types, fr_env$stat_sig_skip)
+          paste(sort(unique(sig_types)), collapse = ",")
+        },
+        character(1)
+      )
+      use_per_group <- length(unique(type_sigs)) > 1L
+    }
 
-      # Smart global fallback: check if all groups have the same stat type
-      # pattern. If so, use global alignment for consistent widths across pages.
-      use_global <- FALSE
-      if (length(unique_groups) > 1L) {
-        type_sigs <- vapply(
-          unique_groups,
-          function(grp) {
-            grp_types <- detect_stat_types(vals[group_labels == grp])
-            sig_types <- setdiff(grp_types, c("n_only", "missing"))
-            paste(sort(unique(sig_types)), collapse = ",")
-          },
-          character(1)
-        )
-        use_global <- length(unique(type_sigs)) == 1L
-      }
-
-      if (use_global) {
-        # All groups have same stat types — align globally for consistency
-        geom <- global_decimal_geom(vals, col_width_twips, space_twips)
-        formatted <- geom$formatted
-        center_offset <- geom$center_offset
-        max_width_twips <- geom$max_width
-      } else {
-        formatted <- character(length(vals))
-        group_max_nc <- integer(length(vals))
-        for (grp in unique_groups) {
-          mask <- group_labels == grp
-          grp_formatted <- align_decimal_column(vals[mask])
-          formatted[mask] <- grp_formatted
-          grp_nc <- if (any(nzchar(grp_formatted))) {
-            max(nchar(grp_formatted))
-          } else {
-            0L
-          }
-          group_max_nc[mask] <- grp_nc
+    if (use_per_group) {
+      formatted <- character(length(vals))
+      group_max_nc <- integer(length(vals))
+      for (grp in unique_groups) {
+        mask <- group_labels == grp
+        grp_formatted <- align_decimal_column(vals[mask])
+        formatted[mask] <- grp_formatted
+        grp_nc <- if (any(nzchar(grp_formatted))) {
+          max(nchar(grp_formatted))
+        } else {
+          0L
         }
-
-        # Per-row center_offset (vectorized: one offset per group width)
-        widths_twips <- round(group_max_nc * space_twips)
-        center_offset <- pmax(
-          0L,
-          round((col_width_twips - widths_twips) / 2)
-        )
-        max_width_twips <- round(max(group_max_nc) * space_twips)
+        group_max_nc[mask] <- grp_nc
       }
+
+      # Per-row center_offset (vectorized: one offset per group width)
+      widths_twips <- round(group_max_nc * space_twips)
+      center_offset <- pmax(
+        0L,
+        round((col_width_twips - widths_twips) / 2)
+      )
+      max_width_twips <- round(max(group_max_nc) * space_twips)
     } else {
       geom <- global_decimal_geom(vals, col_width_twips, space_twips)
       formatted <- geom$formatted

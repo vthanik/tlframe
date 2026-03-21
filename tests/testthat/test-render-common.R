@@ -499,8 +499,10 @@ test_that("group_by with same types uses global alignment", {
     fr_cols(stat = fr_col("Stat", align = "decimal", width = 3))
   spec <- finalize_spec(spec)
   geom <- spec$decimal_geometry$stat
-  # Same type pattern → global alignment → uniform center_offset
+  # Same type pattern → global alignment → uniform center_offset and nchar
   expect_equal(length(unique(geom$center_offset)), 1L)
+  non_blank <- nzchar(trimws(geom$formatted))
+  expect_equal(length(unique(nchar(geom$formatted[non_blank]))), 1L)
 })
 
 test_that("page_by orig_rows: page 2 uses correct global indices", {

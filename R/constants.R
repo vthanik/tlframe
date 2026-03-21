@@ -1443,6 +1443,10 @@ fr_env$stat_type_family <- fr_env$stat_type_family[
   !fr_env$stat_type_family %in% "missing"
 ]
 
+# Types excluded from cross-group signature comparison (filler rows present in
+# every group — n_only counts, missing/unknown placeholders)
+fr_env$stat_sig_skip <- c("n_only", "missing", "unknown")
+
 fr_env$stat_type_richness <- vapply(
   fr_env$stat_type_registry,
   `[[`,
