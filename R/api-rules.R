@@ -7,6 +7,11 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 #' Construct an fr_vline_spec object
+#'
+#' When `box_mode = "full"`, the result also inherits from `"fr_rule_box"` so
+#' that existing code checking `inherits(r, "fr_rule_box")` still works.
+#' A `"full"` box means all four outer sides (hlines + vlines); the default
+#' `"vertical"` means only left/right edges.
 #' @noRd
 new_fr_vline_spec <- function(
   preset,
@@ -16,8 +21,10 @@ new_fr_vline_spec <- function(
   linestyle = "solid",
   fg = "#000000",
   abovepos = NULL,
-  belowpos = NULL
+  belowpos = NULL,
+  box_mode = "vertical"
 ) {
+  is_fullbox <- identical(box_mode, "full")
   structure(
     list(
       preset = preset,
@@ -26,9 +33,14 @@ new_fr_vline_spec <- function(
       linestyle = linestyle,
       fg = fg,
       abovepos = abovepos,
-      belowpos = belowpos
+      belowpos = belowpos,
+      box_mode = box_mode
     ),
-    class = c("fr_vline_spec", "fr_rule")
+    class = c(
+      if (is_fullbox) "fr_rule_box",
+      "fr_vline_spec",
+      "fr_rule"
+    )
   )
 }
 
@@ -214,25 +226,31 @@ fr_hlines <- function(
 
   rule_defs <- fr_env$hline_presets[[preset]]
 
-  if (identical(rule_defs, "box")) {
-    new_rules <- list(structure(list(preset = "box"), class = "fr_rule_box"))
+  resolved_width <- if (!is.null(width)) {
+    resolve_line_width(width, call = call)
   } else {
-    resolved_width <- if (!is.null(width)) {
-      resolve_line_width(width, call = call)
-    } else {
-      NULL
-    }
-    resolved_color <- if (!is.null(color)) {
-      resolve_color(color, call = call)
-    } else {
-      NULL
-    }
-    resolved_linestyle <- if (!is.null(linestyle)) {
-      match_arg_fr(linestyle, fr_env$valid_linestyles, call = call)
-    } else {
-      NULL
-    }
+    NULL
+  }
+  resolved_color <- if (!is.null(color)) {
+    resolve_color(color, call = call)
+  } else {
+    NULL
+  }
+  resolved_linestyle <- if (!is.null(linestyle)) {
+    match_arg_fr(linestyle, fr_env$valid_linestyles, call = call)
+  } else {
+    NULL
+  }
 
+  if (identical(rule_defs, "box")) {
+    new_rules <- list(new_fr_vline_spec(
+      preset = "box",
+      width = resolved_width %||% fr_env$rtf_box_border_wd,
+      linestyle = resolved_linestyle %||% "solid",
+      fg = resolved_color %||% "#000000",
+      box_mode = "full"
+    ))
+  } else {
     new_rules <- lapply(rule_defs, function(rd) {
       new_fr_rule(
         direction = "horizontal",

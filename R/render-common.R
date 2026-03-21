@@ -946,7 +946,8 @@ build_keep_mask <- function(
 
 #' Resolve rules into per-cell border structures
 #'
-#' @param rules List of fr_rule / fr_rule_box / fr_vline_spec objects.
+#' @param rules List of fr_rule / fr_vline_spec objects (fr_rule_box is a
+#'   subclass of fr_vline_spec with box_mode = "full").
 #' @param nrow_body Integer. Number of body rows.
 #' @param ncol Integer. Number of visible columns.
 #' @param nrow_header Integer. Number of header rows (including spanners).
@@ -991,28 +992,27 @@ resolve_borders <- function(rules, nrow_body, ncol, nrow_header = 1L) {
   }
 
   for (rule in rules) {
-    if (inherits(rule, "fr_rule_box")) {
-      # Box: all four outer sides
-      bs <- border_spec(fr_env$rtf_box_border_wd, "solid", "#000000")
-      # Top of header
-      h_top[1L, ] <- list(bs)
-      # Bottom of last body row
-      if (nrow_body > 0L) {
-        b_bottom[nrow_body, ] <- list(bs)
-      }
-      # Left and right edges
-      h_left[seq_len(nrow_header), 1L] <- list(bs)
-      h_right[seq_len(nrow_header), ncol] <- list(bs)
-      b_left[seq_len(nrow_body), 1L] <- list(bs)
-      b_right[seq_len(nrow_body), ncol] <- list(bs)
-      next
-    }
-
-    if (inherits(rule, "fr_vline_spec")) {
-      bs <- border_spec(rule$width, rule$linestyle, rule$fg)
+    if (inherits(rule, "fr_vline_spec") || inherits(rule, "fr_rule_box")) {
+      # Unified handling for fr_vline_spec and fr_rule_box (which is a
+      # subclass of fr_vline_spec). Use rule fields with defaults for
+      # backward compat with bare fr_rule_box objects.
+      bw <- rule$width %||% fr_env$rtf_box_border_wd
+      bls <- rule$linestyle %||% "solid"
+      bfg <- rule$fg %||% "#000000"
+      bs <- border_spec(bw, bls, bfg)
       preset <- rule$preset
+      is_fullbox <- inherits(rule, "fr_rule_box") ||
+        identical(rule$box_mode, "full")
 
-      # Determine which column gaps get rules
+      # Full-box adds top and bottom horizontal borders
+      if (is_fullbox) {
+        h_top[1L, ] <- list(bs)
+        if (nrow_body > 0L) {
+          b_bottom[nrow_body, ] <- list(bs)
+        }
+      }
+
+      # Determine which column gaps get vertical rules
       if (!is.null(rule$cols)) {
         gaps <- rule$cols
       } else if (preset == "all") {
