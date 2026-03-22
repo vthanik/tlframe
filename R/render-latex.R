@@ -1451,7 +1451,7 @@ latex_col_header_row <- function(spec, columns, label_overrides = NULL) {
     label <- label_overrides[col_names[j]]
     if (is.na(label) || is.null(label)) {
       label <- columns[[j]]$label
-      if ((is.null(label) || !nzchar(label)) && !isTRUE(columns[[j]]$is_gap)) {
+      if (is.null(label) && !isTRUE(columns[[j]]$is_gap)) {
         label <- col_names[j]
       }
     }

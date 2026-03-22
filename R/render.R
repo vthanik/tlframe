@@ -634,9 +634,6 @@ finalize_labels <- function(spec) {
       col <- spec$columns[[nm]]
       if (!is.null(col$n)) {
         base_label <- col$label %||% nm
-        if (!nzchar(base_label)) {
-          base_label <- nm
-        }
         row_data <- list(label = base_label, n = col$n)
         spec$columns[[nm]]$label <- tryCatch(
           as.character(glue::glue_data(row_data, fmt)),
