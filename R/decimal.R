@@ -641,10 +641,21 @@ parse_stat_values_batch <- function(values, types) {
       range_pair = {
         m <- stringi::stri_match_first_regex(
           vals,
-          "^(-?)(\\d+)\\.?(\\d*)\\s*,\\s*(-?)(\\d+)\\.?(\\d*)$"
+          "^[\\(\\[]?\\s*(-?)(\\d+)\\.?(\\d*)\\s*,\\s*(-?)(\\d+)\\.?(\\d*)\\s*[\\)\\]]?$"
+        )
+        # Detect outer delimiters: "(", "[", or none
+        open_delim <- ifelse(
+          grepl("^\\s*\\(", vals),
+          "(",
+          ifelse(grepl("^\\s*\\[", vals), "[", "")
+        )
+        close_delim <- ifelse(
+          grepl("\\)\\s*$", vals),
+          ")",
+          ifelse(grepl("\\]\\s*$", vals), "]", "")
         )
         mapply(
-          function(ls, li, ld, rs, ri, rd, raw) {
+          function(ls, li, ld, rs, ri, rd, raw, od, cd) {
             list(
               type = "range_pair",
               l_sign = ls,
@@ -653,6 +664,8 @@ parse_stat_values_batch <- function(values, types) {
               r_sign = rs,
               r_int = ri,
               r_dec = rd,
+              open_delim = od,
+              close_delim = cd,
               raw = raw
             )
           },
@@ -663,6 +676,8 @@ parse_stat_values_batch <- function(values, types) {
           m[, 6],
           m[, 7],
           vals,
+          open_delim,
+          close_delim,
           SIMPLIFY = FALSE,
           USE.NAMES = FALSE
         )
@@ -1168,6 +1183,12 @@ compute_stat_widths <- function(parsed_values, dominant_type) {
       w_r_dec <- maxw("r_dec")
       has_l_dec <- has_field(typed, "l_dec")
       has_r_dec <- has_field(typed, "r_dec")
+      # Check if any values have outer delimiters
+      has_delim <- any(vapply(
+        typed,
+        function(p) nzchar(p$open_delim %||% ""),
+        logical(1)
+      ))
       fw <- w_l_si
       if (has_l_dec) {
         fw <- fw + 1L + w_l_dec
@@ -1176,6 +1197,9 @@ compute_stat_widths <- function(parsed_values, dominant_type) {
       if (has_r_dec) {
         fw <- fw + 1L + w_r_dec
       }
+      if (has_delim) {
+        fw <- fw + 2L # open + close delimiter
+      }
       list(
         w_l_si = w_l_si,
         w_l_dec = w_l_dec,
@@ -1183,6 +1207,7 @@ compute_stat_widths <- function(parsed_values, dominant_type) {
         w_r_dec = w_r_dec,
         has_l_dec = has_l_dec,
         has_r_dec = has_r_dec,
+        has_delim = has_delim,
         full_width = fw
       )
     },
@@ -1272,48 +1297,62 @@ rebuild_stat_aligned <- function(parsed, widths, dominant_type) {
   if (parsed$type != dominant_type) {
     # --- n_only fallbacks (all families) ---
     if (parsed$type == "n_only") {
-      w <- switch(
-        dominant_type,
-        n_pct = ,
-        n_pct_rate = widths$w_n,
-        n_over_N_pct = ,
-        n_over_N_pct_ci = ,
-        n_over_N = ,
-        n_over_float = widths$w_num,
-        est_spread = ,
-        est_spread_pct = ,
-        est_ci = ,
-        est_ci_bracket = ,
-        est_ci_pval = ,
-        est_spread_pct_ci = widths$w_est_si,
-        scalar_float = widths$w_sign_int,
-        pvalue = widths$w_int,
-        range_pair = widths$w_l_si,
-        int_range = widths$w_left,
-        NULL
-      )
-      if (!is.null(w)) {
-        padded_n <- stringi::stri_pad_left(parsed$n, w)
-        # For decimal-bearing dominant types, space-fill the decimal zone
-        # so "143" aligns with the integer part of "75.7 (8.19)"
-        dec_w <- switch(
+      # When n_pct values exist in this column, align zero/n to n_pct count
+      # right-edge (e.g., 0 aligns under 230, not under 75 from est_spread)
+      w <- if (!is.null(widths$w_npct_n)) {
+        widths$w_npct_n
+      } else {
+        switch(
           dominant_type,
+          n_pct = ,
+          n_pct_rate = widths$w_n,
+          n_over_N_pct = ,
+          n_over_N_pct_ci = ,
+          n_over_N = ,
+          n_over_float = widths$w_num,
           est_spread = ,
           est_spread_pct = ,
           est_ci = ,
           est_ci_bracket = ,
           est_ci_pval = ,
-          est_spread_pct_ci = if (isTRUE(widths$has_est_dec)) {
-            1L + widths$w_est_dec
-          } else {
-            0L
-          },
-          scalar_float = if (isTRUE(widths$has_dec)) 1L + widths$w_dec else 0L,
-          pvalue = 1L + widths$w_dec,
-          0L
+          est_spread_pct_ci = widths$w_est_si,
+          scalar_float = widths$w_sign_int,
+          pvalue = widths$w_int,
+          range_pair = widths$w_l_si,
+          int_range = widths$w_left,
+          NULL
         )
-        if (dec_w > 0L) {
-          padded_n <- stringi::stri_pad_right(padded_n, w + dec_w)
+      }
+      if (!is.null(w)) {
+        padded_n <- stringi::stri_pad_left(parsed$n, w)
+        # When using n_pct subsidiary width, no decimal zone padding needed
+        # (zero aligns with count integers like 143, 230, not estimates)
+        if (is.null(widths$w_npct_n)) {
+          # For decimal-bearing dominant types without n_pct values,
+          # space-fill the decimal zone
+          dec_w <- switch(
+            dominant_type,
+            est_spread = ,
+            est_spread_pct = ,
+            est_ci = ,
+            est_ci_bracket = ,
+            est_ci_pval = ,
+            est_spread_pct_ci = if (isTRUE(widths$has_est_dec)) {
+              1L + widths$w_est_dec
+            } else {
+              0L
+            },
+            scalar_float = if (isTRUE(widths$has_dec)) {
+              1L + widths$w_dec
+            } else {
+              0L
+            },
+            pvalue = 1L + widths$w_dec,
+            0L
+          )
+          if (dec_w > 0L) {
+            padded_n <- stringi::stri_pad_right(padded_n, w + dec_w)
+          }
         }
         return(stringi::stri_pad_right(padded_n, fw))
       }
@@ -1546,7 +1585,9 @@ rebuild_stat_aligned <- function(parsed, widths, dominant_type) {
       if (nzchar(parsed$r_dec)) {
         r <- paste0(r, ".", parsed$r_dec)
       }
-      return(stringi::stri_pad_right(paste0(l, ", ", r), fw))
+      od <- parsed$open_delim %||% ""
+      cd <- parsed$close_delim %||% ""
+      return(stringi::stri_pad_right(paste0(od, l, ", ", r, cd), fw))
     }
 
     # --- n_pct in estimate/float/compound dominant ---
@@ -1921,7 +1962,9 @@ rebuild_stat_aligned <- function(parsed, widths, dominant_type) {
         widths$w_r_dec,
         widths$has_r_dec
       )
-      paste0(l, ", ", r)
+      od <- parsed$open_delim %||% ""
+      cd <- parsed$close_delim %||% ""
+      paste0(od, l, ", ", r, cd)
     },
 
     int_range = {

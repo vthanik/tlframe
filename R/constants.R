@@ -1403,7 +1403,7 @@ fr_env$stat_type_registry <- list(
     richness = 2L
   ),
   range_pair = list(
-    pattern = "^\\s*-?\\d+\\.?\\d*\\s*,\\s*-?\\d+\\.?\\d*\\s*$",
+    pattern = "^\\s*[\\(\\[]?\\s*-?\\d+\\.?\\d*\\s*,\\s*-?\\d+\\.?\\d*\\s*[\\)\\]]?\\s*$",
     family = "range",
     richness = 1L
   ),
