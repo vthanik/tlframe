@@ -247,3 +247,467 @@ test_that("label_to_plain strips sentinels", {
 test_that("label_to_plain handles non-character input", {
   expect_equal(label_to_plain(123), "123")
 })
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# resolve_rows_selector
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("resolve_rows_selector finds exact value matches", {
+  data <- data.frame(
+    group = c("A", "B", "A", "C"),
+    val = 1:4,
+    stringsAsFactors = FALSE
+  )
+
+  selector <- structure(
+    list(col = "group", value = "A", pattern = NULL, ignore.case = FALSE),
+    class = "fr_rows_selector"
+  )
+  result <- resolve_rows_selector(selector, data)
+  expect_equal(result, c(1L, 3L))
+})
+
+test_that("resolve_rows_selector finds regex pattern matches", {
+  data <- data.frame(
+    label = c("Total", "Subtotal", "Mean", "Total N"),
+    stringsAsFactors = FALSE
+  )
+  selector <- structure(
+    list(col = "label", value = NULL, pattern = "^Total", ignore.case = FALSE),
+    class = "fr_rows_selector"
+  )
+  result <- resolve_rows_selector(selector, data)
+  expect_equal(result, c(1L, 4L))
+})
+
+test_that("resolve_rows_selector respects ignore.case for patterns", {
+  data <- data.frame(
+    label = c("total", "TOTAL", "Mean"),
+    stringsAsFactors = FALSE
+  )
+  selector <- structure(
+    list(col = "label", value = NULL, pattern = "^total$", ignore.case = TRUE),
+    class = "fr_rows_selector"
+  )
+  result <- resolve_rows_selector(selector, data)
+  expect_equal(result, c(1L, 2L))
+})
+
+test_that("resolve_rows_selector errors when column not found", {
+  data <- data.frame(a = 1:3)
+  selector <- structure(
+    list(col = "missing_col", value = "x", pattern = NULL, ignore.case = FALSE),
+    class = "fr_rows_selector"
+  )
+  expect_error(
+    resolve_rows_selector(selector, data),
+    class = "rlang_error"
+  )
+})
+
+test_that("resolve_rows_selector warns when no rows match exact value", {
+  data <- data.frame(
+    group = c("A", "B", "C"),
+    stringsAsFactors = FALSE
+  )
+  selector <- structure(
+    list(col = "group", value = "Z", pattern = NULL, ignore.case = FALSE),
+    class = "fr_rows_selector"
+  )
+  expect_warning(
+    result <- resolve_rows_selector(selector, data),
+    "no rows matched"
+  )
+  expect_equal(result, integer(0))
+})
+
+test_that("resolve_rows_selector warns when no rows match pattern", {
+  data <- data.frame(
+    label = c("Mean", "Median"),
+    stringsAsFactors = FALSE
+  )
+  selector <- structure(
+    list(col = "label", value = NULL, pattern = "^Total", ignore.case = FALSE),
+    class = "fr_rows_selector"
+  )
+  expect_warning(
+    result <- resolve_rows_selector(selector, data),
+    "no rows matched"
+  )
+  expect_equal(result, integer(0))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# resolve_tidyselect
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("resolve_tidyselect resolves column names", {
+  data <- data.frame(a = 1, b = 2, c = 3)
+  expr <- rlang::quo(a)
+  result <- resolve_tidyselect(expr, data)
+  expect_equal(result, c(a = 1L))
+})
+
+test_that("resolve_tidyselect errors with context on bad expression", {
+  data <- data.frame(a = 1)
+  expr <- rlang::quo(nonexistent)
+  expect_error(
+    resolve_tidyselect(expr, data, context = "test selector"),
+    "test selector"
+  )
+})
+
+test_that("resolve_tidyselect errors without context on bad expression", {
+  data <- data.frame(a = 1)
+  expr <- rlang::quo(nonexistent)
+  expect_error(
+    resolve_tidyselect(expr, data, context = NULL),
+    "tidyselect"
+  )
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# resolve_cols_expr
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("resolve_cols_expr returns NULL for null quosure", {
+  quo <- rlang::quo(NULL)
+  result <- resolve_cols_expr(quo)
+  expect_null(result)
+})
+
+test_that("resolve_cols_expr returns character vector as-is", {
+  quo <- rlang::quo(c("a", "b"))
+  result <- resolve_cols_expr(quo)
+  expect_equal(result, c("a", "b"))
+})
+
+test_that("resolve_cols_expr returns numeric vector as-is", {
+  quo <- rlang::quo(c(1, 2, 3))
+  result <- resolve_cols_expr(quo)
+  expect_equal(result, c(1, 2, 3))
+})
+
+test_that("resolve_cols_expr defers tidyselect expressions", {
+  # starts_with() needs data context so it errors — should be deferred
+  quo <- rlang::quo(starts_with("x"))
+  result <- resolve_cols_expr(quo)
+  expect_true(rlang::is_quosure(result))
+})
+
+test_that("resolve_cols_expr errors on invalid type (logical)", {
+  quo <- rlang::quo(TRUE)
+  expect_error(
+    resolve_cols_expr(quo),
+    class = "rlang_error"
+  )
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# resolve_style_cols
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("resolve_style_cols resolves quosure cols against data", {
+  data <- data.frame(x_a = 1, x_b = 2, y = 3)
+  style <- new_fr_cell_style(cols = rlang::quo(starts_with("x")))
+  result <- resolve_style_cols(style, data)
+  expect_equal(result$cols, c("x_a", "x_b"))
+})
+
+test_that("resolve_style_cols passes through character cols unchanged", {
+  data <- data.frame(a = 1, b = 2)
+  style <- new_fr_cell_style(cols = c("a", "b"))
+  result <- resolve_style_cols(style, data)
+  expect_equal(result$cols, c("a", "b"))
+})
+
+test_that("resolve_style_cols passes through NULL cols unchanged", {
+  data <- data.frame(a = 1)
+  style <- new_fr_cell_style(cols = NULL)
+  result <- resolve_style_cols(style, data)
+  expect_null(result$cols)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# apply_settings_section
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("apply_settings_section returns spec unchanged for non-list section", {
+  spec <- new_fr_spec(data.frame(x = 1))
+  result <- apply_settings_section(spec, "not a list", fr_page, "orientation")
+  expect_identical(result, spec)
+})
+
+test_that("apply_settings_section returns spec unchanged for NULL section", {
+  spec <- new_fr_spec(data.frame(x = 1))
+  result <- apply_settings_section(spec, NULL, fr_page, "orientation")
+  expect_identical(result, spec)
+})
+
+test_that("apply_settings_section returns spec unchanged when no params match", {
+  spec <- new_fr_spec(data.frame(x = 1))
+  cfg_section <- list(unrelated_key = "value")
+  result <- apply_settings_section(spec, cfg_section, fr_page, "orientation")
+  expect_identical(result, spec)
+})
+
+test_that("apply_settings_section applies matching parameters via verb", {
+  spec <- new_fr_spec(data.frame(x = 1))
+  cfg_section <- list(orientation = "portrait")
+  result <- apply_settings_section(
+    spec,
+    cfg_section,
+    fr_page,
+    c("orientation", "paper")
+  )
+  expect_equal(result$page$orientation, "portrait")
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# apply_fr_theme
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("apply_fr_theme returns spec unchanged when no theme is set", {
+  old_theme <- fr_env$theme
+  on.exit(fr_env$theme <- old_theme, add = TRUE)
+  fr_env$theme <- NULL
+
+  spec <- new_fr_spec(data.frame(x = 1))
+  result <- apply_fr_theme(spec)
+  expect_identical(result, spec)
+})
+
+test_that("apply_fr_theme returns spec unchanged when theme is empty list", {
+  old_theme <- fr_env$theme
+  on.exit(fr_env$theme <- old_theme, add = TRUE)
+  fr_env$theme <- list()
+
+  spec <- new_fr_spec(data.frame(x = 1))
+  result <- apply_fr_theme(spec)
+  expect_identical(result, spec)
+})
+
+test_that("apply_fr_theme applies page orientation from theme", {
+  old_theme <- fr_env$theme
+  on.exit(fr_env$theme <- old_theme, add = TRUE)
+  fr_env$theme <- list(orientation = "portrait")
+
+  spec <- new_fr_spec(data.frame(x = 1))
+  result <- apply_fr_theme(spec)
+  expect_equal(result$page$orientation, "portrait")
+})
+
+test_that("apply_fr_theme applies hlines from theme", {
+  old_theme <- fr_env$theme
+  on.exit(fr_env$theme <- old_theme, add = TRUE)
+  fr_env$theme <- list(hlines = "header")
+
+  spec <- new_fr_spec(data.frame(x = 1))
+  result <- apply_fr_theme(spec)
+  expect_true(length(result$rules) > 0L)
+})
+
+test_that("apply_fr_theme applies vlines from theme", {
+  old_theme <- fr_env$theme
+  on.exit(fr_env$theme <- old_theme, add = TRUE)
+  fr_env$theme <- list(vlines = "box")
+
+  spec <- new_fr_spec(data.frame(x = 1))
+  result <- apply_fr_theme(spec)
+  expect_true(length(result$rules) > 0L)
+})
+
+test_that("apply_fr_theme applies space_mode from theme", {
+  old_theme <- fr_env$theme
+  on.exit(fr_env$theme <- old_theme, add = TRUE)
+  fr_env$theme <- list(space_mode = "fixed")
+
+  spec <- new_fr_spec(data.frame(x = 1))
+  result <- apply_fr_theme(spec)
+  expect_equal(result$columns_meta$space_mode, "fixed")
+})
+
+test_that("apply_fr_theme applies n_format from theme", {
+  old_theme <- fr_env$theme
+  on.exit(fr_env$theme <- old_theme, add = TRUE)
+  fr_env$theme <- list(n_format = "(N={n})")
+
+  spec <- new_fr_spec(data.frame(x = 1))
+  result <- apply_fr_theme(spec)
+  expect_equal(result$columns_meta$n_format, "(N={n})")
+})
+
+test_that("apply_fr_theme applies split from theme", {
+  old_theme <- fr_env$theme
+  on.exit(fr_env$theme <- old_theme, add = TRUE)
+  fr_env$theme <- list(split = TRUE)
+
+  spec <- new_fr_spec(data.frame(x = 1))
+  result <- apply_fr_theme(spec)
+  expect_true(result$columns_meta$split)
+})
+
+test_that("apply_fr_theme applies stub from theme", {
+  old_theme <- fr_env$theme
+  on.exit(fr_env$theme <- old_theme, add = TRUE)
+  fr_env$theme <- list(stub = "param")
+
+  spec <- new_fr_spec(data.frame(x = 1))
+  result <- apply_fr_theme(spec)
+  expect_equal(result$columns_meta$stub, "param")
+})
+
+test_that("apply_fr_theme applies group_keep from theme", {
+  old_theme <- fr_env$theme
+  on.exit(fr_env$theme <- old_theme, add = TRUE)
+  fr_env$theme <- list(group_keep = 3L)
+
+  spec <- new_fr_spec(data.frame(x = 1))
+  result <- apply_fr_theme(spec)
+  expect_equal(result$body$group_keep, 3L)
+})
+
+test_that("apply_fr_theme applies footnote_separator from theme", {
+  old_theme <- fr_env$theme
+  on.exit(fr_env$theme <- old_theme, add = TRUE)
+  fr_env$theme <- list(footnote_separator = "---")
+
+  spec <- new_fr_spec(data.frame(x = 1))
+  result <- apply_fr_theme(spec)
+  expect_equal(result$meta$footnote_separator, "---")
+})
+
+test_that("apply_fr_theme applies header defaults from theme", {
+  old_theme <- fr_env$theme
+  on.exit(fr_env$theme <- old_theme, add = TRUE)
+  fr_env$theme <- list(header = list(bold = TRUE, align = "center"))
+
+  spec <- new_fr_spec(data.frame(x = 1))
+  result <- apply_fr_theme(spec)
+  expect_true(result$header$bold)
+  expect_equal(result$header$align, "center")
+})
+
+test_that("apply_fr_theme applies header span_gap from theme", {
+  old_theme <- fr_env$theme
+  on.exit(fr_env$theme <- old_theme, add = TRUE)
+  fr_env$theme <- list(header = list(span_gap = 2L))
+
+  spec <- new_fr_spec(data.frame(x = 1))
+  result <- apply_fr_theme(spec)
+  expect_equal(result$header$span_gap, 2L)
+})
+
+test_that("apply_fr_theme applies spacing from theme", {
+  old_theme <- fr_env$theme
+  on.exit(fr_env$theme <- old_theme, add = TRUE)
+  fr_env$theme <- list(spacing = list(titles_after = 2L, footnotes_before = 3L))
+
+  spec <- new_fr_spec(data.frame(x = 1))
+  result <- apply_fr_theme(spec)
+  expect_equal(result$spacing$titles_after, 2L)
+  expect_equal(result$spacing$footnotes_before, 3L)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# visible_columns
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("visible_columns returns only visible columns", {
+  cols <- list(
+    a = list(id = "a", visible = TRUE),
+    b = list(id = "b", visible = FALSE),
+    c = list(id = "c", visible = TRUE)
+  )
+  result <- visible_columns(cols)
+  expect_length(result, 2)
+  expect_named(result, c("a", "c"))
+})
+
+test_that("visible_columns treats missing visible as TRUE", {
+  cols <- list(
+    a = list(id = "a"),
+    b = list(id = "b", visible = FALSE)
+  )
+  result <- visible_columns(cols)
+  expect_length(result, 1)
+  expect_named(result, "a")
+})
+
+test_that("visible_columns returns empty list when all hidden", {
+  cols <- list(
+    a = list(id = "a", visible = FALSE),
+    b = list(id = "b", visible = FALSE)
+  )
+  result <- visible_columns(cols)
+  expect_length(result, 0)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# stub_column_names
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("stub_column_names returns names of stub columns", {
+  cols <- list(
+    param = list(id = "param", stub = TRUE),
+    value = list(id = "value", stub = FALSE),
+    label = list(id = "label", stub = TRUE)
+  )
+  result <- stub_column_names(cols)
+  expect_equal(result, c("param", "label"))
+})
+
+test_that("stub_column_names returns empty when no stubs", {
+  cols <- list(
+    a = list(id = "a", stub = FALSE),
+    b = list(id = "b")
+  )
+  result <- stub_column_names(cols)
+  expect_length(result, 0)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# split_footnotes
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("split_footnotes separates every and last placements", {
+  fn1 <- new_footnote_entry("Note 1", placement = "every")
+  fn2 <- new_footnote_entry("Note 2", placement = "last")
+  fn3 <- new_footnote_entry("Note 3", placement = "every")
+
+  result <- split_footnotes(list(fn1, fn2, fn3))
+  expect_length(result$every, 2)
+  expect_length(result$last, 1)
+  expect_equal(result$last[[1]]$content, "Note 2")
+})
+
+test_that("split_footnotes returns empty lists when no footnotes", {
+  result <- split_footnotes(list())
+  expect_length(result$every, 0)
+  expect_length(result$last, 0)
+})
+
+test_that("split_footnotes handles all-every footnotes", {
+  fn1 <- new_footnote_entry("A", placement = "every")
+  fn2 <- new_footnote_entry("B", placement = "every")
+  result <- split_footnotes(list(fn1, fn2))
+  expect_length(result$every, 2)
+  expect_length(result$last, 0)
+})
+
+test_that("split_footnotes handles all-last footnotes", {
+  fn1 <- new_footnote_entry("A", placement = "last")
+  fn2 <- new_footnote_entry("B", placement = "last")
+  result <- split_footnotes(list(fn1, fn2))
+  expect_length(result$every, 0)
+  expect_length(result$last, 2)
+})

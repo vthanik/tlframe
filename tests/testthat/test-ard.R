@@ -1551,3 +1551,1081 @@ test_that("ard_stack_hierarchical overall=TRUE, over_variables=TRUE: PT rows hav
     label = "All PT-level rows have non-empty Total values"
   )
 })
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: normalize_ard_chr with factor input
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("normalize_ard_chr handles factor columns", {
+  result <- arframe:::normalize_ard_chr(factor(c("a", "b", "c")))
+  expect_equal(result, c("a", "b", "c"))
+  expect_type(result, "character")
+})
+
+test_that("normalize_ard_chr handles non-character/non-factor columns", {
+  result <- arframe:::normalize_ard_chr(c(1L, 2L, 3L))
+  expect_equal(result, c("1", "2", "3"))
+  expect_type(result, "character")
+})
+
+test_that("normalize_ard_chr handles list with NULL/empty elements", {
+  result <- arframe:::normalize_ard_chr(list(NULL, character(0L), "hello"))
+  expect_equal(result, c(NA_character_, NA_character_, "hello"))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: normalize_ard_num edge cases
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("normalize_ard_num handles list with logical element", {
+  result <- arframe:::normalize_ard_num(list(TRUE, FALSE))
+  expect_equal(result, c(1, 0))
+})
+
+test_that("normalize_ard_num handles logical column", {
+  result <- arframe:::normalize_ard_num(c(TRUE, FALSE, TRUE))
+  expect_equal(result, c(1, 0, 1))
+})
+
+test_that("normalize_ard_num handles character column (non-numeric coercion)", {
+  result <- arframe:::normalize_ard_num(c("1.5", "abc", "3"))
+  expect_equal(result, c(1.5, NA_real_, 3))
+})
+
+test_that("normalize_ard_num handles list with non-coercible element", {
+  result <- arframe:::normalize_ard_num(list("abc"))
+  expect_equal(result, NA_real_)
+})
+
+test_that("normalize_ard_num handles list with NULL/empty elements", {
+  result <- arframe:::normalize_ard_num(list(NULL, numeric(0L), 42))
+  expect_equal(result, c(NA_real_, NA_real_, 42))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: detect_renamed_arm error paths
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("detect_renamed_arm errors with multiple ambiguous group cols", {
+  df <- data.frame(
+    ARM = c("Placebo", "Drug"),
+    SEX = c("M", "F"),
+    variable = c("AGE", "AGE"),
+    stat_name = c("mean", "mean"),
+    stat = c(65, 63),
+    context = c("continuous", "continuous"),
+    stringsAsFactors = FALSE
+  )
+
+  expect_error(
+    arframe:::detect_renamed_arm(df, column = NULL, call = rlang::caller_env()),
+    "Multiple potential group columns"
+  )
+})
+
+test_that("detect_renamed_arm returns NULL when column not in non_std", {
+  df <- data.frame(
+    ARM = c("Placebo", "Drug"),
+    variable = c("AGE", "AGE"),
+    stat_name = c("mean", "mean"),
+    stat = c(65, 63),
+    context = c("continuous", "continuous"),
+    stringsAsFactors = FALSE
+  )
+
+  result <- arframe:::detect_renamed_arm(
+    df,
+    column = "NONEXISTENT",
+    call = rlang::caller_env()
+  )
+  expect_null(result)
+})
+
+test_that("detect_renamed_arm returns NULL when no non-standard columns", {
+  df <- data.frame(
+    variable = c("AGE", "AGE"),
+    stat_name = c("mean", "sd"),
+    stat = c(65, 12),
+    context = c("continuous", "continuous"),
+    stringsAsFactors = FALSE
+  )
+
+  result <- arframe:::detect_renamed_arm(
+    df,
+    column = NULL,
+    call = rlang::caller_env()
+  )
+  expect_null(result)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: reconstruct_renamed_ard error paths
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("reconstruct_renamed_ard errors when column not in data", {
+  df <- data.frame(
+    ARM = c("Placebo", "Drug"),
+    stat_name = c("mean", "mean"),
+    stat = c(65, 63),
+    stringsAsFactors = FALSE
+  )
+
+  expect_error(
+    arframe:::reconstruct_renamed_ard(
+      df,
+      column = "BADCOL",
+      call = rlang::caller_env()
+    ),
+    "not found in data"
+  )
+})
+
+test_that("reconstruct_renamed_ard uses unused var_cols for continuous rows", {
+  # Scenario: no always-NA columns, but some var_cols unused by categorical rows
+  df <- data.frame(
+    ARM = c("Placebo", "Drug", "Placebo", "Drug"),
+    SEX = c("Male", "Male", NA, NA),
+    AGE = c(NA, NA, NA, NA),
+    stat_name = c("n", "n", "mean", "mean"),
+    stat = c(10, 12, 65, 63),
+    stringsAsFactors = FALSE
+  )
+
+  result <- arframe:::reconstruct_renamed_ard(
+    df,
+    column = "ARM",
+    call = rlang::caller_env()
+  )
+  expect_true("variable" %in% names(result$df))
+  # The continuous rows (NA in both SEX and AGE) should get assigned to AGE
+  # (always-NA column)
+  expect_true(any(result$df$variable == "AGE", na.rm = TRUE))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: fr_wide_ard undetermined structure error
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("fr_wide_ard errors on data without variable column (no stat_name)", {
+  df <- data.frame(
+    group1 = "ARM",
+    group1_level = "Placebo",
+    stat = c(65),
+    stringsAsFactors = FALSE
+  )
+
+  expect_error(fr_wide_ard(df), "missing required columns")
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: group1 present but no group1_level (unusual shape)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("ARD with group1 but no group1_level handled gracefully", {
+  df <- data.frame(
+    variable = rep("AGE", 4L),
+    stat_name = rep(c("mean", "sd"), 2L),
+    stat = c(65.3, 12.1, 63.8, 11.5),
+    group1 = rep("ARM", 4L),
+    context = rep("continuous", 4L),
+    stringsAsFactors = FALSE
+  )
+
+  # Has group1 but no group1_level — should fall through to Shape B/C handling
+  # arm will be NA, so overall captures everything
+  wide <- fr_wide_ard(df, statistic = list(continuous = "{mean} ({sd})"))
+  expect_s3_class(wide, "data.frame")
+  expect_gte(nrow(wide), 1L)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: no rows remain after filtering
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("fr_wide_ard errors when all rows are internal sentinels", {
+  ard <- do.call(
+    rbind,
+    list(
+      ard_row("..ard_total_n..", "N", 89, group1_level = "Placebo"),
+      ard_row("..ard_total_n..", "N", 89, group1_level = "Drug")
+    )
+  )
+
+  expect_error(fr_wide_ard(ard, statistic = "{N}"), "No displayable rows")
+})
+
+test_that("fr_wide_ard errors when all rows filtered by overall = NULL and no arm", {
+  # Only overall rows (arm = NA), but overall = NULL excludes them
+  ard <- do.call(
+    rbind,
+    list(
+      ard_row(
+        "AGE",
+        "mean",
+        64.5,
+        group1 = NA_character_,
+        group1_level = NA_character_
+      ),
+      ard_row(
+        "AGE",
+        "sd",
+        11.8,
+        group1 = NA_character_,
+        group1_level = NA_character_
+      )
+    )
+  )
+
+  expect_error(
+    fr_wide_ard(
+      ard,
+      statistic = list(continuous = "{mean} ({sd})"),
+      overall = NULL
+    ),
+    "No rows remain"
+  )
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: pharma boundary rules in format_stat_with_decimals
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("pharma boundary: p close to 0% formats as <1", {
+  # p = 0.005 → 0.5% → should be "<1" with decimals = c(p = 0)
+  ard <- do.call(
+    rbind,
+    list(
+      ard_row(
+        "SEX",
+        "n",
+        1,
+        group1_level = "Placebo",
+        variable_level = "Male",
+        context = "categorical"
+      ),
+      ard_row(
+        "SEX",
+        "p",
+        0.005,
+        group1_level = "Placebo",
+        variable_level = "Male",
+        context = "categorical"
+      )
+    )
+  )
+
+  wide <- fr_wide_ard(
+    ard,
+    statistic = list(categorical = "{n} ({p}%)"),
+    decimals = c(p = 0)
+  )
+
+  expect_true(grepl("<1%", wide$Placebo[1L]))
+})
+
+test_that("pharma boundary: p close to 100% formats as >99", {
+  # p = 0.998 → 99.8% → should be ">99" with decimals = c(p = 0)
+  ard <- do.call(
+    rbind,
+    list(
+      ard_row(
+        "SEX",
+        "n",
+        99,
+        group1_level = "Placebo",
+        variable_level = "Male",
+        context = "categorical"
+      ),
+      ard_row(
+        "SEX",
+        "p",
+        0.998,
+        group1_level = "Placebo",
+        variable_level = "Male",
+        context = "categorical"
+      )
+    )
+  )
+
+  wide <- fr_wide_ard(
+    ard,
+    statistic = list(categorical = "{n} ({p}%)"),
+    decimals = c(p = 0)
+  )
+
+  expect_true(grepl(">99%", wide$Placebo[1L]))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: format_ard_stat for various stat_name branches
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("format_ard_stat handles p_miss, p_nonmiss, p_cum stat names", {
+  # These are percentage stats that use %.1f with *100 scaling
+  result_pmiss <- arframe:::format_ard_stat(
+    0.123,
+    NA_character_,
+    "p_miss",
+    NULL,
+    NULL,
+    NULL
+  )
+  expect_equal(result_pmiss, "12.3")
+
+  result_pnm <- arframe:::format_ard_stat(
+    0.456,
+    NA_character_,
+    "p_nonmiss",
+    NULL,
+    NULL,
+    NULL
+  )
+  expect_equal(result_pnm, "45.6")
+
+  result_pcum <- arframe:::format_ard_stat(
+    0.789,
+    NA_character_,
+    "p_cum",
+    NULL,
+    NULL,
+    NULL
+  )
+  expect_equal(result_pcum, "78.9")
+})
+
+test_that("format_ard_stat handles count stat names (N_miss, N_nonmiss, etc.)", {
+  result <- arframe:::format_ard_stat(
+    42.0,
+    NA_character_,
+    "N_miss",
+    NULL,
+    NULL,
+    NULL
+  )
+  expect_equal(result, "42")
+
+  result2 <- arframe:::format_ard_stat(
+    100.0,
+    NA_character_,
+    "N_nonmiss",
+    NULL,
+    NULL,
+    NULL
+  )
+  expect_equal(result2, "100")
+
+  result3 <- arframe:::format_ard_stat(
+    15.0,
+    NA_character_,
+    "n_event",
+    NULL,
+    NULL,
+    NULL
+  )
+  expect_equal(result3, "15")
+
+  result4 <- arframe:::format_ard_stat(
+    80.0,
+    NA_character_,
+    "n.risk",
+    NULL,
+    NULL,
+    NULL
+  )
+  expect_equal(result4, "80")
+
+  result5 <- arframe:::format_ard_stat(
+    5.0,
+    NA_character_,
+    "n_cum",
+    NULL,
+    NULL,
+    NULL
+  )
+  expect_equal(result5, "5")
+})
+
+test_that("format_ard_stat handles cardx test stat names", {
+  result_se <- arframe:::format_ard_stat(
+    1.2345,
+    NA_character_,
+    "std.error",
+    NULL,
+    NULL,
+    NULL
+  )
+  expect_equal(result_se, "1.2345")
+
+  result_stat <- arframe:::format_ard_stat(
+    5.678,
+    NA_character_,
+    "statistic",
+    NULL,
+    NULL,
+    NULL
+  )
+  expect_equal(result_stat, "5.68")
+
+  result_param <- arframe:::format_ard_stat(
+    2.5,
+    NA_character_,
+    "parameter",
+    NULL,
+    NULL,
+    NULL
+  )
+  expect_equal(result_param, "2.5")
+
+  result_cl <- arframe:::format_ard_stat(
+    0.95,
+    NA_character_,
+    "conf.low",
+    NULL,
+    NULL,
+    NULL
+  )
+  expect_equal(result_cl, "0.95")
+
+  result_ch <- arframe:::format_ard_stat(
+    1.05,
+    NA_character_,
+    "conf.high",
+    NULL,
+    NULL,
+    NULL
+  )
+  expect_equal(result_ch, "1.05")
+
+  result_level <- arframe:::format_ard_stat(
+    0.95,
+    NA_character_,
+    "conf.level",
+    NULL,
+    NULL,
+    NULL
+  )
+  expect_equal(result_level, "0.95")
+})
+
+test_that("format_ard_stat falls back to default 1-decimal for unknown stat", {
+  result <- arframe:::format_ard_stat(
+    3.456,
+    NA_character_,
+    "unknown_stat",
+    NULL,
+    NULL,
+    NULL
+  )
+  expect_equal(result, "3.5")
+})
+
+test_that("format_ard_stat returns empty for logical stat with NA chr", {
+  result <- arframe:::format_ard_stat(
+    NA_real_,
+    NA_character_,
+    "paired",
+    NULL,
+    NULL,
+    NULL
+  )
+  expect_equal(result, "")
+})
+
+test_that("format_ard_stat returns empty for both NA value and NA chr", {
+  result <- arframe:::format_ard_stat(
+    NA_real_,
+    NA_character_,
+    "mean",
+    NULL,
+    NULL,
+    NULL
+  )
+  expect_equal(result, "")
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: format_p_value with NA
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("format_p_value returns empty for NA", {
+  result <- arframe:::format_p_value(NA_real_)
+  expect_equal(result, "")
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: resolve_ard_decimals edge cases
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("resolve_ard_decimals with unrecognized input returns NULL/NULL", {
+  result <- arframe:::resolve_ard_decimals(42)
+  expect_equal(result$global, NULL)
+  expect_equal(result$per_var, NULL)
+})
+
+test_that("resolve_ard_decimals with list and .default key", {
+  result <- arframe:::resolve_ard_decimals(
+    list(AGE = c(mean = 2), .default = c(sd = 3))
+  )
+  expect_equal(result$global, c(sd = 3))
+  expect_equal(result$per_var$AGE, c(mean = 2))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: per-variable decimals with .default in full pipeline
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("per-variable decimals with .default works end-to-end", {
+  ard <- make_mixed_ard()
+  wide <- fr_wide_ard(
+    ard,
+    statistic = list(
+      continuous = "{mean} ({sd})",
+      categorical = "{n} ({p}%)"
+    ),
+    decimals = list(AGE = c(mean = 3), .default = c(sd = 1, p = 1))
+  )
+
+  expect_s3_class(wide, "data.frame")
+  # AGE row: mean should be 3 decimals
+  age_row <- wide[wide$variable == "AGE", ]
+  expect_true(grepl("65.300", age_row$Placebo[1L]))
+  # sd uses .default = 1 decimal (not per-var override for AGE)
+  expect_true(grepl("12.1\\)", age_row$Placebo[1L]))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: big_n validation error
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("big_n must be a scalar character", {
+  ard <- make_continuous_ard()
+  expect_error(
+    fr_wide_ard(ard, statistic = list(continuous = "{mean}"), big_n = 42),
+    "must be a single character string"
+  )
+})
+
+test_that("big_n with no matching stat_name produces no n_counts", {
+  ard <- make_continuous_ard()
+  wide <- fr_wide_ard(
+    ard,
+    statistic = list(continuous = "{mean} ({sd})"),
+    big_n = "NONEXISTENT"
+  )
+  expect_null(attr(wide, "n_counts"))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: interpolate_stats returns empty on missing arm
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("interpolate_stats returns empty string for missing arm", {
+  df <- data.frame(
+    arm = c("Placebo"),
+    stat_name = c("mean"),
+    stat_fmt = c("65.3"),
+    stringsAsFactors = FALSE
+  )
+
+  result <- arframe:::interpolate_stats(df, "NonexistentArm", "{mean}")
+  expect_equal(result, "")
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: context inferred from var_level when no context column
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("context inferred from var_level when context column absent", {
+  ard <- data.frame(
+    variable = rep("SEX", 4L),
+    stat_name = rep(c("n", "p"), 2L),
+    stat = c(20, 0.444, 25, 0.556),
+    group1 = rep("ARM", 4L),
+    group1_level = rep("Placebo", 4L),
+    variable_level = rep(c("Male", "Female"), each = 2L),
+    stringsAsFactors = FALSE
+  )
+
+  wide <- fr_wide_ard(ard, statistic = list(categorical = "{n} ({p}%)"))
+  expect_equal(nrow(wide), 2L)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: hierarchical with multiple arms + overall
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("hierarchical build with two arms and overall column", {
+  rows <- list(
+    # Overall sentinel
+    ard_row2(
+      "..ard_hierarchical_overall..",
+      "n",
+      70,
+      group1_level = "Placebo",
+      group2 = "AEBODSYS",
+      group2_level = NA_character_,
+      context = "hierarchical"
+    ),
+    ard_row2(
+      "..ard_hierarchical_overall..",
+      "n",
+      65,
+      group1_level = "Drug",
+      group2 = "AEBODSYS",
+      group2_level = NA_character_,
+      context = "hierarchical"
+    ),
+    # SOC row
+    ard_row2(
+      "AEBODSYS",
+      "n",
+      10,
+      group1_level = "Placebo",
+      group2 = "AEBODSYS",
+      group2_level = NA_character_,
+      variable_level = "Cardiac disorders",
+      context = "hierarchical"
+    ),
+    ard_row2(
+      "AEBODSYS",
+      "n",
+      8,
+      group1_level = "Drug",
+      group2 = "AEBODSYS",
+      group2_level = NA_character_,
+      variable_level = "Cardiac disorders",
+      context = "hierarchical"
+    ),
+    # PT row
+    ard_row2(
+      "AEDECOD",
+      "n",
+      5,
+      group1_level = "Placebo",
+      group2 = "AEBODSYS",
+      group2_level = "Cardiac disorders",
+      variable_level = "Bradycardia",
+      context = "hierarchical"
+    ),
+    ard_row2(
+      "AEDECOD",
+      "n",
+      3,
+      group1_level = "Drug",
+      group2 = "AEBODSYS",
+      group2_level = "Cardiac disorders",
+      variable_level = "Bradycardia",
+      context = "hierarchical"
+    )
+  )
+  ard <- do.call(rbind, rows)
+
+  wide <- fr_wide_ard(ard, statistic = "{n}")
+
+  expect_true(all(c("soc", "pt", "row_type") %in% names(wide)))
+  expect_true("Placebo" %in% names(wide))
+  expect_true("Drug" %in% names(wide))
+  # Overall + 1 SOC + 1 PT = 3 rows
+  expect_equal(nrow(wide), 3L)
+  expect_equal(sum(wide$row_type == "overall"), 1L)
+  expect_equal(sum(wide$row_type == "soc"), 1L)
+  expect_equal(sum(wide$row_type == "pt"), 1L)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: hierarchical label applied to soc and pt columns
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("label renames soc and pt columns in hierarchical output", {
+  rows <- list(
+    ard_row2(
+      "AEBODSYS",
+      "n",
+      10,
+      group1_level = "Placebo",
+      group2 = "AEBODSYS",
+      group2_level = NA_character_,
+      variable_level = "Cardiac disorders",
+      context = "hierarchical"
+    ),
+    ard_row2(
+      "AEDECOD",
+      "n",
+      5,
+      group1_level = "Placebo",
+      group2 = "AEBODSYS",
+      group2_level = "Cardiac disorders",
+      variable_level = "Bradycardia",
+      context = "hierarchical"
+    )
+  )
+  ard <- do.call(rbind, rows)
+
+  wide <- fr_wide_ard(
+    ard,
+    statistic = "{n}",
+    label = c("Cardiac disorders" = "Cardiac", "Bradycardia" = "Brady")
+  )
+
+  expect_true(any(wide$soc == "Cardiac"))
+  expect_true(any(wide$pt == "Brady"))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: format_stat_with_decimals for p_miss/p_nonmiss/p_cum
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("format_stat_with_decimals applies 100x for p-family stats", {
+  result <- arframe:::format_stat_with_decimals(0.456, "p_miss", 1L)
+  expect_equal(result, "45.6")
+
+  result2 <- arframe:::format_stat_with_decimals(0.123, "p_nonmiss", 2L)
+  expect_equal(result2, "12.30")
+
+  result3 <- arframe:::format_stat_with_decimals(0.789, "p_cum", 0L)
+  expect_equal(result3, "79")
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: is_multirow_spec edge cases
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("is_multirow_spec returns FALSE for unnamed multi-element vector", {
+  expect_false(arframe:::is_multirow_spec(c("{mean}", "{sd}")))
+})
+
+test_that("is_multirow_spec returns FALSE for single named string", {
+  expect_false(arframe:::is_multirow_spec(c("Mean" = "{mean}")))
+})
+
+test_that("is_multirow_spec returns TRUE for named multi-element vector", {
+  expect_true(arframe:::is_multirow_spec(c("Mean" = "{mean}", "SD" = "{sd}")))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: custom fmt function via full pipeline
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("custom fmt function for mean overrides built-in formatting", {
+  ard <- make_continuous_ard()
+  wide <- fr_wide_ard(
+    ard,
+    statistic = list(continuous = "{mean}"),
+    fmt = list(mean = function(x) paste0("[", round(x, 3), "]"))
+  )
+
+  expect_true(grepl("\\[65.3\\]", wide$Placebo[1L]))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: resolve_ard_statistic fallback to "{n}"
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("resolve_ard_statistic falls back to {n} when nothing matches", {
+  result <- arframe:::resolve_ard_statistic("UNKNOWN", "unknown_ctx", list())
+  expect_equal(result, "{n}")
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: detect_ard_hierarchy with no group1 or variable
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("detect_ard_hierarchy returns non-hierarchical when no group1", {
+  df <- data.frame(
+    variable = "AGE",
+    stat_name = "mean",
+    stat = 65,
+    stringsAsFactors = FALSE
+  )
+
+  result <- arframe:::detect_ard_hierarchy(df)
+  expect_false(result$is_hierarchical)
+})
+
+test_that("detect_ard_hierarchy with group2 not matching variable is not hierarchical", {
+  df <- data.frame(
+    variable = c("AGE", "AGE"),
+    group1 = c("ARM", "ARM"),
+    group1_level = c("Placebo", "Drug"),
+    group2 = c("SEX", "SEX"),
+    group2_level = c("M", "F"),
+    stat_name = c("mean", "mean"),
+    stat = c(65, 63),
+    stringsAsFactors = FALSE
+  )
+
+  result <- arframe:::detect_ard_hierarchy(df)
+  expect_false(result$is_hierarchical)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: undetermined ARD structure (no variable, has stat_name + stat)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("fr_wide_ard errors on fully-renamed ARD without column arg", {
+  # Has stat_name and stat, but no variable and no standard group columns
+  # Triggers Shape D (reconstruct_renamed_ard) which requires column
+  df <- data.frame(
+    stat_name = c("mean", "sd"),
+    stat = c(65.3, 12.1),
+    stringsAsFactors = FALSE
+  )
+
+  expect_error(fr_wide_ard(df), "auto-detect")
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: Shape A without variable_level column
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("raw ARD without variable_level column defaults to NA", {
+  df <- data.frame(
+    variable = rep("AGE", 4L),
+    stat_name = rep(c("mean", "sd"), 2L),
+    group1 = rep("ARM", 4L),
+    context = rep("continuous", 4L),
+    stringsAsFactors = FALSE
+  )
+  df$stat <- as.list(c(65.3, 12.1, 63.8, 11.5))
+  df$group1_level <- as.list(rep(c("Placebo", "Drug"), each = 2L))
+
+  wide <- fr_wide_ard(df, statistic = list(continuous = "{mean} ({sd})"))
+  expect_s3_class(wide, "data.frame")
+  expect_equal(nrow(wide), 1L)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: validate_format_stats with no refs (literal format string)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("validate_format_stats with no refs returns silently", {
+  expect_silent(
+    arframe:::validate_format_stats(
+      "literal text",
+      c("mean", "sd"),
+      "AGE",
+      NULL
+    )
+  )
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: ungrouped ARD with overall = NULL forces "value" column
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("ungrouped ARD with overall = NULL forces 'value' column", {
+  ard <- data.frame(
+    variable = rep("AGE", 2L),
+    stat_name = c("mean", "sd"),
+    stat = c(64.5, 11.8),
+    context = rep("continuous", 2L),
+    stringsAsFactors = FALSE
+  )
+
+  wide <- fr_wide_ard(
+    ard,
+    statistic = list(continuous = "{mean} ({sd})"),
+    overall = NULL
+  )
+
+  # Should still have a value column (forced to "value" when ungrouped + overall = NULL)
+  expect_s3_class(wide, "data.frame")
+  expect_gte(nrow(wide), 1L)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: extra group cols in categorical (multi-group with levels)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("extra group cols propagated in categorical multi-group output", {
+  rows <- list(
+    ard_row2(
+      "RACE",
+      "n",
+      10,
+      group1_level = "Placebo",
+      group2 = "SEX",
+      group2_level = "F",
+      variable_level = "White",
+      context = "categorical"
+    ),
+    ard_row2(
+      "RACE",
+      "p",
+      0.5,
+      group1_level = "Placebo",
+      group2 = "SEX",
+      group2_level = "F",
+      variable_level = "White",
+      context = "categorical"
+    ),
+    ard_row2(
+      "RACE",
+      "n",
+      8,
+      group1_level = "Drug",
+      group2 = "SEX",
+      group2_level = "F",
+      variable_level = "White",
+      context = "categorical"
+    ),
+    ard_row2(
+      "RACE",
+      "p",
+      0.4,
+      group1_level = "Drug",
+      group2 = "SEX",
+      group2_level = "F",
+      variable_level = "White",
+      context = "categorical"
+    )
+  )
+  ard <- do.call(rbind, rows)
+
+  wide <- fr_wide_ard(
+    ard,
+    column = "ARM",
+    statistic = list(categorical = "{n} ({p}%)")
+  )
+
+  expect_true("SEX" %in% names(wide))
+  expect_equal(wide$SEX[1L], "F")
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: hierarchical multirow_spec flattening
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("hierarchical overall uses first entry of multirow spec", {
+  rows <- list(
+    ard_row2(
+      "..ard_hierarchical_overall..",
+      "n",
+      70,
+      group1_level = "Placebo",
+      group2 = "AEBODSYS",
+      group2_level = NA_character_,
+      context = "hierarchical"
+    ),
+    ard_row2(
+      "..ard_hierarchical_overall..",
+      "p",
+      0.78,
+      group1_level = "Placebo",
+      group2 = "AEBODSYS",
+      group2_level = NA_character_,
+      context = "hierarchical"
+    ),
+    # SOC row
+    ard_row2(
+      "AEBODSYS",
+      "n",
+      10,
+      group1_level = "Placebo",
+      group2 = "AEBODSYS",
+      group2_level = NA_character_,
+      variable_level = "Cardiac disorders",
+      context = "hierarchical"
+    ),
+    ard_row2(
+      "AEBODSYS",
+      "p",
+      0.22,
+      group1_level = "Placebo",
+      group2 = "AEBODSYS",
+      group2_level = NA_character_,
+      variable_level = "Cardiac disorders",
+      context = "hierarchical"
+    ),
+    # PT row
+    ard_row2(
+      "AEDECOD",
+      "n",
+      5,
+      group1_level = "Placebo",
+      group2 = "AEBODSYS",
+      group2_level = "Cardiac disorders",
+      variable_level = "Bradycardia",
+      context = "hierarchical"
+    ),
+    ard_row2(
+      "AEDECOD",
+      "p",
+      0.11,
+      group1_level = "Placebo",
+      group2 = "AEBODSYS",
+      group2_level = "Cardiac disorders",
+      variable_level = "Bradycardia",
+      context = "hierarchical"
+    )
+  )
+  ard <- do.call(rbind, rows)
+
+  # Use multirow spec — hierarchical should flatten to first entry
+  wide <- fr_wide_ard(
+    ard,
+    statistic = list(
+      categorical = c(
+        "n (%)" = "{n} ({p}%)",
+        "Count" = "{n}"
+      )
+    )
+  )
+
+  # Should still produce valid output (uses first format for hierarchical)
+  expect_s3_class(wide, "data.frame")
+  expect_true("row_type" %in% names(wide))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage gap: reconstruct_renamed_ard unused var_cols fallback
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("reconstruct_renamed_ard assigns continuous rows to unused var_cols", {
+  # No always-NA column, but AGE unused by categorical rows
+  df <- data.frame(
+    ARM = c("Placebo", "Placebo", "Placebo", "Placebo"),
+    SEX = c("Male", "Female", NA, NA),
+    AGE = c(NA, NA, NA, NA),
+    stat_name = c("n", "n", "mean", "sd"),
+    stat = c(10, 15, 65.3, 12.1),
+    stringsAsFactors = FALSE
+  )
+
+  result <- arframe:::reconstruct_renamed_ard(
+    df,
+    column = "ARM",
+    call = rlang::caller_env()
+  )
+  # Rows 3-4 (continuous) should be assigned to AGE (always-NA → first priority)
+  expect_true(all(result$df$variable[3:4] == "AGE"))
+})

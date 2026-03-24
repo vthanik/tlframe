@@ -1474,3 +1474,190 @@ test_that("print.fr_spec with body wrap shows wrap in Rows", {
   combined <- capture_print(spec)
   expect_match(combined, "wrap")
 })
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# COVERAGE EXPANSION — fr_col with n, group, stub parameters
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("fr_col stores n parameter as integer", {
+  col <- fr_col("Treatment A", n = 45)
+  expect_equal(col$n, 45L)
+})
+
+test_that("fr_col n = 0 is valid (non-negative)", {
+  col <- fr_col("Empty Arm", n = 0)
+  expect_equal(col$n, 0L)
+})
+
+test_that("fr_col n = NULL is the default", {
+  col <- fr_col("Test")
+  expect_null(col$n)
+})
+
+test_that("fr_col errors on negative n", {
+  expect_error(fr_col(n = -1), class = "rlang_error")
+})
+
+test_that("fr_col stores group parameter", {
+  col <- fr_col("Baseline", group = "Placebo")
+  expect_equal(col$group, "Placebo")
+})
+
+test_that("fr_col group defaults to NULL", {
+  col <- fr_col("Test")
+  expect_null(col$group)
+})
+
+test_that("fr_col errors on non-string group", {
+  expect_error(fr_col(group = 123), class = "rlang_error")
+})
+
+test_that("fr_col stores stub = TRUE", {
+  col <- fr_col("Parameter", stub = TRUE)
+  expect_true(col$stub)
+})
+
+test_that("fr_col stub defaults to FALSE", {
+  col <- fr_col("Test")
+  expect_false(col$stub)
+})
+
+test_that("fr_col errors on non-logical stub", {
+  expect_error(fr_col(stub = "yes"), class = "rlang_error")
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# COVERAGE EXPANSION — print.fr_col with stub, n, group tags
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("print.fr_col shows stub tag", {
+  col <- fr_col("Parameter", width = 2.0, stub = TRUE)
+  out <- capture.output(print(col))
+  expect_match(out, "stub")
+})
+
+test_that("print.fr_col shows N= tag when n is set", {
+  col <- fr_col("Treatment A", n = 45)
+  out <- capture.output(print(col))
+  expect_match(out, "N=45", fixed = TRUE)
+})
+
+test_that("print.fr_col shows group= tag when group is set", {
+  col <- fr_col("Baseline", group = "Placebo")
+  out <- capture.output(print(col))
+  expect_match(out, "group=Placebo", fixed = TRUE)
+})
+
+test_that("print.fr_col shows all tags together", {
+  col <- fr_col("Value", width = 1.5, stub = TRUE, n = 30, group = "Active")
+  out <- capture.output(print(col))
+  expect_match(out, "stub")
+  expect_match(out, "N=30", fixed = TRUE)
+  expect_match(out, "group=Active", fixed = TRUE)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# COVERAGE EXPANSION — print.fr_spec body branches
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("print.fr_spec shows page_by with visible=FALSE annotation", {
+  spec <- data.frame(cat = "A", x = 1) |>
+    fr_table() |>
+    fr_cols(cat = fr_col("Cat"), x = fr_col("X")) |>
+    fr_rows(page_by = "cat")
+  # Manually set page_by_visible to FALSE on the body
+  spec$body$page_by_visible <- FALSE
+
+  combined <- capture_print(spec)
+  expect_match(combined, "visible=FALSE", fixed = TRUE)
+})
+
+test_that("print.fr_spec shows group_label in body Rows section", {
+  spec <- data.frame(grp = c("A", "B"), stat = c("M", "SD"), x = 1:2) |>
+    fr_table() |>
+    fr_cols(grp = fr_col("Group"), stat = fr_col("Stat"), x = fr_col("X")) |>
+    fr_rows(group_by = "grp")
+  # Manually set group_label on the body
+  spec$body$group_label <- "stat"
+
+  combined <- capture_print(spec)
+  expect_match(combined, "group_by=grp", fixed = TRUE)
+  expect_match(combined, "label=stat", fixed = TRUE)
+})
+
+test_that("print.fr_spec shows non-default col_gap", {
+  spec <- data.frame(x = 1) |>
+    fr_table() |>
+    fr_page(col_gap = 8L) |>
+    fr_cols(x = fr_col("X"))
+
+  combined <- capture_print(spec)
+  expect_match(combined, "col_gap=8pt", fixed = TRUE)
+})
+
+test_that("print.fr_spec figure with multiple plots shows count", {
+  spec <- new_fr_spec(
+    data.frame(x = 1),
+    type = "figure",
+    plots = list("plot1", "plot2", "plot3")
+  )
+  combined <- capture_print(spec)
+  expect_match(combined, "3 page")
+})
+
+test_that("print.fr_spec figure with figure_meta shows meta columns", {
+  spec <- new_fr_spec(
+    data.frame(x = 1),
+    type = "figure",
+    figure_meta = data.frame(panel = "A", label = "Test")
+  )
+  combined <- capture_print(spec)
+  expect_match(combined, "Meta")
+  expect_match(combined, "panel")
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# COVERAGE EXPANSION — new_fr_body with indent_by as list
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("new_fr_body stores indent_by as list when given a list", {
+  indent_spec <- list(col1 = 0.25, col2 = 0.5)
+  b <- new_fr_body(indent_by = indent_spec)
+  expect_true(is.list(b$indent_by))
+  expect_equal(b$indent_by$col1, 0.25)
+})
+
+test_that("new_fr_body stores group_hierarchy_cols", {
+  b <- new_fr_body(group_hierarchy_cols = c("soc", "pt"))
+  expect_equal(b$group_hierarchy_cols, c("soc", "pt"))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# COVERAGE EXPANSION — is.fr_spec and is.fr_col
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("is.fr_spec returns TRUE for valid fr_spec", {
+  spec <- data.frame(x = 1) |> fr_table()
+  expect_true(is.fr_spec(spec))
+})
+
+test_that("is.fr_spec returns FALSE for non-fr_spec objects", {
+  expect_false(is.fr_spec(list()))
+  expect_false(is.fr_spec(data.frame()))
+  expect_false(is.fr_spec(NULL))
+})
+
+test_that("is.fr_col returns TRUE for valid fr_col", {
+  expect_true(is.fr_col(fr_col("Test")))
+})
+
+test_that("is.fr_col returns FALSE for non-fr_col objects", {
+  expect_false(is.fr_col(list()))
+  expect_false(is.fr_col("text"))
+  expect_false(is.fr_col(NULL))
+})

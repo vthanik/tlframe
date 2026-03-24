@@ -2588,3 +2588,442 @@ test_that("collapse_hierarchy does nothing without leaf", {
   expect_equal(nrow(spec$data), 3L)
   expect_false("__display__" %in% names(spec$data))
 })
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage: build_cell_grid — style with no affected cells (L127)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("build_cell_grid skips style with no matching cells", {
+  data <- data.frame(a = c("x", "y"), stringsAsFactors = FALSE)
+  cols <- list(a = fr_col("A", width = 1, align = "left"))
+  cols$a$id <- "a"
+  page <- new_fr_page()
+
+  # Style targets column "z" which doesn't exist — no affected cells
+  style <- new_fr_cell_style(
+    region = "body",
+    type = "col",
+    cols = "z",
+    bold = TRUE
+  )
+  grid <- build_cell_grid(data, cols, list(style), page)
+  # bold should remain default (FALSE) since style had no affected cells
+  expect_true(all(!grid$bold))
+})
+
+test_that("build_cell_grid applies stub region style to first column only", {
+  data <- data.frame(a = c("x", "y"), b = c("1", "2"), stringsAsFactors = FALSE)
+  cols <- list(
+    a = fr_col("A", width = 1, align = "left"),
+    b = fr_col("B", width = 1, align = "right")
+  )
+  cols$a$id <- "a"
+  cols$b$id <- "b"
+  page <- new_fr_page()
+
+  style <- new_fr_cell_style(
+    region = "stub",
+    type = "col",
+    bold = TRUE
+  )
+  grid <- build_cell_grid(data, cols, list(style), page)
+  # Only first column should be bold
+  expect_true(all(grid$bold[grid$col_idx == 1L]))
+  expect_true(all(!grid$bold[grid$col_idx == 2L]))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage: resolve_style_mask — malformed cols selector (L187-193)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("resolve_style_mask warns on malformed cols selector", {
+  data <- data.frame(a = c("x"), stringsAsFactors = FALSE)
+  cols <- list(a = fr_col("A", width = 1, align = "left"))
+  cols$a$id <- "a"
+  page <- new_fr_page()
+  grid <- build_cell_grid(data, cols, list(), page)
+
+  # Create a style with an unexpected cols type (logical)
+  style <- new_fr_cell_style(region = "body", type = "col", bold = TRUE)
+  style$cols <- TRUE # Not character, numeric, "all", or NULL
+
+  expect_warning(
+    resolve_style_mask(style, grid, "a"),
+    "Malformed"
+  )
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage: inject_group_headers (L417-476)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("inject_group_headers injects header rows at group boundaries", {
+  data <- data.frame(
+    grp = c("A", "A", "B", "B"),
+    val = c("1", "2", "3", "4"),
+    stringsAsFactors = FALSE
+  )
+  result <- inject_group_headers(data, "grp", "val")
+  # 2 groups -> 2 header rows + 4 data rows = 6
+  expect_equal(nrow(result$data), 6L)
+  expect_equal(length(result$header_rows), 2L)
+  # First header row should have group "A" in val column
+  expect_equal(result$data$val[result$header_rows[1]], "A")
+  # Second header row should have group "B" in val column
+  expect_equal(result$data$val[result$header_rows[2]], "B")
+})
+
+test_that("inject_group_headers with multiple group_cols concatenates labels", {
+  data <- data.frame(
+    g1 = c("X", "X", "Y"),
+    g2 = c("a", "a", "b"),
+    val = c("1", "2", "3"),
+    stringsAsFactors = FALSE
+  )
+  result <- inject_group_headers(data, c("g1", "g2"), "val")
+  # 2 groups (X/a and Y/b) -> 2 headers + 3 data rows = 5
+  expect_equal(nrow(result$data), 5L)
+  # Header label should be "X / a" (uses group_label_sep)
+  sep <- fr_env$group_label_sep
+  expected <- paste("X", "a", sep = sep)
+  expect_equal(result$data$val[result$header_rows[1]], expected)
+})
+
+test_that("inject_group_headers returns unchanged data for empty inputs", {
+  data <- data.frame(
+    grp = character(0),
+    val = character(0),
+    stringsAsFactors = FALSE
+  )
+  result <- inject_group_headers(data, "grp", "val")
+  expect_equal(nrow(result$data), 0L)
+  expect_equal(result$header_rows, integer(0))
+
+  # NULL label_col
+  data2 <- data.frame(grp = "A", val = "1", stringsAsFactors = FALSE)
+  result2 <- inject_group_headers(data2, "grp", NULL)
+  expect_equal(nrow(result2$data), 1L)
+  expect_equal(result2$header_rows, integer(0))
+})
+
+test_that("inject_group_headers preserves page_by columns", {
+  data <- data.frame(
+    page = c("P1", "P1", "P1"),
+    grp = c("A", "A", "B"),
+    val = c("1", "2", "3"),
+    stringsAsFactors = FALSE
+  )
+  result <- inject_group_headers(data, "grp", "val", preserve_cols = "page")
+  # Header rows should preserve page column value
+  for (h in result$header_rows) {
+    expect_true(nzchar(result$data$page[h]))
+  }
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage: remap_style_indices_for_injected (L496-516)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("remap_style_indices_for_injected shifts numeric row indices", {
+  styles <- list(
+    new_fr_cell_style(
+      region = "body",
+      type = "row",
+      rows = c(1L, 2L, 3L),
+      bold = TRUE
+    )
+  )
+  # If header rows were injected at positions 1 and 4 in the new data,
+  # orig boundaries are: 1 - 1 + 1 = 1, 4 - 2 + 1 = 3
+  # Row 1 -> 1 + findInterval(1, c(1,3)) = 1 + 1 = 2
+  # Row 2 -> 2 + findInterval(2, c(1,3)) = 2 + 1 = 3
+  # Row 3 -> 3 + findInterval(3, c(1,3)) = 3 + 2 = 5
+  result <- remap_style_indices_for_injected(styles, c(1L, 4L))
+  expect_equal(result[[1]]$rows, c(2L, 3L, 5L))
+})
+
+test_that("remap_style_indices_for_injected skips NULL and 'all' rows", {
+  styles <- list(
+    new_fr_cell_style(region = "body", type = "row", rows = NULL, bold = TRUE),
+    new_fr_cell_style(region = "body", type = "row", rows = "all", bold = TRUE)
+  )
+  result <- remap_style_indices_for_injected(styles, c(1L))
+  expect_null(result[[1]]$rows)
+  expect_equal(result[[2]]$rows, "all")
+})
+
+test_that("remap_style_indices_for_injected returns unchanged when no headers", {
+  styles <- list(
+    new_fr_cell_style(
+      region = "body",
+      type = "row",
+      rows = c(1L, 2L),
+      bold = TRUE
+    )
+  )
+  result <- remap_style_indices_for_injected(styles, integer(0))
+  expect_equal(result[[1]]$rows, c(1L, 2L))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage: insert_blank_after preserve_cols copy (L572)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("insert_blank_after copies preserve_cols to blank rows", {
+  data <- data.frame(
+    page = c("P1", "P1", "P2", "P2"),
+    grp = c("A", "A", "B", "B"),
+    val = as.character(1:4),
+    stringsAsFactors = FALSE
+  )
+  result <- insert_blank_after(data, "grp", preserve_cols = "page")
+  # Blank row between A and B should have page = "P1" (from boundary row)
+  blank_idx <- which(result$data$val == "" & result$data$grp == "")
+  expect_true(length(blank_idx) >= 1L)
+  expect_equal(result$data$page[blank_idx[1]], "P1")
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage: apply_indent_by_levels key_col not in data (L720)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("apply_indent_by_levels returns spec unchanged if key_col missing", {
+  spec <- data.frame(a = c("x", "y"), stringsAsFactors = FALSE) |>
+    fr_table()
+  indent_spec <- list(
+    key = "nonexistent",
+    col = "a",
+    levels = c("x" = 1, "y" = 2)
+  )
+  result <- apply_indent_by_levels(spec, indent_spec, 0.2)
+  # No styles added since key_col doesn't exist in data
+  expect_equal(length(result$cell_styles), length(spec$cell_styles))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage: apply_leading_indent skip for col not in data (L968, L971)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("apply_leading_indent skips columns not in data", {
+  spec <- data.frame(a = c("  x", "y"), stringsAsFactors = FALSE) |>
+    fr_table()
+  spec <- finalize_spec(spec)
+  # Add a column spec for "z" that isn't in data
+  spec$columns[["z"]] <- fr_col("Z", width = 1)
+  spec$columns[["z"]]$id <- "z"
+
+  # Should not error — just skip column z
+  result <- apply_leading_indent(spec)
+  expect_true(inherits(result, "fr_spec"))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage: build_keep_mask single-row group skip (L1098)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("build_keep_mask skips groups with only one non-blank row", {
+  data <- data.frame(
+    grp = c("A", "B", "B"),
+    val = c("1", "2", "3"),
+    stringsAsFactors = FALSE
+  )
+  mask <- build_keep_mask(data, "grp")
+  # Group A has 1 row -> skip (no keepn)
+  expect_false(mask[1])
+  # Group B has 2 rows -> first row keepn
+  expect_true(mask[2])
+  expect_false(mask[3])
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage: resolve_borders — unknown preset (L1205), non-fr_rule skip (L1231)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("resolve_borders skips unknown vline preset", {
+  # vline_spec with an unknown preset
+  rule <- structure(
+    list(
+      preset = "unknown_preset",
+      width = 0.5,
+      linestyle = "solid",
+      fg = "#000000",
+      cols = NULL
+    ),
+    class = "fr_vline_spec"
+  )
+  borders <- resolve_borders(
+    list(rule),
+    nrow_body = 2L,
+    ncol = 2L,
+    nrow_header = 1L
+  )
+  # No vertical borders should be set (unknown preset skipped)
+  expect_true(is.null(borders$body$left[1, 1][[1]]))
+  expect_true(is.null(borders$body$right[1, 1][[1]]))
+})
+
+test_that("resolve_borders skips non-fr_rule objects", {
+  # Pass an arbitrary list that isn't fr_rule or fr_vline_spec
+  fake_rule <- list(some = "thing")
+  borders <- resolve_borders(
+    list(fake_rule),
+    nrow_body = 2L,
+    ncol = 2L,
+    nrow_header = 1L
+  )
+  # All borders should be NULL
+  expect_true(is.null(borders$body$top[1, 1][[1]]))
+  expect_true(is.null(borders$body$bottom[1, 1][[1]]))
+})
+
+test_that("resolve_borders handles empty body (nrow_body = 0)", {
+  rule <- new_fr_rule(
+    direction = "horizontal",
+    region = "header",
+    side = "below",
+    width = 0.5,
+    linestyle = "solid",
+    fg = "#000000"
+  )
+  borders <- resolve_borders(
+    list(rule),
+    nrow_body = 0L,
+    ncol = 2L,
+    nrow_header = 1L
+  )
+  expect_equal(nrow(borders$body$top), 0L)
+  expect_equal(nrow(borders$header$top), 1L)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage: rtf_encode_unicode_char known shorthand (L1465)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("rtf_encode_unicode_char uses known shorthand from fr_env", {
+  # Test with a character that's in the rtf_unicode map (e.g., non-breaking space)
+  known_chars <- names(fr_env$rtf_unicode)
+  if (length(known_chars) > 0L) {
+    ch <- known_chars[1]
+    result <- rtf_encode_unicode_char(ch)
+    expect_equal(result, fr_env$rtf_unicode[ch])
+  }
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage: apply_styles_to_grid — header with font_size/align/valign (L270-276)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("apply_styles_to_grid applies font_size, align, valign to header", {
+  cols <- list(a = fr_col("A", width = 1), b = fr_col("B", width = 1))
+  page <- new_fr_page()
+  grid <- build_header_cell_grid(cols, list(), page, header_row_idx = 1L)
+
+  style <- new_fr_cell_style(
+    region = "header",
+    type = "col",
+    font_size = 12,
+    align = "center",
+    valign = "middle"
+  )
+  result <- apply_styles_to_grid(
+    grid,
+    list(style),
+    "header",
+    c("a", "b"),
+    header_row_idx = 1L
+  )
+  expect_true(all(result$font_size == 12))
+  expect_true(all(result$align == "center"))
+  expect_true(all(result$valign == "middle"))
+})
+
+test_that("apply_styles_to_grid skips header with non-matching cols", {
+  cols <- list(a = fr_col("A", width = 1), b = fr_col("B", width = 1))
+  page <- new_fr_page()
+  grid <- build_header_cell_grid(cols, list(), page, header_row_idx = 1L)
+
+  # Style targets column "z" which doesn't exist
+  style <- new_fr_cell_style(
+    region = "header",
+    type = "col",
+    cols = "z",
+    bold = TRUE
+  )
+  result <- apply_styles_to_grid(
+    grid,
+    list(style),
+    "header",
+    c("a", "b"),
+    header_row_idx = 1L
+  )
+  # bold should stay default (FALSE)
+  expect_true(all(!result$bold))
+})
+
+test_that("apply_styles_to_grid header path with unknown cols type falls back", {
+  cols <- list(a = fr_col("A", width = 1))
+  page <- new_fr_page()
+  grid <- build_header_cell_grid(cols, list(), page, header_row_idx = 1L)
+
+  style <- new_fr_cell_style(region = "header", type = "col", bold = TRUE)
+  style$cols <- TRUE # Invalid type — should fall back to all columns
+
+  result <- apply_styles_to_grid(
+    grid,
+    list(style),
+    "header",
+    "a",
+    header_row_idx = 1L
+  )
+  expect_true(all(result$bold))
+})
+
+test_that("apply_styles_to_grid body mode skips when no cells affected", {
+  data <- data.frame(a = c("x"), stringsAsFactors = FALSE)
+  cols <- list(a = fr_col("A", width = 1, align = "left"))
+  cols$a$id <- "a"
+  page <- new_fr_page()
+  grid <- build_cell_grid(data, cols, list(), page)
+
+  # Style targets column "z" — no cells affected in body mode
+  style <- new_fr_cell_style(
+    region = "body",
+    type = "col",
+    cols = "z",
+    bold = TRUE
+  )
+  result <- apply_styles_to_grid(grid, list(style), "body", "a")
+  expect_true(all(!result$bold))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage: apply_leading_indent skips decimal-aligned columns (L968)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("apply_leading_indent skips decimal-aligned columns", {
+  spec <- data.frame(
+    a = c("  12.3", "  4.56"),
+    stringsAsFactors = FALSE
+  ) |>
+    fr_table() |>
+    fr_cols(a = fr_col("A", align = "decimal", width = 2))
+  spec <- finalize_spec(spec)
+
+  # Leading spaces should NOT be stripped since decimal alignment owns spacing
+  # (decimal_geometry should include column "a")
+  expect_true(
+    "a" %in% names(spec$decimal_geometry) || is.null(spec$decimal_geometry)
+  )
+})

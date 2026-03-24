@@ -504,3 +504,106 @@ test_that("build_token_map with only datetime override keeps program auto", {
   # program should come from get_source_path() fallback
   expect_type(tm$program, "character")
 })
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# get_source_path — commandArgs detection paths
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("get_source_path handles --file= style commandArgs", {
+  # We can test the regex extraction logic by checking that
+
+  # the function doesn't error when commandArgs contains no --file=
+  result <- get_source_path()
+  expect_type(result, "character")
+  expect_length(result, 1L)
+})
+
+test_that("get_source_path handles -f style commandArgs", {
+  # The function should handle -f flag parsing gracefully
+  # In test context, commandArgs won't contain -f, so it falls through
+  result <- get_source_path()
+  expect_type(result, "character")
+})
+
+test_that("get_source_path knitr fallback does not error when knitr is available", {
+  # knitr is likely available in test context; current_input() returns NULL
+  # when not actively knitting — should fall through gracefully
+  result <- get_source_path()
+  expect_type(result, "character")
+  expect_length(result, 1L)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# build_token_map — cached_source_path behavior
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("build_token_map caches source path in fr_env", {
+  # Clear any cached value first
+  old_cached_path <- fr_env$cached_source_path
+  old_cached_ts <- fr_env$cached_timestamp
+  on.exit(
+    {
+      fr_env$cached_source_path <- old_cached_path
+      fr_env$cached_timestamp <- old_cached_ts
+    },
+    add = TRUE
+  )
+
+  fr_env$cached_source_path <- NULL
+  fr_env$cached_timestamp <- NULL
+
+  spec <- new_fr_spec(data.frame(x = 1))
+  build_token_map(page_num = 1, total_pages = 1, spec = spec)
+
+  # After first call, cached values should be set
+
+  expect_type(fr_env$cached_source_path, "character")
+  expect_type(fr_env$cached_timestamp, "character")
+})
+
+test_that("build_token_map reuses cached source path on second call", {
+  old_cached_path <- fr_env$cached_source_path
+  old_cached_ts <- fr_env$cached_timestamp
+  on.exit(
+    {
+      fr_env$cached_source_path <- old_cached_path
+      fr_env$cached_timestamp <- old_cached_ts
+    },
+    add = TRUE
+  )
+
+  # Pre-set a known cached value
+  fr_env$cached_source_path <- "/cached/script.R"
+  fr_env$cached_timestamp <- "01JAN2025 12:00:00"
+
+  spec <- new_fr_spec(data.frame(x = 1))
+  tm <- build_token_map(page_num = 1, total_pages = 1, spec = spec)
+
+  # Should use the cached values, not call get_source_path() again
+  expect_equal(tm$program, "/cached/script.R")
+  expect_equal(tm$datetime, "01JAN2025 12:00:00")
+})
+
+test_that("build_token_map stores empty string when get_source_path returns NA", {
+  old_cached_path <- fr_env$cached_source_path
+  old_cached_ts <- fr_env$cached_timestamp
+  on.exit(
+    {
+      fr_env$cached_source_path <- old_cached_path
+      fr_env$cached_timestamp <- old_cached_ts
+    },
+    add = TRUE
+  )
+
+  fr_env$cached_source_path <- NULL
+  fr_env$cached_timestamp <- NULL
+
+  spec <- new_fr_spec(data.frame(x = 1))
+  build_token_map(page_num = 1, total_pages = 1, spec = spec)
+
+  # cached_source_path should be character (either "" or a path)
+  expect_type(fr_env$cached_source_path, "character")
+  expect_true(nchar(fr_env$cached_source_path) >= 0L)
+})

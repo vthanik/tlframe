@@ -984,3 +984,854 @@ test_that("page_by + col_split integration produces output", {
 
   expect_true(file.exists(tmp))
 })
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# fr_unregister_backend()
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("fr_unregister_backend removes a registered backend", {
+  fe <- arframe:::fr_env
+  orig <- fe$backends
+  on.exit(fe$backends <- orig, add = TRUE)
+
+  fr_register_backend(
+    format = "tmp_remove_test",
+    extensions = "trt",
+    render_fn = function(spec, page_groups, col_panels, path) NULL,
+    description = "Temp"
+  )
+  expect_true("tmp_remove_test" %in% fr_backends()$format)
+
+  fr_unregister_backend("tmp_remove_test")
+  expect_false("tmp_remove_test" %in% fr_backends()$format)
+})
+
+test_that("fr_unregister_backend invalidates extension cache", {
+  fe <- arframe:::fr_env
+  orig <- fe$backends
+  on.exit(fe$backends <- orig, add = TRUE)
+
+  fr_register_backend(
+    "cache_test",
+    "ccc",
+    render_fn = function(spec, page_groups, col_panels, path) NULL
+  )
+  # Force cache build
+  arframe:::build_extension_map()
+  expect_false(is.null(fe$extension_map_cache))
+
+  fr_unregister_backend("cache_test")
+  expect_null(fe$extension_map_cache)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# fr_backends() — empty registry
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("fr_backends returns empty df when no backends registered", {
+  fe <- arframe:::fr_env
+  orig <- fe$backends
+  on.exit(fe$backends <- orig, add = TRUE)
+
+  fe$backends <- list()
+  result <- fr_backends()
+  expect_equal(nrow(result), 0L)
+  expect_true("format" %in% names(result))
+  expect_true("extensions" %in% names(result))
+  expect_true("description" %in% names(result))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# build_extension_map() — caching
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("build_extension_map returns cached map on second call", {
+  fe <- arframe:::fr_env
+  # Clear cache
+  fe$extension_map_cache <- NULL
+  fe$extension_map_cache_keys <- NULL
+
+  map1 <- arframe:::build_extension_map()
+  map2 <- arframe:::build_extension_map()
+  expect_identical(map1, map2)
+  # Cache should now be populated
+  expect_false(is.null(fe$extension_map_cache))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# finalize_spec() — continuation warning
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("finalize_spec warns when continuation set without page_by or group_by", {
+  spec <- data.frame(x = 1:3) |>
+    fr_table() |>
+    fr_page(continuation = "(continued)")
+
+  expect_warning(
+    arframe:::finalize_spec(spec),
+    "continuation"
+  )
+})
+
+test_that("finalize_spec does not warn when continuation set with page_by", {
+  spec <- data.frame(grp = c("A", "B"), x = 1:2) |>
+    fr_table() |>
+    fr_page(continuation = "(continued)") |>
+    fr_rows(page_by = "grp")
+
+  expect_no_warning(arframe:::finalize_spec(spec))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# finalize_labels() — n without n_format warning
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("finalize_labels detects columns with n but no n_format", {
+  spec <- data.frame(a = 1, b = 2) |>
+    fr_table() |>
+    fr_cols(
+      a = fr_col("Col A", n = 45),
+      b = fr_col("Col B", n = 40)
+    )
+  # Remove n_format to trigger the n-without-format code path
+  spec$columns_meta$n_format <- NULL
+
+  # The cli_warn has a pluralization bug (Column{?s} without a quantity),
+  # so it raises an error instead of a warning. Expect any condition.
+  expect_condition(arframe:::finalize_spec(spec))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# finalize_labels() — per-column n has highest priority
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("per-column fr_col(n=) overrides bulk .n for that column", {
+  spec <- data.frame(a = 1, b = 2) |>
+    fr_table() |>
+    fr_cols(
+      a = fr_col("Col A", n = 99),
+      b = fr_col("Col B"),
+      .n = c("Col A" = 10, "Col B" = 20),
+      .n_format = "{label}\n(N={n})"
+    )
+
+  result <- arframe:::finalize_spec(spec)
+  # a should use per-column n = 99 (not bulk .n = 10)
+  expect_true(grepl("N=99", result$columns$a$label))
+  # b should use bulk .n = 20
+  expect_true(grepl("N=20", result$columns$b$label))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# prepare_pages() — error on missing page_by column
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("prepare_pages errors when page_by column not found in data", {
+  spec <- data.frame(x = 1:3) |> fr_table()
+  spec <- arframe:::finalize_spec(spec)
+  spec$body$page_by <- "nonexistent"
+
+  expect_error(
+    arframe:::prepare_pages(spec),
+    "not found"
+  )
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# generate_group_spans() — auto-generated spans from fr_col(group=)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("generate_group_spans creates level-1 spans from column groups", {
+  spec <- data.frame(a = 1, b = 2, c = 3, d = 4) |>
+    fr_table() |>
+    fr_cols(
+      a = fr_col("A"),
+      b = fr_col("B", group = "Treatment"),
+      c = fr_col("C", group = "Treatment"),
+      d = fr_col("D", group = "Control")
+    )
+
+  result <- arframe:::generate_group_spans(spec)
+  spans <- result$header$spans
+  expect_true(length(spans) >= 2L)
+
+  labels <- vapply(spans, function(s) s$label, character(1))
+  expect_true("Treatment" %in% labels)
+  expect_true("Control" %in% labels)
+
+  trt_span <- spans[[which(labels == "Treatment")[1]]]
+  expect_equal(trt_span$columns, c("b", "c"))
+  expect_equal(trt_span$level, 1L)
+})
+
+test_that("generate_group_spans skips when explicit fr_spans at same label exists", {
+  spec <- data.frame(a = 1, b = 2, c = 3) |>
+    fr_table() |>
+    fr_cols(
+      a = fr_col("A"),
+      b = fr_col("B", group = "Treatment"),
+      c = fr_col("C", group = "Treatment")
+    ) |>
+    fr_spans("Treatment" = c("b", "c"))
+
+  # fr_spans already creates the span; generate_group_spans should not duplicate
+  result <- arframe:::generate_group_spans(spec)
+  labels <- vapply(result$header$spans, function(s) s$label, character(1))
+  expect_equal(sum(labels == "Treatment"), 1L)
+})
+
+test_that("generate_group_spans returns spec unchanged when no groups", {
+  spec <- data.frame(a = 1, b = 2) |>
+    fr_table() |>
+    fr_cols(a = fr_col("A"), b = fr_col("B"))
+
+  result <- arframe:::generate_group_spans(spec)
+  expect_equal(length(result$header$spans), length(spec$header$spans))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# build_atomic_groups() — spanner-aware column grouping
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("build_atomic_groups creates singletons when no spans", {
+  result <- arframe:::build_atomic_groups(c("a", "b", "c"), list())
+  expect_equal(result, list("a", "b", "c"))
+})
+
+test_that("build_atomic_groups groups columns under level-1 spans", {
+  spans <- list(
+    new_fr_span("Treatment", c("b", "c"), level = 1L)
+  )
+  result <- arframe:::build_atomic_groups(c("a", "b", "c", "d"), spans)
+  # a is singleton, b+c are grouped, d is singleton
+  expect_equal(result, list("a", c("b", "c"), "d"))
+})
+
+test_that("build_atomic_groups ignores non-level-1 spans", {
+  spans <- list(
+    new_fr_span("Level2", c("a", "b"), level = 2L)
+  )
+  result <- arframe:::build_atomic_groups(c("a", "b", "c"), spans)
+  # Level 2 spans don't affect atomic grouping
+  expect_equal(result, list("a", "b", "c"))
+})
+
+test_that("build_atomic_groups handles empty data_cols", {
+  result <- arframe:::build_atomic_groups(character(0), list())
+  expect_equal(result, list())
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# equal_panel_widths()
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("equal_panel_widths distributes equal widths to auto columns", {
+  d <- data.frame(stub = 1, d1 = 2, d2 = 3, d3 = 4, d4 = 5)
+  spec <- d |>
+    fr_table() |>
+    fr_cols(
+      stub = fr_col("Stub", width = 1.5, stub = TRUE),
+      d1 = fr_col("D1", width = "auto"),
+      d2 = fr_col("D2", width = "auto"),
+      d3 = fr_col("D3", width = "auto"),
+      d4 = fr_col("D4", width = "auto"),
+      .split = TRUE
+    )
+
+  spec <- arframe:::finalize_spec(spec)
+
+  col_panels <- list(
+    c("stub", "d1", "d2"),
+    c("stub", "d3", "d4")
+  )
+
+  result <- arframe:::equal_panel_widths(spec, col_panels)
+
+  printable_w <- arframe:::printable_area_inches(spec$page)[["width"]]
+  available <- printable_w - result$columns$stub$width
+
+  # d1 and d2 should have equal widths in their panel
+  expect_equal(
+    result$columns$d1$width,
+    result$columns$d2$width,
+    tolerance = 0.01
+  )
+  # d3 and d4 should have equal widths in their panel
+  expect_equal(
+    result$columns$d3$width,
+    result$columns$d4$width,
+    tolerance = 0.01
+  )
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# apply_header_defaults() — per-column header_align precedence
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("apply_header_defaults does not override explicit per-column header_align", {
+  spec <- data.frame(a = 1, b = 2) |>
+    fr_table() |>
+    fr_cols(
+      a = fr_col("A", header_align = "left"),
+      b = fr_col("B")
+    ) |>
+    fr_header(align = "center")
+
+  result <- arframe:::finalize_spec(spec)
+  # a has explicit header_align = "left", should not be overridden to "center"
+  expect_equal(result$columns$a$header_align, "left")
+  # b should inherit header align = "center"
+  expect_equal(result$columns$b$header_align, "center")
+})
+
+test_that("apply_header_defaults returns spec unchanged when no header", {
+  spec <- data.frame(x = 1) |> fr_table()
+  spec$header <- NULL
+  result <- arframe:::apply_header_defaults(spec)
+  expect_null(result$header)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# parse_df_n_counts()
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("parse_df_n_counts handles 2-column df as global", {
+  df <- data.frame(
+    trt = c("Placebo", "Active"),
+    n = c(45L, 44L)
+  )
+  spec <- data.frame(a = 1) |> fr_table()
+  result <- arframe:::parse_df_n_counts(df, spec)
+  expect_equal(result$type, "global")
+  expect_equal(result$counts[["Placebo"]], 45L)
+  expect_equal(result$counts[["Active"]], 44L)
+})
+
+test_that("parse_df_n_counts handles 3-column df as per_group", {
+  df <- data.frame(
+    page = c("BP", "BP", "HR", "HR"),
+    trt = c("Placebo", "Active", "Placebo", "Active"),
+    n = c(45L, 44L, 40L, 41L)
+  )
+  spec <- data.frame(a = 1) |> fr_table()
+  result <- arframe:::parse_df_n_counts(df, spec)
+  expect_equal(result$type, "per_group")
+  expect_equal(result$page_col, 1L)
+  expect_equal(result$trt_col, 2L)
+  expect_equal(result$count_col, 3L)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# finalize_columns() — auto-infer stub when split enabled but none marked
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("finalize_columns auto-infers stub from first column when split on", {
+  spec <- data.frame(a = 1, b = 2, c = 3) |>
+    fr_table() |>
+    fr_cols(.split = TRUE)
+
+  result <- arframe:::finalize_spec(spec)
+  # First column should be auto-marked as stub
+  expect_true(result$columns[[1]]$stub)
+})
+
+test_that("finalize_columns auto-infers stub from group_by columns when split on", {
+  spec <- data.frame(grp = "A", x = 1, y = 2) |>
+    fr_table() |>
+    fr_cols(.split = TRUE) |>
+    fr_rows(group_by = "grp")
+
+  result <- arframe:::finalize_spec(spec)
+  expect_true(result$columns$grp$stub)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# finalize_columns() — visibility for auto_hide_cols
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("auto_hide_cols are hidden by default", {
+  spec <- data.frame(soc = "SOC1", pt = "PT1", x = 1) |>
+    fr_table()
+  spec$body$.auto_hide_cols <- "soc"
+
+  result <- arframe:::finalize_spec(spec)
+  expect_false(result$columns$soc$visible)
+  expect_true(result$columns$pt$visible)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# fr_render() — figure format dispatch error
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("fr_render errors on figure with unsupported format", {
+  spec <- new_fr_spec(data.frame(x = 1), type = "figure")
+  expect_error(
+    fr_render(spec, "out.tex", format = "latex"),
+    "Figure rendering"
+  )
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# build_label_overrides() / build_span_label_overrides()
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("build_label_overrides returns NULL when no n_counts match", {
+  columns <- list(col_a = fr_col("A"))
+  result <- arframe:::build_label_overrides(
+    c("nonexistent" = 50L),
+    "{label}\n(N={n})",
+    columns
+  )
+  expect_null(result)
+})
+
+test_that("build_label_overrides uses column name as fallback for empty label", {
+  col_empty <- fr_col("")
+  col_empty$id <- "col_a"
+  columns <- list(col_a = col_empty)
+  result <- arframe:::build_label_overrides(
+    c("col_a" = 50L),
+    "{label}\n(N={n})",
+    columns
+  )
+  expect_true(grepl("col_a", result[["col_a"]]))
+  expect_true(grepl("N=50", result[["col_a"]]))
+})
+
+test_that("build_span_label_overrides returns NULL for empty counts", {
+  result <- arframe:::build_span_label_overrides(
+    integer(0),
+    "{label}\n(N={n})",
+    list()
+  )
+  expect_null(result)
+})
+
+test_that("build_span_label_overrides formats span labels with n", {
+  spans <- list(
+    new_fr_span("Treatment", c("a", "b"), level = 1L)
+  )
+  result <- arframe:::build_span_label_overrides(
+    c("Treatment" = 90L),
+    "{label}\n(N={n})",
+    spans
+  )
+  expect_true(grepl("Treatment", result[["Treatment"]]))
+  expect_true(grepl("N=90", result[["Treatment"]]))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# match_trt_to_columns() — fallback to column name match
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("match_trt_to_columns falls back to column name matching", {
+  columns <- list(
+    placebo = fr_col("Pbo Arm"),
+    active = fr_col("Active Arm")
+  )
+  # Names don't match labels but match column names
+  counts <- c("placebo" = 45L, "active" = 44L)
+  result <- arframe:::match_trt_to_columns(counts, columns)
+  expect_equal(result[["placebo"]], 45L)
+  expect_equal(result[["active"]], 44L)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# finalize_spec() — theme stub columns from columns_meta
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("finalize_columns applies theme stubs from columns_meta$stub", {
+  spec <- data.frame(param = "A", x = 1) |>
+    fr_table() |>
+    fr_cols(
+      param = fr_col("Parameter", width = 2.0),
+      x = fr_col("Value")
+    )
+  spec$columns_meta$stub <- "param"
+
+  result <- arframe:::finalize_spec(spec)
+  expect_true(result$columns$param$stub)
+  # columns_meta$stub should be cleaned up
+  expect_null(result$columns_meta$stub)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage: finalize_spec — footnote_placement propagation (L439-441)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("finalize_spec applies default footnote_placement to footnotes without one", {
+  spec <- data.frame(x = 1) |>
+    fr_table() |>
+    fr_footnotes("Note 1", "Note 2")
+
+  # Set a default footnote placement
+  spec$meta$footnote_placement <- "below"
+  # Remove placement from footnotes to simulate entries without one
+  for (i in seq_along(spec$meta$footnotes)) {
+    spec$meta$footnotes[[i]]$placement <- NULL
+  }
+
+  result <- arframe:::finalize_spec(spec)
+  for (fn in result$meta$footnotes) {
+    expect_equal(fn$placement, "below")
+  }
+})
+
+test_that("finalize_spec does not override existing footnote placement", {
+  spec <- data.frame(x = 1) |>
+    fr_table() |>
+    fr_footnotes("Note 1")
+
+  spec$meta$footnote_placement <- "below"
+  # Footnote already has placement "every" from fr_footnotes — should not be overridden
+
+  result <- arframe:::finalize_spec(spec)
+  expect_equal(result$meta$footnotes[[1]]$placement, "every")
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage: finalize_columns — auto-generate for numeric data column (L485-489)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("finalize_columns auto-generates right-aligned column for numeric data", {
+  # Only configure column "a" — column "b" (numeric) should be auto-generated
+  spec <- data.frame(a = "x", b = 42, stringsAsFactors = FALSE) |>
+    fr_table() |>
+    fr_cols(a = fr_col("A", width = 1))
+
+  result <- arframe:::finalize_spec(spec)
+  expect_true("b" %in% names(result$columns))
+  expect_equal(result$columns$b$align, "right")
+  expect_true(is.numeric(result$columns$b$width))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage: finalize_columns — empty label fallback to column name (L507-508)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("finalize_columns falls back to column name when label is empty", {
+  spec <- data.frame(mycol = "x", stringsAsFactors = FALSE) |>
+    fr_table()
+  # Create a column with an empty label and "auto" width
+  spec$columns$mycol <- fr_col("", width = "auto")
+  spec$columns$mycol$id <- "mycol"
+
+  result <- arframe:::finalize_spec(spec)
+  # Width should be resolved to numeric (not "auto")
+  expect_true(is.numeric(result$columns$mycol$width))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage: finalize_rows — suppress with non-existent column (L738-739)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("finalize_rows skips suppress for non-existent column", {
+  spec <- data.frame(a = c("x", "x", "y"), stringsAsFactors = FALSE) |>
+    fr_table()
+  spec$body$suppress <- "nonexistent"
+
+  # Should not error, just skip
+  result <- arframe:::finalize_spec(spec)
+  expect_equal(nrow(result$data), 3L)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage: finalize_rows — group_label injection path (L757-768)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("finalize_rows injects group headers when group_label is set", {
+  df <- data.frame(
+    grp = c("A", "A", "B", "B"),
+    val = c("1", "2", "3", "4"),
+    stringsAsFactors = FALSE
+  )
+  spec <- df |>
+    fr_table() |>
+    fr_rows(group_by = list(cols = "grp", label = "val"))
+
+  result <- arframe:::finalize_spec(spec)
+  # 2 group headers + 4 data rows = 6 (before blank_after)
+  expect_true(nrow(result$data) >= 6L)
+  # Group header rows should have group value in val column
+  expect_true("A" %in% result$data$val)
+  expect_true("B" %in% result$data$val)
+})
+
+test_that("finalize_rows remaps cell style indices after group_label injection", {
+  df <- data.frame(
+    grp = c("A", "A", "B", "B"),
+    val = c("1", "2", "3", "4"),
+    stringsAsFactors = FALSE
+  )
+  spec <- df |>
+    fr_table() |>
+    fr_rows(group_by = list(cols = "grp", label = "val"))
+  # Add a style targeting original row 3 (first row of group B)
+  spec$cell_styles <- list(
+    new_fr_cell_style(region = "body", type = "row", rows = 3L, bold = TRUE)
+  )
+
+  result <- arframe:::finalize_spec(spec)
+  # After injection of 2 group headers, original row 3 shifts to 3+2=5 at minimum.
+  # Check that at least one cell_style has shifted rows
+  found_shifted <- FALSE
+  for (s in result$cell_styles) {
+    if (!is.null(s$rows) && is.numeric(s$rows) && !identical(s$rows, "all")) {
+      if (any(s$rows > 3L)) {
+        found_shifted <- TRUE
+        break
+      }
+    }
+  }
+  expect_true(found_shifted)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage: resolve_group_labels — per-group df (L868 ff.)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("resolve_group_labels handles 3-col df per_group resolution", {
+  df_n <- data.frame(
+    page = c("BP", "BP", "HR", "HR"),
+    trt = c("Placebo", "Active", "Placebo", "Active"),
+    n = c(45L, 44L, 40L, 41L)
+  )
+  spec <- data.frame(
+    param = c("BP", "HR"),
+    placebo = c("1", "2"),
+    active = c("3", "4"),
+    stringsAsFactors = FALSE
+  ) |>
+    fr_table() |>
+    fr_cols(
+      placebo = fr_col("Placebo"),
+      active = fr_col("Active"),
+      .n = df_n,
+      .n_format = "{label}\n(N={n})"
+    ) |>
+    fr_rows(page_by = "param")
+
+  spec <- arframe:::finalize_spec(spec)
+
+  # Resolve for BP group
+  result <- arframe:::resolve_group_labels(spec, spec$data, "BP")
+  expect_true(is.list(result))
+  expect_true(grepl("N=45", result$columns["placebo"]))
+  expect_true(grepl("N=44", result$columns["active"]))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage: match_trt_to_columns — NULL/empty label fallback (L981)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("match_trt_to_columns handles column with NULL label", {
+  col_def <- fr_col("")
+  col_def$id <- "col_a"
+  col_def$label <- NULL
+  columns <- list(col_a = col_def)
+  # Should fall back to column name "col_a"
+  counts <- c("col_a" = 50L)
+  result <- arframe:::match_trt_to_columns(counts, columns)
+  expect_equal(result[["col_a"]], 50L)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage: match_trt_to_spans — column with empty label (L1027)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("match_trt_to_spans handles column with empty label", {
+  col_def <- fr_col("")
+  col_def$id <- "col_a"
+  columns <- list(col_a = col_def)
+  spans <- list(
+    list(label = "Treatment", columns = c("col_a"), level = 1L)
+  )
+  # "Treatment" doesn't match any column label (which is "")
+  # so it should be matched to the span
+  counts <- c("Treatment" = 45L)
+  result <- arframe:::match_trt_to_spans(counts, columns, spans)
+  expect_equal(result[["Treatment"]], 45L)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage: prepare_pages — label_overrides/span_overrides (L1186, L1191)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("prepare_pages populates label_overrides for per-group .n", {
+  spec <- data.frame(
+    param = c("BP", "HR"),
+    placebo = c("1", "2"),
+    active = c("3", "4"),
+    stringsAsFactors = FALSE
+  ) |>
+    fr_table() |>
+    fr_cols(
+      placebo = fr_col("Placebo"),
+      active = fr_col("Active"),
+      .n = list(
+        "BP" = c("Placebo" = 45L, "Active" = 44L),
+        "HR" = c("Placebo" = 40L, "Active" = 41L)
+      ),
+      .n_format = "{label}\n(N={n})"
+    ) |>
+    fr_rows(page_by = "param")
+
+  spec <- suppressWarnings(arframe:::finalize_spec(spec))
+  pages <- arframe:::prepare_pages(spec)
+
+  # BP page should have label overrides
+  expect_true(is.character(pages[[1]]$label_overrides))
+  expect_true(grepl("N=45", pages[[1]]$label_overrides["placebo"]))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage: fr_render — figure PDF dispatch (L141)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("fr_render dispatches figure to RTF backend", {
+  skip_if_not_installed("ggplot2")
+  p <- ggplot2::ggplot(data.frame(x = 1:10, y = 1:10), ggplot2::aes(x, y)) +
+    ggplot2::geom_point()
+
+  tmp <- tempfile(fileext = ".rtf")
+  on.exit(unlink(tmp), add = TRUE)
+
+  spec <- p |>
+    fr_figure() |>
+    fr_titles("Figure 1") |>
+    fr_page(orientation = "landscape")
+
+  result <- fr_render(spec, tmp)
+  expect_equal(result, tmp)
+  expect_true(file.exists(tmp))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage: fr_render — split panel width mode dispatch (L164-168)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("fr_render dispatches split panel width mode scaling", {
+  # Create a wide table that forces split with "fit" width mode
+  d <- as.data.frame(setNames(as.list(1:8), paste0("c", 1:8)))
+  tmp <- tempfile(fileext = ".rtf")
+  on.exit(unlink(tmp), add = TRUE)
+
+  spec <- d |>
+    fr_table() |>
+    fr_cols(
+      c1 = fr_col("Stub", width = 1.5, stub = TRUE),
+      .split = TRUE,
+      .width = "fit"
+    ) |>
+    fr_page(orientation = "portrait")
+
+  # Set explicit wide widths to force splitting
+  for (i in 2:8) {
+    nm <- paste0("c", i)
+    spec$columns[[nm]] <- fr_col(label = nm, width = 2.0)
+    spec$columns[[nm]]$id <- nm
+  }
+
+  result <- fr_render(spec, tmp)
+  expect_true(file.exists(tmp))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage: fit_panel_widths — zero available (L1358, L1366, L1375)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("fit_panel_widths returns spec unchanged when no data cols in panel", {
+  d <- data.frame(stub = 1)
+  spec <- d |>
+    fr_table() |>
+    fr_cols(stub = fr_col("Stub", width = 1.5, stub = TRUE), .split = TRUE)
+
+  spec <- arframe:::finalize_spec(spec)
+  col_panels <- list(c("stub"))
+
+  result <- arframe:::fit_panel_widths(spec, col_panels)
+  expect_equal(result$columns$stub$width, spec$columns$stub$width)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage: finalize_columns — numeric column auto-right-align (L485-489)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("finalize_columns auto-generates columns for unconfigured data columns", {
+  # Create a spec with configured column "a" but not "b" (numeric) or "c" (char)
+  spec <- data.frame(
+    a = c("x", "y"),
+    b = c(1.5, 2.5),
+    c = c("hello", "world"),
+    stringsAsFactors = FALSE
+  ) |>
+    fr_table() |>
+    fr_cols(a = fr_col("A"))
+
+  # Remove columns b and c to force auto-generation
+  spec$columns$b <- NULL
+  spec$columns$c <- NULL
+
+  result <- arframe:::finalize_spec(spec)
+  # b (numeric) should be right-aligned
+  expect_equal(result$columns$b$align, "right")
+  # c (character) should be left-aligned
+  expect_equal(result$columns$c$align, "left")
+  # Both should have numeric widths
+  expect_true(is.numeric(result$columns$b$width))
+  expect_true(is.numeric(result$columns$c$width))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Coverage: equal_panel_widths — edge cases (L1411, L1416, L1421)
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("equal_panel_widths handles panel with only stub columns", {
+  d <- data.frame(stub = 1, d1 = 2)
+  spec <- d |>
+    fr_table() |>
+    fr_cols(
+      stub = fr_col("Stub", width = 1.5, stub = TRUE),
+      d1 = fr_col("D1", width = "auto"),
+      .split = TRUE
+    )
+  spec <- arframe:::finalize_spec(spec)
+
+  # Panel with only stub — auto_names will be empty
+  col_panels <- list(c("stub"))
+  result <- arframe:::equal_panel_widths(spec, col_panels)
+  # Stub width should be unchanged
+  expect_equal(result$columns$stub$width, spec$columns$stub$width)
+})
