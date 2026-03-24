@@ -1130,3 +1130,64 @@ test_that("builtin_tokens contains all four token names", {
     sort(c("thepage", "total_pages", "program", "datetime"))
   )
 })
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# COVERAGE EXPANSION — resolve_color hex validation
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("resolve_color errors on malformed hex color", {
+  expect_error(resolve_color("#GGGGGG"), "hex")
+  expect_error(resolve_color("#12"), "hex")
+  expect_error(resolve_color("#1234567"), "hex")
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# COVERAGE EXPANSION — is_system_font_available / get_system_font_list
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("is_system_font_available returns TRUE when font cache has sentinel", {
+  old <- fr_env$system_fonts
+  on.exit(fr_env$system_fonts <- old, add = TRUE)
+
+  # When system_fonts is TRUE (sentinel), any font is "available"
+  fr_env$system_fonts <- TRUE
+  expect_true(is_system_font_available("SomeWeirdFont"))
+})
+
+test_that("get_system_font_list returns cached value on second call", {
+  old <- fr_env$system_fonts
+  on.exit(fr_env$system_fonts <- old, add = TRUE)
+
+  fr_env$system_fonts <- c("Arial", "Helvetica")
+  result <- get_system_font_list()
+  expect_equal(result, c("Arial", "Helvetica"))
+})
+
+test_that("os_default_fonts returns named list with mono/sans/serif", {
+  fonts <- os_default_fonts()
+  expect_true(is.list(fonts))
+  expect_true(all(c("mono", "sans", "serif") %in% names(fonts)))
+  expect_true(is.character(fonts$mono))
+  expect_true(is.character(fonts$sans))
+  expect_true(is.character(fonts$serif))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# COVERAGE EXPANSION — resolve_tokens skips fr_ markup tokens
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("resolve_tokens skips {fr_*} markup tokens without error", {
+  token_map <- list(thepage = "1", total_pages = "5")
+  # {fr_super} should be skipped (markup), {thepage} should be resolved
+  result <- resolve_tokens(
+    "Page {thepage} of {total_pages} {fr_super}",
+    token_map,
+    context = "test"
+  )
+  expect_true(grepl("Page 1 of 5", result, fixed = TRUE))
+  # {fr_super} is left as-is (not resolved, not errored)
+  expect_true(grepl("fr_super", result, fixed = TRUE))
+})

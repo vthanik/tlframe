@@ -1077,3 +1077,105 @@ test_that("fr_footnotes list placement overrides .placement default", {
   expect_equal(spec$meta$footnotes[[1]]$placement, "every")
   expect_equal(spec$meta$footnotes[[2]]$placement, "last")
 })
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# COVERAGE EXPANSION — api-content: list entry without content element
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("fr_titles errors when list entry has NULL content", {
+  # First unnamed element is NULL and no "content" key
+  expect_error(
+    fr_table(df_simple) |> fr_titles(list(NULL, align = "center")),
+    "content"
+  )
+})
+
+test_that("fr_footnotes errors when list entry has NULL content", {
+  expect_error(
+    fr_table(df_simple) |> fr_footnotes(list(NULL, align = "left")),
+    "content"
+  )
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# COVERAGE EXPANSION — api-page: collapse_chrome_text error on non-character
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("fr_pagehead errors when left is non-character", {
+  expect_error(
+    fr_table(df_simple) |> fr_pagehead(left = 42),
+    class = "rlang_error"
+  )
+})
+
+test_that("fr_pagehead collapses multi-element character vector", {
+  spec <- fr_table(df_simple) |> fr_pagehead(left = c("Line 1", "Line 2"))
+  expect_equal(spec$pagehead$left, "Line 1\nLine 2")
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# COVERAGE EXPANSION — api-rules: fr_vlines cols validation
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("fr_vlines errors when cols is non-integer", {
+  expect_error(
+    fr_table(df_simple) |> fr_vlines("box", cols = c(1.5, 2.5)),
+    "cols"
+  )
+})
+
+test_that("fr_vlines errors when cols has negative values", {
+  expect_error(
+    fr_table(df_simple) |> fr_vlines("box", cols = c(-1L, 2L)),
+    "cols"
+  )
+})
+
+test_that("fr_vlines resolves custom color when provided", {
+  spec <- fr_table(df_simple) |> fr_vlines("box", color = "red")
+  vline_rule <- Filter(
+    function(r) inherits(r, "fr_vline_spec"),
+    spec$rules
+  )
+  expect_true(length(vline_rule) > 0L)
+})
+
+test_that("fr_grid splits shorthand hpreset/vpreset string", {
+  spec <- fr_table(df_simple) |> fr_grid("header/all")
+  has_h <- any(vapply(
+    spec$rules,
+    function(r) inherits(r, "fr_rule") && !inherits(r, "fr_vline_spec"),
+    logical(1)
+  ))
+  has_v <- any(vapply(
+    spec$rules,
+    function(r) inherits(r, "fr_vline_spec"),
+    logical(1)
+  ))
+  expect_true(has_h)
+  expect_true(has_v)
+})
+
+test_that("keep_vertical_rules filters out fr_rule_box when keep_box=FALSE", {
+  box_rule <- new_fr_vline_spec(
+    preset = "box",
+    width = 0.5,
+    linestyle = "solid",
+    fg = "#000000",
+    box_mode = "full"
+  )
+  vline_rule <- new_fr_vline_spec(
+    preset = "inner",
+    width = 0.5,
+    linestyle = "solid",
+    fg = "#000000",
+    box_mode = "vertical"
+  )
+  rules <- list(box_rule, vline_rule)
+  kept <- keep_vertical_rules(rules, keep_box = FALSE)
+  expect_length(kept, 1L)
+  expect_false(inherits(kept[[1]], "fr_rule_box"))
+})

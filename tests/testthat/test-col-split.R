@@ -278,3 +278,115 @@ test_that(".width = 'auto' + .split = TRUE keeps natural widths", {
   expect_identical(spec$columns_meta$width_mode, "auto")
   expect_true(isTRUE(spec$columns_meta$split))
 })
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# COVERAGE EXPANSION — columns.R: scale_auto_columns / distribute / AFM
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("scale_auto_columns returns unchanged when auto_names is empty", {
+  cols <- list(a = list(width = 2, width_auto = FALSE))
+  result <- scale_auto_columns(cols, character(0), 5)
+  expect_identical(result, cols)
+})
+
+test_that("scale_auto_columns warns when auto columns have zero width", {
+  cols <- list(
+    a = list(width = 0, width_auto = TRUE),
+    b = list(width = 0, width_auto = TRUE)
+  )
+  expect_warning(
+    scale_auto_columns(cols, c("a", "b"), 5),
+    "zero"
+  )
+})
+
+test_that("distribute_fit_widths returns columns when no visible", {
+  cols <- list(a = list(width = 1, visible = FALSE))
+  page <- list(
+    orientation = "landscape",
+    paper = "letter",
+    margins = list(top = 1, right = 1, bottom = 1, left = 1),
+    font_size = 9,
+    font_family = "Courier New",
+    col_gap = 4L
+  )
+  result <- distribute_fit_widths(cols, page)
+  expect_identical(result, cols)
+})
+
+test_that("distribute_equal_widths divides space among unset columns", {
+  # Create columns where some have NULL width (unset)
+  cols <- list(
+    a = list(width = 2, visible = TRUE, width_auto = FALSE, label = "A"),
+    b = list(width = NULL, visible = TRUE, width_auto = TRUE, label = "B"),
+    c = list(width = NULL, visible = TRUE, width_auto = TRUE, label = "C")
+  )
+  page <- list(
+    orientation = "landscape",
+    paper = "letter",
+    margins = list(top = 1, right = 1, bottom = 1, left = 1),
+    font_size = 9,
+    font_family = "Courier New",
+    col_gap = 4L
+  )
+  result <- distribute_equal_widths(cols, page)
+  # b and c should now have equal non-NULL widths
+  expect_true(is.numeric(result$b$width))
+  expect_true(is.numeric(result$c$width))
+  expect_equal(result$b$width, result$c$width)
+})
+
+test_that("distribute_fit_widths returns unchanged when all cols fixed-width", {
+  cols <- list(
+    a = list(width = 2, visible = TRUE, width_auto = FALSE, label = "A"),
+    b = list(width = 3, visible = TRUE, width_auto = FALSE, label = "B")
+  )
+  page <- list(
+    orientation = "landscape",
+    paper = "letter",
+    margins = list(top = 1, right = 1, bottom = 1, left = 1),
+    font_size = 9,
+    font_family = "Courier New",
+    col_gap = 4L
+  )
+  result <- distribute_fit_widths(cols, page)
+  expect_equal(result$a$width, 2)
+  expect_equal(result$b$width, 3)
+})
+
+test_that("distribute_equal_widths returns unchanged when all have explicit width", {
+  cols <- list(
+    a = list(width = 2, visible = TRUE, label = "A"),
+    b = list(width = 3, visible = TRUE, label = "B")
+  )
+  page <- list(
+    orientation = "landscape",
+    paper = "letter",
+    margins = list(top = 1, right = 1, bottom = 1, left = 1),
+    font_size = 9,
+    font_family = "Courier New",
+    col_gap = 4L
+  )
+  result <- distribute_equal_widths(cols, page)
+  expect_equal(result$a$width, 2)
+  expect_equal(result$b$width, 3)
+})
+
+test_that("measure_text_width_twips handles NA and empty string", {
+  result <- measure_text_width_twips(
+    c(NA_character_, "", "A"),
+    "Courier New",
+    9
+  )
+  expect_equal(result[1], 0)
+  expect_equal(result[2], 0)
+  expect_true(result[3] > 0)
+})
+
+test_that("measure_text_width_twips falls back to default for non-Latin-1 codepoints", {
+  # Use an em-dash which is beyond ASCII (multi-byte UTF-8)
+  result <- measure_text_width_twips("\u2014", "Courier New", 9)
+  expect_true(is.numeric(result))
+  expect_true(result > 0)
+})

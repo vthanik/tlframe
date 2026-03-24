@@ -539,3 +539,55 @@ test_that("fr_theme continuation is retrievable from theme store", {
 
   expect_equal(fr_theme_get()$continuation, "(cont.)")
 })
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# COVERAGE EXPANSION — fr_theme validation paths
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("fr_theme validates col_gap as non-negative integer", {
+  withr::defer(fr_theme_reset())
+  fr_theme_reset()
+  expect_error(fr_theme(col_gap = -1), class = "rlang_error")
+  expect_error(fr_theme(col_gap = 1.5), class = "rlang_error")
+})
+
+test_that("fr_theme validates footnote_separator as logical", {
+  withr::defer(fr_theme_reset())
+  fr_theme_reset()
+  expect_error(fr_theme(footnote_separator = "yes"), class = "rlang_error")
+})
+
+test_that("fr_theme validates n_format as scalar character", {
+  withr::defer(fr_theme_reset())
+  fr_theme_reset()
+  expect_error(fr_theme(n_format = 42), class = "rlang_error")
+})
+
+test_that("fr_theme validates space_mode", {
+  withr::defer(fr_theme_reset())
+  fr_theme_reset()
+  expect_error(fr_theme(space_mode = "bad_mode"), class = "rlang_error")
+})
+
+test_that("fr_theme validates split as logical", {
+  withr::defer(fr_theme_reset())
+  fr_theme_reset()
+  expect_error(fr_theme(split = "yes"), class = "rlang_error")
+})
+
+test_that("fr_theme validates stub as character vector", {
+  withr::defer(fr_theme_reset())
+  fr_theme_reset()
+  expect_error(fr_theme(stub = 42), "stub")
+})
+
+test_that("fr_theme merges nested keys into existing theme", {
+  withr::defer(fr_theme_reset())
+  fr_theme_reset()
+  fr_theme(spacing = list(titles_after = 2L))
+  fr_theme(spacing = list(footnotes_before = 3L))
+  th <- fr_theme_get()
+  expect_equal(th$spacing$titles_after, 2L)
+  expect_equal(th$spacing$footnotes_before, 3L)
+})

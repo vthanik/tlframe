@@ -510,3 +510,25 @@ test_that("fr_cols handles data with many columns", {
 
   expect_equal(length(spec$columns), 20L)
 })
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# COVERAGE EXPANSION — fr_cols .space_mode validation
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("fr_cols validates .space_mode argument", {
+  df <- data.frame(x = 1:3)
+  expect_error(
+    fr_table(df) |> fr_cols(.space_mode = "bogus_mode"),
+    class = "rlang_error"
+  )
+})
+
+test_that("fr_cols accepts valid .space_mode values", {
+  df <- data.frame(x = 1:3)
+  spec <- fr_table(df) |> fr_cols(.space_mode = "indent")
+  expect_equal(spec$columns_meta$space_mode, "indent")
+
+  spec2 <- fr_table(df) |> fr_cols(.space_mode = "preserve")
+  expect_equal(spec2$columns_meta$space_mode, "preserve")
+})

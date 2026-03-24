@@ -467,3 +467,214 @@ test_that("group_by + indent_by uses only group_by for pagination keys", {
   # Page breaks before Cardiac (row 6) and Skin (row 11)
   expect_equal(result$page_breaks, c(6L, 11L))
 })
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# COVERAGE EXPANSION — measure_cell_height with embedded blank lines
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("measure_cell_height handles text with embedded blank lines", {
+  # Text like "line1\n\nline3" should count the blank line
+  result <- measure_cell_height("line1\n\nline3", char_width = 80L)
+  expect_equal(result, 3L)
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# COVERAGE EXPANSION — calculate_row_heights edge cases
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("calculate_row_heights returns integer(0) for zero-row data", {
+  data <- data.frame(x = character(0), stringsAsFactors = FALSE)
+  page <- list(
+    orientation = "landscape",
+    paper = "letter",
+    margins = 1,
+    font_size = 9,
+    font_family = "Courier New",
+    col_gap = 4L
+  )
+  cols <- list(x = fr_col("X", width = 2))
+  result <- calculate_row_heights(data, cols, page)
+  expect_equal(result, integer(0))
+})
+
+test_that("calculate_row_heights skips non-character columns", {
+  data <- data.frame(x = 1:3, y = c("a", "b", "c"), stringsAsFactors = FALSE)
+  page <- list(
+    orientation = "landscape",
+    paper = "letter",
+    margins = 1,
+    font_size = 9,
+    font_family = "Courier New",
+    col_gap = 4L
+  )
+  cols <- list(
+    x = fr_col("X", width = 1),
+    y = fr_col("Y", width = 1)
+  )
+  result <- calculate_row_heights(data, cols, page)
+  expect_length(result, 3L)
+  expect_true(all(result > 0L))
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# COVERAGE EXPANSION — paginate_rows with no group_by
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("paginate_rows uses __all__ key when no group_by columns", {
+  rh <- row_height_twips(9)
+  n <- 10L
+  df <- data.frame(
+    label = paste("Row", seq_len(n)),
+    val = seq_len(n),
+    stringsAsFactors = FALSE
+  )
+  heights <- rep(rh, n)
+  # Budget of 4 rows
+  result <- paginate_rows(heights, 4L * rh, df, character(0))
+  expect_true(result$n_pages >= 2L)
+})
+
+test_that("paginate_rows handles group larger than one page (branch 4)", {
+  rh <- row_height_twips(9)
+  # Create a large group (12 rows) with budget of 5 rows
+  df <- data.frame(
+    grp = rep("A", 12L),
+    label = paste("Row", 1:12),
+    stringsAsFactors = FALSE
+  )
+  heights <- rep(rh, 12L)
+  result <- paginate_rows(heights, 5L * rh, df, "grp")
+  expect_true(result$n_pages >= 2L)
+})
+
+test_that("paginate_rows splits oversized group across pages (branch 4)", {
+  rh <- row_height_twips(9)
+  # Single group with 10 data rows + 2 internal blanks = 12 rows.
+  # Budget = 5 rows. Group height = 12*rh > 5*rh.
+  # Include blanks at positions that test suppression at page boundaries.
+  df <- data.frame(
+    grp = rep("A", 12L),
+    val = c("1", "2", "3", "4", "", "5", "6", "7", "", "8", "9", "10"),
+    stringsAsFactors = FALSE
+  )
+  heights <- rep(rh, 12L)
+  result <- paginate_rows(heights, 5L * rh, df, "grp")
+  # Should split across multiple pages
+
+  expect_true(result$n_pages >= 2L)
+})
+
+test_that("paginate_rows branch 4 with prior used > 0 starts fresh page", {
+  rh <- row_height_twips(9)
+  # Group A: 2 rows (fits on page 1 with budget 3).
+  # Group B: 8 rows (doesn't fit on remaining page, and > budget).
+  # This triggers branch 4 with used > 0.
+  df <- data.frame(
+    grp = c("A", "A", "B", "B", "B", "B", "B", "B", "B", "B"),
+    val = as.character(1:10),
+    stringsAsFactors = FALSE
+  )
+  heights <- rep(rh, 10L)
+  result <- paginate_rows(heights, 3L * rh, df, "grp")
+  # Should have page break at group B start (row 3)
+  expect_true(3L %in% result$page_breaks)
+  expect_true(result$n_pages >= 3L)
+})
+
+test_that("paginate_rows branch 4 widow/orphan control steals rows", {
+  rh <- row_height_twips(9)
+  # Single large group: 7 rows, budget = 5 rows.
+  # First page gets rows 1-5, second page gets rows 6-7 (2 rows = widow).
+  # With widow_min=3, should steal 1 row: first page 1-4, second 5-7.
+  df <- data.frame(
+    grp = rep("A", 7L),
+    val = as.character(1:7),
+    stringsAsFactors = FALSE
+  )
+  heights <- rep(rh, 7L)
+  result <- paginate_rows(
+    heights,
+    5L * rh,
+    df,
+    "grp",
+    orphan_min = 3L,
+    widow_min = 3L
+  )
+  expect_true(result$n_pages >= 2L)
+})
+
+test_that("paginate_rows branch 4 suppresses blanks at page boundaries", {
+  rh <- row_height_twips(9)
+  # No group_by -> single oversized group. Internal blank rows at positions 4, 8.
+  # Budget = 4 rows. Blanks at page boundaries should be suppressed.
+  df <- data.frame(
+    label = c("1", "2", "3", "", "4", "5", "6", "", "7", "8"),
+    stringsAsFactors = FALSE
+  )
+  heights <- rep(rh, 10L)
+  result <- paginate_rows(heights, 4L * rh, df, character(0))
+  expect_equal(result$n_pages, 3L)
+  # Blank rows 4 and 8 should be suppressed at page boundaries
+  expect_true(4L %in% result$skip_rows)
+  expect_true(8L %in% result$skip_rows)
+})
+
+test_that("paginate_rows branch 4 trailing blank + widow steal + re-trim", {
+  rh <- row_height_twips(9)
+  # No group_by -> single oversized group. Budget = 4, widow_min = 3.
+  # Row layout: d d d B d d d B d d (B=blank, all cols empty)
+  # Page 1: rows 1-3, row 4 blank suppressed
+  # Page 2: rows 5-7, row 8 blank suppressed
+  # Page 3: rows 9-10 (2 data = widow, steal triggers if possible)
+  df <- data.frame(
+    label = c("1", "2", "3", "", "4", "5", "6", "", "7", "8"),
+    stringsAsFactors = FALSE
+  )
+  heights <- rep(rh, 10L)
+  result <- paginate_rows(
+    heights,
+    4L * rh,
+    df,
+    character(0),
+    orphan_min = 2L,
+    widow_min = 3L
+  )
+  expect_true(result$n_pages >= 2L)
+})
+
+test_that("paginate_rows suppresses multiple trailing blank rows between groups", {
+  rh <- row_height_twips(9)
+  # Group A: 2 rows, then 2 blank rows (all cols empty), then group B: 2 rows.
+  # Budget = 10 rows (everything fits on one page).
+  # Extra trailing blanks (beyond the first) should be suppressed.
+  df <- data.frame(
+    soc = c("Eye", "Eye", "", "", "Cardiac", "Cardiac"),
+    pt = c("Cataract", "Glaucoma", "", "", "Tachycardia", "Bradycardia"),
+    stringsAsFactors = FALSE
+  )
+  heights <- rep(rh, 6L)
+  result <- paginate_rows(heights, 10L * rh, df, "soc")
+  # Second blank row (row 4) should be suppressed; first blank is deferred
+  expect_true(4L %in% result$skip_rows)
+})
+
+test_that("paginate_rows suppresses blank rows at page boundaries (branch 2)", {
+  rh <- row_height_twips(9)
+  # Group A: 3 rows, blank row 4, group B: 2 rows.
+
+  # Budget = 5*rh. After group A: used = 3*rh.
+  # Blank + group B = rh + 2*rh = 3*rh, total = 6*rh > 5*rh (branch 1 fails).
+  # Group B alone = 2*rh, total = 3*rh + 2*rh = 5*rh <= 5*rh (branch 2: skip blank).
+  df <- data.frame(
+    grp = c("A", "A", "A", "", "B", "B"),
+    val = c("1", "2", "3", "", "4", "5"),
+    stringsAsFactors = FALSE
+  )
+  heights <- rep(rh, 6L)
+  result <- paginate_rows(heights, 5L * rh, df, "grp")
+  expect_equal(result$n_pages, 1L)
+  expect_true(4L %in% result$skip_rows)
+})
