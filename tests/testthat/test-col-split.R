@@ -2,19 +2,19 @@
 # test-col-split.R — Tests for column panel splitting via fr_cols(.split)
 # ──────────────────────────────────────────────────────────────────────────────
 
-test_that("calculate_col_panels returns single panel when all columns fit", {
+test_that("compute_col_panels returns single panel when all columns fit", {
   data <- data.frame(a = 1, b = 2, c = 3, stringsAsFactors = FALSE)
   spec <- fr_table(data)
   spec <- finalize_spec(spec)
 
-  panels <- calculate_col_panels(spec)
+  panels <- compute_col_panels(spec)
   expect_equal(length(panels), 1L)
   expect_true("a" %in% panels[[1]])
   expect_true("b" %in% panels[[1]])
   expect_true("c" %in% panels[[1]])
 })
 
-test_that("calculate_col_panels splits columns when .split = TRUE and table too wide", {
+test_that("compute_col_panels splits columns when .split = TRUE and table too wide", {
   # Create a wide table with many columns
   data <- as.data.frame(matrix(1, nrow = 2, ncol = 20))
   names(data) <- paste0("col", seq_len(20))
@@ -32,7 +32,7 @@ test_that("calculate_col_panels splits columns when .split = TRUE and table too 
     spec$columns[[nm]]$width <- 1.0
   }
 
-  panels <- calculate_col_panels(spec)
+  panels <- compute_col_panels(spec)
   expect_true(length(panels) > 1L)
 
   # Stub column appears in every panel
@@ -41,14 +41,14 @@ test_that("calculate_col_panels splits columns when .split = TRUE and table too 
   }
 })
 
-test_that("calculate_col_panels without .split returns single panel", {
+test_that("compute_col_panels without .split returns single panel", {
   data <- as.data.frame(matrix(1, nrow = 2, ncol = 20))
   names(data) <- paste0("col", seq_len(20))
 
   spec <- fr_table(data)
   spec <- finalize_spec(spec)
 
-  panels <- calculate_col_panels(spec)
+  panels <- compute_col_panels(spec)
   expect_equal(length(panels), 1L)
 })
 
@@ -71,7 +71,7 @@ test_that("col_split renders multiple sections in RTF", {
   }
 
   page_groups <- prepare_pages(spec)
-  col_panels <- calculate_col_panels(spec)
+  col_panels <- compute_col_panels(spec)
 
   if (length(col_panels) > 1L) {
     colors <- collect_colors(spec)
@@ -105,7 +105,7 @@ test_that("page_by + col_split: group-first ordering (all panels per group)", {
     spec$columns[[nm]]$width <- 1.5
   }
 
-  col_panels <- calculate_col_panels(spec)
+  col_panels <- compute_col_panels(spec)
   skip_if(length(col_panels) <= 1L, "col_split did not produce multiple panels")
 
   page_groups <- prepare_pages(spec)
@@ -174,7 +174,7 @@ test_that(".split = TRUE with .width = 'auto' does not run fit_panel_widths", {
     spec$columns[[nm]]$width <- 1.0
   }
 
-  panels <- calculate_col_panels(spec)
+  panels <- compute_col_panels(spec)
   expect_true(length(panels) > 1L)
 
   # columns_meta$split is TRUE with auto width mode — no panel scaling

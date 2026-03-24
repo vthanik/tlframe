@@ -858,26 +858,26 @@ test_that("find_bottom_rule returns NULL when no rules", {
   expect_null(rule)
 })
 
-# ── estimate_single_page ─────────────────────────────────────────────────────
+# ── compute_single_page ─────────────────────────────────────────────────────
 
-test_that("estimate_single_page returns TRUE for small data", {
+test_that("compute_single_page returns TRUE for small data", {
   spec <- data.frame(x = 1:3, stringsAsFactors = FALSE) |> fr_table()
   spec <- arframe:::finalize_spec(spec)
 
-  result <- arframe:::estimate_single_page(spec, data.frame(x = 1:3))
+  result <- arframe:::compute_single_page(spec, data.frame(x = 1:3))
   expect_true(result)
 })
 
-test_that("estimate_single_page returns FALSE for large data", {
+test_that("compute_single_page returns FALSE for large data", {
   large_data <- data.frame(x = seq_len(200), stringsAsFactors = FALSE)
   spec <- large_data |> fr_table()
   spec <- arframe:::finalize_spec(spec)
 
-  result <- arframe:::estimate_single_page(spec, large_data)
+  result <- arframe:::compute_single_page(spec, large_data)
   expect_false(result)
 })
 
-test_that("estimate_single_page accounts for titles and footnotes", {
+test_that("compute_single_page accounts for titles and footnotes", {
   # Create data that's near the page boundary; adding titles should push over
   near_limit <- data.frame(x = seq_len(50), stringsAsFactors = FALSE)
   spec <- near_limit |>
@@ -886,19 +886,19 @@ test_that("estimate_single_page accounts for titles and footnotes", {
     fr_footnotes("Footnote 1", "Footnote 2")
   spec <- arframe:::finalize_spec(spec)
 
-  result <- arframe:::estimate_single_page(spec, near_limit)
+  result <- arframe:::compute_single_page(spec, near_limit)
   expect_type(result, "logical")
   expect_length(result, 1L)
 })
 
-test_that("estimate_single_page accounts for pagehead", {
+test_that("compute_single_page accounts for pagehead", {
   small_data <- data.frame(x = 1:5, stringsAsFactors = FALSE)
   spec <- small_data |>
     fr_table() |>
     fr_pagehead(left = "Header")
   spec <- arframe:::finalize_spec(spec)
 
-  result <- arframe:::estimate_single_page(spec, small_data)
+  result <- arframe:::compute_single_page(spec, small_data)
   expect_true(result) # Still fits with pagehead
 })
 

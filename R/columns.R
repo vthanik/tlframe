@@ -75,7 +75,7 @@ build_default_columns <- function(
       identical(col_def$width, "auto") ||
         (is.null(col_def$width) && width_mode %in% c("auto", "fit"))
     ) {
-      col_def$width <- estimate_col_width(data, nm, col_def$label, page)
+      col_def$width <- compute_col_width(data, nm, col_def$label, page)
       col_def$width_auto <- TRUE
     }
 
@@ -196,7 +196,7 @@ measure_text_width_twips <- function(
 #' @param page fr_page object for font metrics.
 #' @return Numeric. Estimated width in inches.
 #' @noRd
-estimate_col_width <- function(data, col_name, label, page) {
+compute_col_width <- function(data, col_name, label, page) {
   font_family <- page$font_family
   font_size <- page$font_size
 

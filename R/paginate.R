@@ -75,7 +75,7 @@ measure_cell_height <- function(text, char_width) {
 #' @param page fr_page object.
 #' @return Integer vector of length `nrow(data)` — height in twips per row.
 #' @noRd
-calculate_row_heights <- function(data, columns, page) {
+compute_row_heights <- function(data, columns, page) {
   nr <- nrow(data)
   if (nr == 0L) {
     return(integer(0))
@@ -125,7 +125,7 @@ calculate_row_heights <- function(data, columns, page) {
 #' @param spec A finalized fr_spec object.
 #' @return Integer. Available body height in twips.
 #' @noRd
-calculate_page_budget <- function(spec) {
+compute_page_budget <- function(spec) {
   # Page height in twips
   page_dims <- paper_dims_twips(spec$page$paper, spec$page$orientation)
   page_height <- page_dims[["height"]]

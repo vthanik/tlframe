@@ -91,7 +91,7 @@ prepare_pages()            <- Split data into page groups
   |  - Split by page_by values (preserving data order)
   |  - Each group: {label, data, n_counts}
   v
-calculate_col_panels()     <- Handle wide tables
+compute_col_panels()     <- Handle wide tables
   |  - If .split=TRUE and width > page: split into panels
   |  - Stub columns repeat in each panel
   v
@@ -185,7 +185,7 @@ Pre-parsed Adobe Font Metrics for 12 font variants in `R/sysdata.rda`:
 | Courier | Regular, Bold, Oblique, BoldOblique |
 
 Helvetica 'M' = 833 units vs 'i' = 222 units (3.75x). Courier is fixed
-at 600 units. `estimate_col_width()` uses these for accurate auto-widths.
+at 600 units. `compute_col_width()` uses these for accurate auto-widths.
 
 ## Available backends
 

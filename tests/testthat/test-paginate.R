@@ -28,32 +28,32 @@ test_that("measure_cell_height returns 1 for empty text", {
   expect_equal(measure_cell_height("", 80L), 1L)
 })
 
-test_that("calculate_row_heights returns uniform twips for short content", {
+test_that("compute_row_heights returns uniform twips for short content", {
   df <- data.frame(a = c("x", "y", "z"), stringsAsFactors = FALSE)
   cols <- list(a = fr_col("A", width = 2.0))
   cols$a$id <- "a"
   page <- new_fr_page()
-  heights <- calculate_row_heights(df, cols, page)
+  heights <- compute_row_heights(df, cols, page)
   one_row <- row_height_twips(page$font_size)
   expect_equal(heights, rep(one_row, 3L))
 })
 
-test_that("calculate_row_heights detects multi-line content", {
+test_that("compute_row_heights detects multi-line content", {
   df <- data.frame(a = c("x", "line1\nline2", "z"), stringsAsFactors = FALSE)
   cols <- list(a = fr_col("A", width = 2.0))
   cols$a$id <- "a"
   page <- new_fr_page()
-  heights <- calculate_row_heights(df, cols, page)
+  heights <- compute_row_heights(df, cols, page)
   one_row <- row_height_twips(page$font_size)
   expect_equal(heights[1], one_row)
   expect_gt(heights[2], one_row)
   expect_equal(heights[3], one_row)
 })
 
-test_that("calculate_page_budget returns twips value", {
+test_that("compute_page_budget returns twips value", {
   spec <- data.frame(a = "x", stringsAsFactors = FALSE) |> fr_table()
   spec <- finalize_spec(spec)
-  budget <- calculate_page_budget(spec)
+  budget <- compute_page_budget(spec)
   one_row <- row_height_twips(spec$page$font_size)
   # Budget should be at least 5 rows worth of twips
   expect_gte(budget, 5L * one_row)
@@ -62,14 +62,14 @@ test_that("calculate_page_budget returns twips value", {
   expect_lt(budget, page_h)
 })
 
-test_that("calculate_page_budget does not subtract pagehead/pagefoot/every footnotes", {
+test_that("compute_page_budget does not subtract pagehead/pagefoot/every footnotes", {
   # Budget should be the same with or without pagehead/pagefoot/every footnotes
   # because those live in RTF margin areas, not the body area.
   spec_base <- data.frame(a = "x", stringsAsFactors = FALSE) |>
     fr_table() |>
     fr_titles("Title 1")
   spec_base <- finalize_spec(spec_base)
-  budget_base <- calculate_page_budget(spec_base)
+  budget_base <- compute_page_budget(spec_base)
 
   spec_chrome <- data.frame(a = "x", stringsAsFactors = FALSE) |>
     fr_table() |>
@@ -78,13 +78,13 @@ test_that("calculate_page_budget does not subtract pagehead/pagefoot/every footn
     fr_pagefoot(left = "Footer") |>
     fr_footnotes("Note 1", .placement = "every")
   spec_chrome <- finalize_spec(spec_chrome)
-  budget_chrome <- calculate_page_budget(spec_chrome)
+  budget_chrome <- compute_page_budget(spec_chrome)
 
   # Budget should be identical — margin chrome does not reduce body area
   expect_equal(budget_chrome, budget_base)
 })
 
-test_that("calculate_page_budget reserves space for last footnotes", {
+test_that("compute_page_budget reserves space for last footnotes", {
   spec_no_fn <- data.frame(a = "x", stringsAsFactors = FALSE) |>
     fr_table() |>
     fr_titles("Title 1")
@@ -96,15 +96,15 @@ test_that("calculate_page_budget reserves space for last footnotes", {
     fr_footnotes("Note 1", "Note 2", .placement = "last")
   spec_last_fn <- finalize_spec(spec_last_fn)
 
-  budget_no_fn <- calculate_page_budget(spec_no_fn)
-  budget_last_fn <- calculate_page_budget(spec_last_fn)
+  budget_no_fn <- compute_page_budget(spec_no_fn)
+  budget_last_fn <- compute_page_budget(spec_last_fn)
 
   one_row <- row_height_twips(spec_no_fn$page$font_size)
   # 2 last footnotes + 1 footnotes_before spacing = 3 rows worth of twips
   expect_equal(budget_no_fn - budget_last_fn, 3L * one_row)
 })
 
-test_that("calculate_page_budget accounts for large footer overflow", {
+test_that("compute_page_budget accounts for large footer overflow", {
   # With tiny margins (0.25in = 360 twips) and many "every" footnotes,
 
   # the footer content overflows the margin and eats into body area.
@@ -134,8 +134,8 @@ test_that("calculate_page_budget accounts for large footer overflow", {
     fr_page(margins = 0.25)
   spec_no_fn <- finalize_spec(spec_no_fn)
 
-  budget_no_fn <- calculate_page_budget(spec_no_fn)
-  budget_overflow <- calculate_page_budget(spec_small_margin)
+  budget_no_fn <- compute_page_budget(spec_no_fn)
+  budget_overflow <- compute_page_budget(spec_small_margin)
 
   # The large footer should reduce the budget
   expect_lt(budget_overflow, budget_no_fn)
@@ -481,10 +481,10 @@ test_that("measure_cell_height handles text with embedded blank lines", {
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# COVERAGE EXPANSION — calculate_row_heights edge cases
+# COVERAGE EXPANSION — compute_row_heights edge cases
 # ══════════════════════════════════════════════════════════════════════════════
 
-test_that("calculate_row_heights returns integer(0) for zero-row data", {
+test_that("compute_row_heights returns integer(0) for zero-row data", {
   data <- data.frame(x = character(0), stringsAsFactors = FALSE)
   page <- list(
     orientation = "landscape",
@@ -495,11 +495,11 @@ test_that("calculate_row_heights returns integer(0) for zero-row data", {
     col_gap = 4L
   )
   cols <- list(x = fr_col("X", width = 2))
-  result <- calculate_row_heights(data, cols, page)
+  result <- compute_row_heights(data, cols, page)
   expect_equal(result, integer(0))
 })
 
-test_that("calculate_row_heights skips non-character columns", {
+test_that("compute_row_heights skips non-character columns", {
   data <- data.frame(x = 1:3, y = c("a", "b", "c"), stringsAsFactors = FALSE)
   page <- list(
     orientation = "landscape",
@@ -513,7 +513,7 @@ test_that("calculate_row_heights skips non-character columns", {
     x = fr_col("X", width = 1),
     y = fr_col("Y", width = 1)
   )
-  result <- calculate_row_heights(data, cols, page)
+  result <- compute_row_heights(data, cols, page)
   expect_length(result, 3L)
   expect_true(all(result > 0L))
 })

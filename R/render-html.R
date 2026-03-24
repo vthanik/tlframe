@@ -706,7 +706,7 @@ html_font_stack <- function(font_family) {
 #' Classify a font family name into modern/swiss/roman
 #' @noRd
 classify_font_family <- function(font_family) {
-  lookup_font_family(font_family)
+  get_font_family(font_family)
 }
 
 

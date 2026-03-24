@@ -1215,7 +1215,7 @@ interpolate_stats <- function(var_df, arm_val, fmt_str) {
 #' @noRd
 validate_format_stats <- function(fmt_str, available_stats, var_name, call) {
   # Extract stat_name references from glue format string
-  refs <- extract_glue_refs(fmt_str)
+  refs <- parse_glue_refs(fmt_str)
   if (length(refs) == 0L) {
     return(invisible(NULL))
   }
@@ -1237,7 +1237,7 @@ validate_format_stats <- function(fmt_str, available_stats, var_name, call) {
 
 
 #' @noRd
-extract_glue_refs <- function(fmt_str) {
+parse_glue_refs <- function(fmt_str) {
   # Remove escaped braces (glue's {{literal}} syntax) before matching
   cleaned <- gsub("\\{\\{[^}]*\\}\\}", "", fmt_str)
   m <- gregexpr("\\{([^{}]+)\\}", cleaned)

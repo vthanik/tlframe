@@ -157,7 +157,7 @@ fr_render <- function(spec, path, format = NULL, ...) {
 
   spec <- finalize_spec(spec)
   page_groups <- prepare_pages(spec)
-  col_panels <- calculate_col_panels(spec)
+  col_panels <- compute_col_panels(spec)
 
   # When split produces multiple panels, scale based on width mode
   if (isTRUE(spec$columns_meta$split) && length(col_panels) > 1L) {
@@ -485,7 +485,7 @@ finalize_columns <- function(spec) {
       auto_align <- if (is.numeric(spec$data[[nm]])) "right" else "left"
       col_def <- fr_col(label = nm, align = auto_align)
       col_def$id <- nm
-      col_def$width <- estimate_col_width(spec$data, nm, nm, spec$page)
+      col_def$width <- compute_col_width(spec$data, nm, nm, spec$page)
       spec$columns[[nm]] <- col_def
     }
   }
@@ -507,7 +507,7 @@ finalize_columns <- function(spec) {
       if (!nzchar(label)) {
         label <- nm
       }
-      spec$columns[[nm]]$width <- estimate_col_width(
+      spec$columns[[nm]]$width <- compute_col_width(
         spec$data,
         nm,
         label,
@@ -561,7 +561,7 @@ finalize_columns <- function(spec) {
   }
 
   # Scale auto widths to fit printable area (skip when split is on —
-  # columns must keep natural widths so calculate_col_panels() can split them)
+  # columns must keep natural widths so compute_col_panels() can split them)
   if (identical(split_mode, FALSE) || is.null(split_mode)) {
     spec$columns <- distribute_auto_widths(spec$columns, spec$page)
   }
@@ -1210,7 +1210,7 @@ prepare_pages <- function(spec) {
 #' @param spec An fr_spec object (finalized).
 #' @return List of character vectors (column names per panel).
 #' @noRd
-calculate_col_panels <- function(spec) {
+compute_col_panels <- function(spec) {
   split_mode <- spec$columns_meta$split
   if (identical(split_mode, FALSE) || is.null(split_mode)) {
     # Single panel with all visible columns

@@ -1,7 +1,7 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # test-render-dispatch.R — Tests for render.R internals
 #
-# Covers: finalize_spec(), prepare_pages(), calculate_col_panels(),
+# Covers: finalize_spec(), prepare_pages(), compute_col_panels(),
 #         fit_panel_widths(), fr_render() dispatch, detect_format(),
 #         get_backend(), fr_register_backend(), fr_backends()
 # ──────────────────────────────────────────────────────────────────────────────
@@ -467,20 +467,20 @@ test_that("fr_rows errors on non-existent page_by column", {
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# calculate_col_panels()
+# compute_col_panels()
 # ══════════════════════════════════════════════════════════════════════════════
 
-test_that("calculate_col_panels returns single panel when col_split = FALSE", {
+test_that("compute_col_panels returns single panel when col_split = FALSE", {
   spec <- data.frame(a = 1, b = 2, c = 3) |> fr_table()
   spec <- arframe:::finalize_spec(spec)
-  panels <- arframe:::calculate_col_panels(spec)
+  panels <- arframe:::compute_col_panels(spec)
 
   expect_length(panels, 1L)
   vis <- names(Filter(function(c) !isFALSE(c$visible), spec$columns))
   expect_equal(panels[[1]], vis)
 })
 
-test_that("calculate_col_panels returns single panel when cols fit", {
+test_that("compute_col_panels returns single panel when cols fit", {
   spec <- data.frame(a = 1, b = 2) |>
     fr_table() |>
     fr_cols(
@@ -494,13 +494,13 @@ test_that("calculate_col_panels returns single panel when cols fit", {
     )
 
   spec <- arframe:::finalize_spec(spec)
-  panels <- arframe:::calculate_col_panels(spec)
+  panels <- arframe:::compute_col_panels(spec)
 
   # Total width (1+1=2) fits in page, so single panel
   expect_length(panels, 1L)
 })
 
-test_that("calculate_col_panels splits into multiple panels for wide tables", {
+test_that("compute_col_panels splits into multiple panels for wide tables", {
   # Create a spec with many narrow columns that exceed page width
   d <- as.data.frame(
     setNames(as.list(1:12), paste0("c", 1:12))
@@ -521,7 +521,7 @@ test_that("calculate_col_panels splits into multiple panels for wide tables", {
   }
 
   spec <- arframe:::finalize_spec(spec)
-  panels <- arframe:::calculate_col_panels(spec)
+  panels <- arframe:::compute_col_panels(spec)
 
   # With portrait page (~6.5" printable) and stub=1.5", available=5"
   # Each data col is 1.5" -> 3 per panel -> ~4 panels
@@ -533,7 +533,7 @@ test_that("calculate_col_panels splits into multiple panels for wide tables", {
   }
 })
 
-test_that("calculate_col_panels errors when stub columns exceed page width", {
+test_that("compute_col_panels errors when stub columns exceed page width", {
   d <- data.frame(a = 1, b = 2)
   spec <- d |>
     fr_table() |>
@@ -544,7 +544,7 @@ test_that("calculate_col_panels errors when stub columns exceed page width", {
 
   spec <- arframe:::finalize_spec(spec)
   expect_error(
-    arframe:::calculate_col_panels(spec),
+    arframe:::compute_col_panels(spec),
     "Stub columns exceed"
   )
 })

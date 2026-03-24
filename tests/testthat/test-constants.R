@@ -56,15 +56,15 @@ test_that("os_default_fonts returns a list with mono, sans, serif", {
   expect_true(nzchar(fonts$mono))
 })
 
-test_that("lookup_font_family resolves known fonts to family keys", {
+test_that("get_font_family resolves known fonts to family keys", {
   # Returns fr_env$fonts keys: "modern", "swiss", "roman"
-  expect_equal(lookup_font_family("Courier New"), "modern")
-  expect_equal(lookup_font_family("Arial"), "swiss")
-  expect_equal(lookup_font_family("Times New Roman"), "roman")
+  expect_equal(get_font_family("Courier New"), "modern")
+  expect_equal(get_font_family("Arial"), "swiss")
+  expect_equal(get_font_family("Times New Roman"), "roman")
 })
 
-test_that("lookup_font_family falls back to modern for unknown fonts", {
-  expect_equal(lookup_font_family("NonExistentFont"), "modern")
+test_that("get_font_family falls back to modern for unknown fonts", {
+  expect_equal(get_font_family("NonExistentFont"), "modern")
 })
 
 test_that("resolve_afm_name resolves font families to AFM names", {
@@ -984,7 +984,7 @@ test_that("resolve_tokens handles vector of multiple strings", {
 test_that("os_default_fonts returns fonts that exist in font tables", {
   fonts <- os_default_fonts()
   for (nm in c("mono", "sans", "serif")) {
-    fam <- lookup_font_family(fonts[[nm]])
+    fam <- get_font_family(fonts[[nm]])
     expect_true(
       fam %in% c("modern", "swiss", "roman"),
       info = paste0("Font: ", fonts[[nm]])

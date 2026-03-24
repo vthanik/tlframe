@@ -1067,7 +1067,7 @@ latex_table <- function(
   # Disabled when group_keep = FALSE (visual-only grouping).
   if (isTRUE(spec$body$group_keep %||% TRUE)) {
     one_row <- row_height_twips(spec$page$font_size)
-    page_budget <- calculate_page_budget(spec)
+    page_budget <- compute_page_budget(spec)
     page_rows <- as.integer(page_budget / one_row)
     keep_mask <- build_keep_mask(
       data,

@@ -160,7 +160,7 @@ render_rtf <- function(spec, page_groups, col_panels, path) {
       # go in body rows (not {\footer}) and no empty page is created.
       # Group pagination uses RTF-native \keepn + \trkeep (build_keep_mask)
       # instead of R-side page break calculation. Word handles layout natively.
-      is_single_page <- estimate_single_page(spec, group$data)
+      is_single_page <- compute_single_page(spec, group$data)
 
       rtf_write(
         con,
@@ -1242,7 +1242,7 @@ rtf_body_rows <- function(
   # Disabled when group_keep = FALSE (visual-only grouping).
   if (isTRUE(spec$body$group_keep %||% TRUE)) {
     one_row <- row_height_twips(spec$page$font_size)
-    page_budget <- calculate_page_budget(spec)
+    page_budget <- compute_page_budget(spec)
     page_rows <- as.integer(page_budget / one_row)
     keep_mask <- build_keep_mask(
       data,
@@ -1437,8 +1437,8 @@ rtf_body_rows <- function(
 #' @param group_data Data frame for the current page_by group.
 #' @return Logical scalar. TRUE if content fits on one page.
 #' @noRd
-estimate_single_page <- function(spec, group_data) {
-  budget <- calculate_page_budget(spec)
+compute_single_page <- function(spec, group_data) {
+  budget <- compute_page_budget(spec)
   one_row <- row_height_twips(spec$page$font_size)
   total_body_twips <- nrow(group_data) * one_row
   total_body_twips <= budget

@@ -1450,7 +1450,7 @@ knit_print.fr_spec <- function(x, ...) {
 
   spec <- finalize_spec(x)
   page_groups <- prepare_pages(spec)
-  col_panels <- calculate_col_panels(spec)
+  col_panels <- compute_col_panels(spec)
 
   if (isTRUE(spec$columns_meta$split) && length(col_panels) > 1L) {
     wm <- spec$columns_meta$width_mode

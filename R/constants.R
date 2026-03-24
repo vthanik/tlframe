@@ -266,7 +266,7 @@ resolve_font <- function(font_name, fallback_hint) {
   }
 
   # Try Adobe open-source fallback
-  fam <- lookup_font_family(font_name)
+  fam <- get_font_family(font_name)
   os_name <- fr_env$opensource_fallback[[fam]]
 
   if (is_system_font_available(os_name)) {
@@ -325,7 +325,7 @@ os_default_fonts <- function() {
 #' @param font_name Character scalar. e.g. "Courier New"
 #' @return Character: "modern", "swiss", or "roman"
 #' @noRd
-lookup_font_family <- function(font_name) {
+get_font_family <- function(font_name) {
   for (fam in names(fr_env$fonts)) {
     if (font_name %in% fr_env$fonts[[fam]]$names) return(fam)
   }
@@ -345,7 +345,7 @@ resolve_afm_name <- function(font_family, bold = FALSE, italic = FALSE) {
   fam <- if (font_family %in% names(fr_env$fonts)) {
     font_family
   } else {
-    lookup_font_family(font_family)
+    get_font_family(font_family)
   }
   info <- fr_env$fonts[[fam]]
   if (bold && italic) {
@@ -364,7 +364,7 @@ resolve_afm_name <- function(font_family, bold = FALSE, italic = FALSE) {
 #' Get RTF font family keyword
 #' @noRd
 get_rtf_font_family <- function(font_name) {
-  fam <- lookup_font_family(font_name)
+  fam <- get_font_family(font_name)
   fr_env$fonts[[fam]]$rtf_family
 }
 
@@ -372,7 +372,7 @@ get_rtf_font_family <- function(font_name) {
 #' Get RTF pitch value
 #' @noRd
 get_rtf_font_prq <- function(font_name) {
-  fam <- lookup_font_family(font_name)
+  fam <- get_font_family(font_name)
   fr_env$fonts[[fam]]$rtf_prq
 }
 
@@ -380,7 +380,7 @@ get_rtf_font_prq <- function(font_name) {
 #' Get LaTeX font family command
 #' @noRd
 get_tex_font_cmd <- function(font_name) {
-  fam <- lookup_font_family(font_name)
+  fam <- get_font_family(font_name)
   fr_env$fonts[[fam]]$tex_cmd
 }
 

@@ -1041,7 +1041,7 @@ apply_leading_indent <- function(spec) {
 #' @param widow_min Integer. Minimum rows to carry to the next page when a
 #'   group must split. Default 3.
 #' @param page_rows Integer (or Inf). Estimated number of body rows that fit
-#'   on one page, computed from `calculate_page_budget()` / `row_height_twips()`.
+#'   on one page, computed from `compute_page_budget()` / `row_height_twips()`.
 #'   Groups with `group_size <= page_rows` get a full keepn chain; only
 #'   oversized groups use orphan/widow edge protection. Default `Inf` (always
 #'   full keepn, i.e. pre-`page_rows` behavior).

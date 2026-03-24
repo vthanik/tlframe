@@ -1492,12 +1492,12 @@ test_that("fr_wide_ard() succeeds with valid stat_name references", {
   expect_true(nrow(wide) > 0L)
 })
 
-test_that("extract_glue_refs handles escaped braces without false positives", {
+test_that("parse_glue_refs handles escaped braces without false positives", {
   # Escaped braces {{literal}} should NOT be extracted as refs
-  expect_equal(arframe:::extract_glue_refs("{{literal}} {n}"), "n")
-  expect_equal(arframe:::extract_glue_refs("{{foo}}"), character(0L))
-  expect_equal(arframe:::extract_glue_refs("{mean} ({sd})"), c("mean", "sd"))
-  expect_equal(arframe:::extract_glue_refs("no refs here"), character(0L))
+  expect_equal(arframe:::parse_glue_refs("{{literal}} {n}"), "n")
+  expect_equal(arframe:::parse_glue_refs("{{foo}}"), character(0L))
+  expect_equal(arframe:::parse_glue_refs("{mean} ({sd})"), c("mean", "sd"))
+  expect_equal(arframe:::parse_glue_refs("no refs here"), character(0L))
 })
 
 
