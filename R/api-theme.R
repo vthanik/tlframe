@@ -307,6 +307,7 @@ fr_theme <- function(
   invisible(NULL)
 }
 
+#' @rdname fr_theme
 #' @export
 fr_theme_set <- fr_theme
 

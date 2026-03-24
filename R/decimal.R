@@ -2243,33 +2243,24 @@ compute_all_decimal_geometry <- function(spec) {
 
   result <- list()
 
-  # Hoist invariants outside the column loop
-  # Split by page_by first, then group_by — smart fallback merges when types match
+  # Hoist invariants outside the column loop.
+  # Only page_by creates alignment boundaries (separate physical pages).
+  # group_by groups are visible together on the same page and must align
+  # consistently across the entire column.
   pb <- spec$body$page_by
-  gb <- spec$body$group_by
-  align_key <- if (length(pb) > 0L) {
-    pb
-  } else if (length(gb) > 0L) {
-    gb
-  } else {
-    character(0)
-  }
+  align_key <- if (length(pb) > 0L) pb else character(0)
   space_twips <- measure_text_width_twips(
     " ",
     spec$page$font_family,
     spec$page$font_size
   )
 
-  # Pre-compute group labels once (shared across all decimal columns)
+  # Pre-compute page labels once (shared across all decimal columns)
   has_align_key <- length(align_key) > 0L &&
     all(align_key %in% names(spec$data))
   if (has_align_key) {
-    group_labels <- if (length(align_key) == 1L) {
-      as.character(spec$data[[align_key]])
-    } else {
-      inject(paste(!!!spec$data[align_key], sep = fr_env$group_sep))
-    }
-    unique_groups <- unique(group_labels)
+    page_labels <- build_group_keys(spec$data, align_key)
+    unique_pages <- unique(page_labels)
   }
 
   for (nm in col_names) {
@@ -2286,45 +2277,45 @@ compute_all_decimal_geometry <- function(spec) {
 
     col_width_twips <- inches_to_twips(col$width)
 
-    # Decide: per-group or global alignment
-    use_per_group <- FALSE
-    if (has_align_key && length(unique_groups) > 1L) {
-      # Smart check: compare stat type signatures across groups.
-      # Exclude filler types (n_only, missing, unknown) that appear in every group.
+    # Decide: per-page or global alignment
+    use_per_page <- FALSE
+    if (has_align_key && length(unique_pages) > 1L) {
+      # Smart check: compare stat type signatures across pages.
+      # Exclude filler types (n_only, missing, unknown) that appear in every page.
       type_sigs <- vapply(
-        unique_groups,
-        function(grp) {
-          grp_types <- detect_stat_types(vals[group_labels == grp])
-          sig_types <- setdiff(grp_types, fr_env$stat_sig_skip)
+        unique_pages,
+        function(pg) {
+          pg_types <- detect_stat_types(vals[page_labels == pg])
+          sig_types <- setdiff(pg_types, fr_env$stat_sig_skip)
           paste(sort(unique(sig_types)), collapse = ",")
         },
         character(1)
       )
-      use_per_group <- length(unique(type_sigs)) > 1L
+      use_per_page <- length(unique(type_sigs)) > 1L
     }
 
-    if (use_per_group) {
+    if (use_per_page) {
       formatted <- character(length(vals))
-      group_max_nc <- integer(length(vals))
-      for (grp in unique_groups) {
-        mask <- group_labels == grp
-        grp_formatted <- align_decimal_column(vals[mask])
-        formatted[mask] <- grp_formatted
-        grp_nc <- if (any(nzchar(grp_formatted))) {
-          max(nchar(grp_formatted))
+      page_max_nc <- integer(length(vals))
+      for (pg in unique_pages) {
+        mask <- page_labels == pg
+        pg_formatted <- align_decimal_column(vals[mask])
+        formatted[mask] <- pg_formatted
+        pg_nc <- if (any(nzchar(pg_formatted))) {
+          max(nchar(pg_formatted))
         } else {
           0L
         }
-        group_max_nc[mask] <- grp_nc
+        page_max_nc[mask] <- pg_nc
       }
 
-      # Per-row center_offset (vectorized: one offset per group width)
-      widths_twips <- round(group_max_nc * space_twips)
+      # Per-row center_offset (vectorized: one offset per page width)
+      widths_twips <- round(page_max_nc * space_twips)
       center_offset <- pmax(
         0L,
         round((col_width_twips - widths_twips) / 2)
       )
-      max_width_twips <- round(max(group_max_nc) * space_twips)
+      max_width_twips <- round(max(page_max_nc) * space_twips)
     } else {
       geom <- global_decimal_geom(vals, col_width_twips, space_twips)
       formatted <- geom$formatted

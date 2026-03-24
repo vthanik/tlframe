@@ -70,7 +70,7 @@ save_plot_to_file <- function(
       cli_abort(c(
         "Package {.pkg ggplot2} is required to render ggplot figures.",
         "i" = "Install via {.code install.packages(\"ggplot2\")}."
-      ))
+      ), call = caller_env())
     }
     args <- list(
       filename = path,

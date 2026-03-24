@@ -406,9 +406,10 @@ test_that("align_decimal_column: scalar_float in estimate column aligns decimals
   expect_equal(as.integer(dot_pos_float), as.integer(dot_pos_est))
 })
 
-# --- Group-aware decimal geometry tests ---
+# --- Decimal geometry alignment boundary tests ---
 
-test_that("compute_all_decimal_geometry aligns per group_by independently", {
+test_that("compute_all_decimal_geometry with group_by uses global alignment", {
+  # group_by no longer creates alignment boundaries — alignment is always per-column
   df <- data.frame(
     section = c("A", "A", "B", "B"),
     stat = c(
@@ -425,14 +426,12 @@ test_that("compute_all_decimal_geometry aligns per group_by independently", {
     fr_cols(stat = fr_col("Stat", align = "decimal", width = 3))
   spec <- finalize_spec(spec)
   geom <- spec$decimal_geometry$stat
-  expect_true(!is.null(geom))
-  # group_by adds a blank_after row between groups, so 5 rows total
+  expect_type(geom, "list")
   expect_equal(length(geom$formatted), nrow(spec$data))
-  # Group A (n_pct) rows should have parentheses, Group B (est_ci) should have comma
-  grp_a <- geom$formatted[spec$data$section == "A"]
-  grp_b <- geom$formatted[spec$data$section == "B"]
-  expect_true(all(grepl("\\(", trimws(grp_a[nzchar(trimws(grp_a))]))))
-  expect_true(all(grepl(",", trimws(grp_b[nzchar(trimws(grp_b))]))))
+  # Global alignment: uniform nchar and single center_offset
+  non_blank <- nzchar(trimws(geom$formatted))
+  expect_equal(length(unique(nchar(geom$formatted[non_blank]))), 1L)
+  expect_equal(length(unique(geom$center_offset)), 1L)
 })
 
 test_that("compute_all_decimal_geometry aligns per page_by independently", {
@@ -447,7 +446,7 @@ test_that("compute_all_decimal_geometry aligns per page_by independently", {
   spec$body$page_by <- "param"
   spec <- finalize_spec(spec)
   geom <- spec$decimal_geometry$stat
-  expect_true(!is.null(geom))
+  expect_type(geom, "list")
   expect_equal(length(geom$formatted), 4L)
   # center_offset is a per-row vector
   expect_equal(length(geom$center_offset), 4L)
@@ -459,9 +458,9 @@ test_that("compute_all_decimal_geometry aligns per page_by independently", {
   expect_true(all(nchar(dbp) == nchar(dbp[1])))
 })
 
-test_that("group_by with mixed types uses per-group alignment", {
-  # Demographics-style: group A has n_pct, group B has est_ci
-  # Different type signatures → per-group alignment
+test_that("group_by with mixed types still uses global alignment", {
+  # group_by never creates alignment boundaries — even with mixed types,
+  # alignment is global per-column for visual consistency on the same page
   df <- data.frame(
     section = c("A", "A", "B", "B"),
     stat = c(
@@ -479,11 +478,10 @@ test_that("group_by with mixed types uses per-group alignment", {
   spec <- finalize_spec(spec)
   geom <- spec$decimal_geometry$stat
   expect_equal(length(geom$center_offset), nrow(spec$data))
-  # Mixed types → per-group alignment → different nchar per group
-  grp_a <- geom$formatted[df$section == "A"]
-  grp_b <- geom$formatted[df$section == "B"]
-  expect_equal(length(unique(nchar(grp_a))), 1L)
-  expect_equal(length(unique(nchar(grp_b))), 1L)
+  # Global alignment: all rows share the same nchar and center_offset
+  non_blank <- nzchar(trimws(geom$formatted))
+  expect_equal(length(unique(nchar(geom$formatted[non_blank]))), 1L)
+  expect_equal(length(unique(geom$center_offset)), 1L)
 })
 
 test_that("group_by with same types uses global alignment", {

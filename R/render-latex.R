@@ -267,7 +267,7 @@ latex_preamble <- function(spec) {
   needs_lastpage <- FALSE
   for (chrome in list(spec$pagehead, spec$pagefoot)) {
     if (!is.null(chrome)) {
-      txt <- paste0(chrome$left, chrome$center, chrome$right)
+      txt <- paste0(c(chrome$left, chrome$center, chrome$right), collapse = "")
       if (grepl("total_pages", txt, fixed = TRUE)) needs_lastpage <- TRUE
     }
   }

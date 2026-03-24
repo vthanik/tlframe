@@ -62,7 +62,7 @@ fr_install_latex_deps <- function() {
       "Package {.pkg tinytex} is required to install LaTeX dependencies.",
       "i" = "Install via {.code install.packages(\"tinytex\")}.",
       "i" = "Then run {.code tinytex::install_tinytex()} to set up a TeX distribution."
-    ))
+    ), call = caller_env())
   }
   pkgs <- fr_env$required_latex_pkgs
   cli_inform(c("i" = "Installing {length(pkgs)} LaTeX package{?s} via tlmgr."))
@@ -170,7 +170,7 @@ compile_xelatex_doc <- function(tex_path) {
         " " = "{.code install.packages(\"tinytex\")}",
         " " = "{.code tinytex::install_tinytex()}",
         " " = "{.code arframe::fr_install_latex_deps()}"
-      ))
+      ), call = caller_env())
     }
 
     args <- c(

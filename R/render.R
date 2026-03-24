@@ -1165,7 +1165,8 @@ prepare_pages <- function(spec) {
       c(
         "{.arg page_by} column{?s} not found in data: {.val {missing}}.",
         "i" = "Available columns: {.val {names(spec$data)}}."
-      )
+      ),
+      call = caller_env()
     )
   }
 
@@ -1232,7 +1233,7 @@ calculate_col_panels <- function(spec) {
   available <- printable - stub_width
 
   if (available <= 0) {
-    cli_abort("Stub columns exceed the printable page width.")
+    cli_abort("Stub columns exceed the printable page width.", call = caller_env())
   }
 
   # Data columns (non-stub)

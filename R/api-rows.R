@@ -48,16 +48,35 @@
 #'   at the top of the next page.
 #'
 #'   **List form**: A named list with elements:
-#'   * `cols` — character vector of column name(s) (required)
+#'   * `cols` — character vector of column name(s) (required). When multiple
+#'     columns are supplied, groups are defined by the **combination** of all
+#'     column values (e.g., `cols = c("PARAMCD", "direction")` groups by
+#'     each unique PARAMCD + direction pair).
 #'   * `label` — character scalar; column name into which group header values
-#'     are injected. A **header row** is inserted at the start of each group.
-#'     When `label` is set and `indent_by` is not, `indent_by` is
-#'     **automatically inferred** from `label`.
-#'   * `leaf` — character scalar; reserved for multi-level hierarchy (future).
-#'     Must be one of the `cols` values.
+#'     are injected. A **header row** is inserted at the start of each group,
+#'     containing the value from the first `cols` column. When `label` is set
+#'     and `indent_by` is not, `indent_by` is **automatically inferred** from
+#'     `label`, indenting all detail rows under the bold group header.
+#'   * `leaf` — character scalar; the lowest-level column in a multi-level
+#'     hierarchy. Must be one of the `cols` values. When set, arframe
+#'     collapses all hierarchy columns into a single `__display__` column
+#'     and adds a `__row_level__` column containing the source column name
+#'     for each row (e.g., `"soc"` or `"pt"`). Use `__row_level__` with
+#'     [fr_rows_matches()] to style specific levels independently — for
+#'     example, bold only the SOC header rows without affecting PT rows.
+#'     Indentation is auto-set from the hierarchy depth. Source columns are
+#'     auto-hidden.
+#'
+#'   `group_by` does **not** affect decimal alignment — values align globally
+#'   across the entire column regardless of group boundaries. Only `page_by`
+#'   creates separate alignment contexts (since pages are physically separate).
 #'
 #'   Style group header rows (bold, etc.) via [fr_styles()] by targeting
-#'   group header rows with [fr_rows_matches()].
+#'   group header rows with [fr_rows_matches()]. For single-level `label`
+#'   groups, match on an empty stat column (e.g.,
+#'   `fr_rows_matches("total", "")`). For multi-level `leaf` hierarchies,
+#'   match on the `__row_level__` column (e.g.,
+#'   `fr_rows_matches("__row_level__", "soc")`).
 #'
 #' @param indent_by Row indentation specification. Accepts two forms:
 #'
@@ -194,6 +213,27 @@
 #'     )
 #'   )
 #'
+#' ## ── Multi-level hierarchy with leaf + bold SOC only ─────────────────
+#'
+#' data.frame(
+#'   soc    = c("GI disorders", "GI disorders", "GI disorders",
+#'              "Nervous system", "Nervous system"),
+#'   pt     = c("Nausea", "Vomiting", "Diarrhoea",
+#'              "Headache", "Dizziness"),
+#'   total  = c("24 (17.8)", "18 (13.3)", "12 ( 8.9)",
+#'              "30 (22.2)", "15 (11.1)"),
+#'   stringsAsFactors = FALSE
+#' ) |>
+#'   fr_table() |>
+#'   fr_rows(
+#'     group_by    = list(cols = c("soc", "pt"), leaf = "pt"),
+#'     blank_after = "soc"
+#'   ) |>
+#'   fr_row_style(
+#'     rows = fr_rows_matches("__row_level__", "soc"),
+#'     bold = TRUE
+#'   )
+#'
 #' ## ── group_by list form: auto-inject group headers ────────────────────
 #' ## label injects header rows from group_by values into the named column.
 #' ## indent_by is auto-inferred — no need to specify both.
@@ -219,6 +259,27 @@
 #'   fr_cols(group = fr_col(visible = FALSE)) |>
 #'   fr_rows(
 #'     group_by = list(cols = "group", label = "stat")
+#'   )
+#'
+#' ## ── group_by with label + bold group headers ──────────────────────
+#' ## Injected headers have empty stat columns — match on that to bold.
+#'
+#' data.frame(
+#'   PARAMCD    = c("ALB", "ALB", "ALT", "ALT"),
+#'   stat_label = c("High", "Low", "High", "Low"),
+#'   total      = c("6 ( 2.4)", "35 (13.8)", "30 (11.8)", "6 ( 2.4)"),
+#'   placebo    = c("4 ( 4.7)", "17 (19.8)", "9 (10.5)", "1 ( 1.2)"),
+#'   stringsAsFactors = FALSE
+#' ) |>
+#'   fr_table() |>
+#'   fr_cols(PARAMCD = fr_col(visible = FALSE)) |>
+#'   fr_rows(
+#'     group_by    = list(cols = "PARAMCD", label = "stat_label"),
+#'     blank_after = "PARAMCD"
+#'   ) |>
+#'   fr_row_style(
+#'     rows = fr_rows_matches("total", ""),
+#'     bold = TRUE
 #'   )
 #'
 #' ## ── sort_by: order a listing by subject and start date ────────────────

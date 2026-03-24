@@ -27,6 +27,29 @@ fr_theme(
   header = NULL,
   footnote_separator = NULL
 )
+
+fr_theme_set(
+  orientation = NULL,
+  paper = NULL,
+  margins = NULL,
+  col_gap = NULL,
+  font_family = NULL,
+  font_size = NULL,
+  space_mode = NULL,
+  split = NULL,
+  stub = NULL,
+  pagehead = NULL,
+  pagefoot = NULL,
+  tokens = NULL,
+  hlines = NULL,
+  vlines = NULL,
+  spacing = NULL,
+  n_format = NULL,
+  continuation = NULL,
+  group_keep = NULL,
+  header = NULL,
+  footnote_separator = NULL
+)
 }
 \arguments{
 \item{orientation}{\code{"landscape"} or \code{"portrait"}. \code{NULL} leaves unchanged.}
