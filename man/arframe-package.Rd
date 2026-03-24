@@ -4,15 +4,16 @@
 \name{arframe-package}
 \alias{arframe}
 \alias{arframe-package}
-\title{arframe: Clinical Tables, Figures, and Listings for Regulatory Submission}
+\title{arframe: A Regulatory Frame for TFLs}
 \description{
-Produces regulatory-grade clinical trial tables, listings, and figures
-(TLFs) in RTF and PDF from a single specification. Designed for
-pharmaceutical industry workflows with support for paginated output,
-spanning headers, decimal alignment, programmatic page headers/footers,
-and company-specific rule presets. Built on disciplined S3 classes with
-a clean, composable pipeline API. No dplyr, tidyr, or purrr dependency
-— only lightweight infrastructure packages (rlang, cli, vctrs).
+Submission-ready tables, listings, and figures in RTF, PDF, and HTML from
+a single specification. You describe the output once; arframe renders it —
+change the file extension, the output adapts. Designed for pharmaceutical
+submissions with paginated output, spanning headers, decimal alignment,
+programmatic page headers/footers, and company-specific rule presets.
+Built on disciplined S3 classes with a clean, composable pipeline API.
+No dplyr, tidyr, or purrr dependency — only lightweight infrastructure
+packages (rlang, cli, vctrs).
 \subsection{Core Pipeline}{
 
 \if{html}{\out{<div class="sourceCode r">}}\preformatted{# Study setup (once per program, or use _arframe.yml)

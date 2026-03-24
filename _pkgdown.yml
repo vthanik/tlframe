@@ -29,12 +29,11 @@ template:
         wght: [400, 500, 600]
 
 home:
-  title: "arframe — Regulatory-Grade Clinical Tables in R"
+  title: "arframe — A Regulatory Frame for TFLs"
   description: >
-    An R package for pharmaceutical submissions. Describe a table once
-    with an immutable pipeline — arframe renders RTF, PDF, and HTML natively.
-    No gt dependency, no RMarkdown pipeline. Tables auto-preview in the
-    RStudio/Positron Viewer and render inline in pkgdown vignettes.
+    Submission-ready tables, listings, and figures in RTF, PDF, and HTML
+    from a single specification. You describe the output once; arframe
+    renders it — change the file extension, the output adapts.
 
 navbar:
   type: light
