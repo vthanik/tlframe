@@ -1,5 +1,5 @@
 Package: arframe
-Title: Analysis Results Framework for Regulatory Submission
+Title: A Regulatory Frame for TFLs
 Version: 0.1.0.9000
 Authors@R:
     person("Vignesh", "Thanikachalam", email = "about.vignesh@gmail.com", role = c("aut", "cre"))
