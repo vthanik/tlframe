@@ -21,13 +21,9 @@ screenshots/
 .claude/
 .claudeignore
 CLAUDE.md
-BACKEND.md
 
-# Local planning docs
-ARBUILDER-PLAN.md
-ARFRAME-PLAN.txt
-*-PLAN.md
-*-PLAN.txt
+# Local working files (plans, notes, scripts, blueprints)
+.local/
 
 # Presentation materials (local only)
 presentation/
@@ -45,7 +41,3 @@ docs/
 # Vignette artifacts
 vignettes/*.html
 vignettes/*.R
-deploy-site.sh
-audit-findings.md
-fr_wide_ard_blueprint.md
-feature-todo.md
