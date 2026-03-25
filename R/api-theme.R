@@ -67,6 +67,9 @@
 #'   See [fr_page()] for details.
 #' @param group_keep Logical. Whether `group_by` groups are kept together
 #'   on the same page. `NULL` leaves unchanged. See [fr_rows()] for details.
+#' @param group_style Named list of style properties for group header rows.
+#'   Applied to all tables that use `group_by` with `label` or `leaf`.
+#'   `NULL` leaves unchanged. See [fr_rows()] for details and examples.
 #' @param header Named list of header defaults. Supports all [fr_header()]
 #'   parameters: `bold`, `align`, `valign`, `background`, `color`, `font_size`,
 #'   `repeat_on_page`, plus `span_gap` (logical, insert gap columns between
@@ -191,6 +194,7 @@ fr_theme <- function(
   n_format = NULL,
   continuation = NULL,
   group_keep = NULL,
+  group_style = NULL,
   header = NULL,
   footnote_separator = NULL
 ) {
@@ -253,6 +257,9 @@ fr_theme <- function(
   if (!is.null(group_keep)) {
     check_scalar_lgl(group_keep, arg = "group_keep", call = call)
   }
+  if (!is.null(group_style)) {
+    group_style <- validate_group_style(group_style, call = call)
+  }
   if (!is.null(hlines)) {
     hlines <- match_arg_fr(hlines, names(fr_env$hline_presets), call = call)
   }
@@ -290,6 +297,7 @@ fr_theme <- function(
   set_if("n_format", n_format)
   set_if("continuation", continuation)
   set_if("group_keep", group_keep)
+  set_if("group_style", group_style)
   set_if("footnote_separator", footnote_separator)
 
   # For nested list params, merge recursively
@@ -338,6 +346,7 @@ fr_theme_set <- fr_theme
 #'   * `split` — logical (`TRUE`/`FALSE`) column splitting
 #'   * `stub` — character vector (stub column names)
 #'   * `group_keep` — logical; whether group_by groups are kept together
+#'   * `group_style` — named list; style properties for group header rows
 #'   * `footnote_separator` — logical
 #'
 #' @examples

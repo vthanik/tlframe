@@ -24,6 +24,7 @@ fr_theme(
   n_format = NULL,
   continuation = NULL,
   group_keep = NULL,
+  group_style = NULL,
   header = NULL,
   footnote_separator = NULL
 )
@@ -47,6 +48,7 @@ fr_theme_set(
   n_format = NULL,
   continuation = NULL,
   group_keep = NULL,
+  group_style = NULL,
   header = NULL,
   footnote_separator = NULL
 )
@@ -110,6 +112,10 @@ See \code{\link[=fr_page]{fr_page()}} for details.}
 
 \item{group_keep}{Logical. Whether \code{group_by} groups are kept together
 on the same page. \code{NULL} leaves unchanged. See \code{\link[=fr_rows]{fr_rows()}} for details.}
+
+\item{group_style}{Named list of style properties for group header rows.
+Applied to all tables that use \code{group_by} with \code{label} or \code{leaf}.
+\code{NULL} leaves unchanged. See \code{\link[=fr_rows]{fr_rows()}} for details and examples.}
 
 \item{header}{Named list of header defaults. Supports all \code{\link[=fr_header]{fr_header()}}
 parameters: \code{bold}, \code{align}, \code{valign}, \code{background}, \code{color}, \code{font_size},

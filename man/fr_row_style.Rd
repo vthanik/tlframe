@@ -18,9 +18,17 @@ fr_row_style(
 )
 }
 \arguments{
-\item{rows}{Integer vector of body row positions, \code{"all"}, or \code{NULL} (all
-body rows). Row indices are 1-based. Multiple indices are supported:
-\code{rows = c(1L, 3L, 5L)}.}
+\item{rows}{Integer vector of body row positions, \code{"all"}, \code{NULL} (all
+body rows), or a group header selector. Row indices are 1-based.
+Multiple indices are supported: \code{rows = c(1L, 3L, 5L)}.
+
+\strong{Group header selectors} (resolved at render time):
+\itemize{
+\item \code{"group_headers"} — all group header rows (from \code{group_by} with
+\code{label} or \code{leaf}).
+\item \code{"group_headers:<level>"} — only headers at a specific hierarchy
+level (e.g., \code{"group_headers:soc"}). For \code{leaf} hierarchies only.
+}}
 
 \item{bold, italic, underline}{Logical or \code{NULL} to inherit.}
 
@@ -107,6 +115,21 @@ tbl_demog |>
   fr_styles(
     fr_row_style(rows = "all", background = "#FAFAFA"),
     fr_style(region = "header", bold = TRUE, background = "#E0E0E0")
+  )
+
+## ── Bold all group header rows ────────────────────────────────────────
+
+data.frame(
+  variable = c("Sex", "Sex", "Age", "Age"),
+  stat = c("Female", "Male", "Mean (SD)", "Median"),
+  value = c("27 (60.0)", "18 (40.0)", "75.0 (6.8)", "74.0"),
+  stringsAsFactors = FALSE
+) |>
+  fr_table() |>
+  fr_cols(variable = fr_col(visible = FALSE)) |>
+  fr_rows(group_by = list(cols = "variable", label = "stat")) |>
+  fr_styles(
+    fr_row_style(rows = "group_headers", bold = TRUE, background = "#E8E8E8")
   )
 
 }

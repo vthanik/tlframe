@@ -27,6 +27,7 @@ blank lines)
 \item \code{split} — logical (\code{TRUE}/\code{FALSE}) column splitting
 \item \code{stub} — character vector (stub column names)
 \item \code{group_keep} — logical; whether group_by groups are kept together
+\item \code{group_style} — named list; style properties for group header rows
 \item \code{footnote_separator} — logical
 }
 }

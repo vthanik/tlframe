@@ -11,6 +11,7 @@ fr_rows(
   indent_by = NULL,
   blank_after = NULL,
   group_keep = TRUE,
+  group_style = NULL,
   sort_by = NULL,
   suppress = NULL,
   wrap = FALSE
@@ -103,6 +104,24 @@ on the same page via RTF \verb{\\keepn} / LaTeX keep-with-next. Default
 \code{TRUE}. Set \code{FALSE} for visual-only grouping (blank_after, indent)
 without page-keeping — useful for long groups where you want the
 renderer to break freely.}
+
+\item{group_style}{Style properties for group header rows (injected by
+\code{group_by} with \code{label} or \code{leaf}). Accepts two forms:
+
+\strong{Uniform style} (all group headers): A named list of style properties:
+\code{bold}, \code{italic}, \code{underline}, \code{color}, \code{background}, \code{font_size},
+\code{align}. Example: \code{group_style = list(bold = TRUE, background = "#F0F0F0")}.
+
+\strong{Per-level style} (leaf hierarchies only): A named list where names
+match hierarchy column names and values are style property lists.
+Example: \code{group_style = list(soc = list(bold = TRUE), hlt = list(italic = TRUE))}.
+Levels not listed receive no special styling.
+
+\code{group_style} has the lowest precedence — explicit \code{\link[=fr_styles]{fr_styles()}} calls
+override it. Set study-wide defaults via \code{\link[=fr_theme]{fr_theme()}} or \verb{_arframe.yml}.
+
+Alternatively, use \code{rows = "group_headers"} in \code{\link[=fr_row_style]{fr_row_style()}} or
+\code{\link[=fr_style]{fr_style()}} for full styling control via \code{\link[=fr_styles]{fr_styles()}}.}
 
 \item{sort_by}{Character vector of column name(s). Sorts the data by these
 columns before rendering. For listings, this controls the display order
@@ -273,11 +292,8 @@ data.frame(
   fr_table() |>
   fr_rows(
     group_by    = list(cols = c("soc", "pt"), leaf = "pt"),
-    blank_after = "soc"
-  ) |>
-  fr_row_style(
-    rows = fr_rows_matches("__row_level__", "soc"),
-    bold = TRUE
+    blank_after = "soc",
+    group_style = list(soc = list(bold = TRUE))
   )
 
 ## ── group_by list form: auto-inject group headers ────────────────────
@@ -308,7 +324,6 @@ data.frame(
   )
 
 ## ── group_by with label + bold group headers ──────────────────────
-## Injected headers have empty stat columns — match on that to bold.
 
 data.frame(
   PARAMCD    = c("ALB", "ALB", "ALT", "ALT"),
@@ -321,11 +336,24 @@ data.frame(
   fr_cols(PARAMCD = fr_col(visible = FALSE)) |>
   fr_rows(
     group_by    = list(cols = "PARAMCD", label = "stat_label"),
-    blank_after = "PARAMCD"
-  ) |>
-  fr_row_style(
-    rows = fr_rows_matches("total", ""),
-    bold = TRUE
+    blank_after = "PARAMCD",
+    group_style = list(bold = TRUE)
+  )
+
+## ── Per-level styling (leaf hierarchies) ─────────────────────────────
+
+data.frame(
+  soc   = c("GI disorders", "GI disorders",
+            "Nervous system", "Nervous system"),
+  pt    = c("Nausea", "Vomiting", "Headache", "Dizziness"),
+  total = c("24 (17.8)", "18 (13.3)", "30 (22.2)", "15 (11.1)"),
+  stringsAsFactors = FALSE
+) |>
+  fr_table() |>
+  fr_rows(
+    group_by    = list(cols = c("soc", "pt"), leaf = "pt"),
+    blank_after = "soc",
+    group_style = list(soc = list(bold = TRUE, background = "#F0F0F0"))
   )
 
 ## ── sort_by: order a listing by subject and start date ────────────────

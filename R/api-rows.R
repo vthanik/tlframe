@@ -100,6 +100,23 @@
 #'   `TRUE`. Set `FALSE` for visual-only grouping (blank_after, indent)
 #'   without page-keeping — useful for long groups where you want the
 #'   renderer to break freely.
+#' @param group_style Style properties for group header rows (injected by
+#'   `group_by` with `label` or `leaf`). Accepts two forms:
+#'
+#'   **Uniform style** (all group headers): A named list of style properties:
+#'   `bold`, `italic`, `underline`, `color`, `background`, `font_size`,
+#'   `align`. Example: `group_style = list(bold = TRUE, background = "#F0F0F0")`.
+#'
+#'   **Per-level style** (leaf hierarchies only): A named list where names
+#'   match hierarchy column names and values are style property lists.
+#'   Example: `group_style = list(soc = list(bold = TRUE), hlt = list(italic = TRUE))`.
+#'   Levels not listed receive no special styling.
+#'
+#'   `group_style` has the lowest precedence — explicit [fr_styles()] calls
+#'   override it. Set study-wide defaults via [fr_theme()] or `_arframe.yml`.
+#'
+#'   Alternatively, use `rows = "group_headers"` in [fr_row_style()] or
+#'   [fr_style()] for full styling control via [fr_styles()].
 #'
 #' @return A modified `fr_spec`. Row config stored in `spec$body`.
 #'
@@ -227,11 +244,8 @@
 #'   fr_table() |>
 #'   fr_rows(
 #'     group_by    = list(cols = c("soc", "pt"), leaf = "pt"),
-#'     blank_after = "soc"
-#'   ) |>
-#'   fr_row_style(
-#'     rows = fr_rows_matches("__row_level__", "soc"),
-#'     bold = TRUE
+#'     blank_after = "soc",
+#'     group_style = list(soc = list(bold = TRUE))
 #'   )
 #'
 #' ## ── group_by list form: auto-inject group headers ────────────────────
@@ -262,7 +276,6 @@
 #'   )
 #'
 #' ## ── group_by with label + bold group headers ──────────────────────
-#' ## Injected headers have empty stat columns — match on that to bold.
 #'
 #' data.frame(
 #'   PARAMCD    = c("ALB", "ALB", "ALT", "ALT"),
@@ -275,11 +288,24 @@
 #'   fr_cols(PARAMCD = fr_col(visible = FALSE)) |>
 #'   fr_rows(
 #'     group_by    = list(cols = "PARAMCD", label = "stat_label"),
-#'     blank_after = "PARAMCD"
-#'   ) |>
-#'   fr_row_style(
-#'     rows = fr_rows_matches("total", ""),
-#'     bold = TRUE
+#'     blank_after = "PARAMCD",
+#'     group_style = list(bold = TRUE)
+#'   )
+#'
+#' ## ── Per-level styling (leaf hierarchies) ─────────────────────────────
+#'
+#' data.frame(
+#'   soc   = c("GI disorders", "GI disorders",
+#'             "Nervous system", "Nervous system"),
+#'   pt    = c("Nausea", "Vomiting", "Headache", "Dizziness"),
+#'   total = c("24 (17.8)", "18 (13.3)", "30 (22.2)", "15 (11.1)"),
+#'   stringsAsFactors = FALSE
+#' ) |>
+#'   fr_table() |>
+#'   fr_rows(
+#'     group_by    = list(cols = c("soc", "pt"), leaf = "pt"),
+#'     blank_after = "soc",
+#'     group_style = list(soc = list(bold = TRUE, background = "#F0F0F0"))
 #'   )
 #'
 #' ## ── sort_by: order a listing by subject and start date ────────────────
@@ -336,6 +362,7 @@ fr_rows <- function(
   indent_by = NULL,
   blank_after = NULL,
   group_keep = TRUE,
+  group_style = NULL,
   sort_by = NULL,
   suppress = NULL,
   wrap = FALSE
@@ -516,6 +543,9 @@ fr_rows <- function(
   if (!missing(group_keep)) {
     check_scalar_lgl(group_keep, arg = "group_keep", call = call)
   }
+  if (!is.null(group_style)) {
+    group_style <- validate_group_style(group_style, call = call)
+  }
   if (!missing(wrap)) {
     check_scalar_lgl(wrap, arg = "wrap", call = call)
   }
@@ -569,6 +599,7 @@ fr_rows <- function(
     } else {
       old$group_keep
     },
+    group_style = group_style %||% old$group_style,
     group_leaf = group_leaf %||% old$group_leaf,
     group_hierarchy_cols = if (
       !is.null(group_leaf) && length(group_by_cols) > 1L

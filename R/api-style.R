@@ -347,9 +347,15 @@ fr_style <- function(
 #' Creates a row-level style object for use in [fr_styles()]. Row styles apply
 #' uniformly across all cells in the targeted rows.
 #'
-#' @param rows Integer vector of body row positions, `"all"`, or `NULL` (all
-#'   body rows). Row indices are 1-based. Multiple indices are supported:
-#'   `rows = c(1L, 3L, 5L)`.
+#' @param rows Integer vector of body row positions, `"all"`, `NULL` (all
+#'   body rows), or a group header selector. Row indices are 1-based.
+#'   Multiple indices are supported: `rows = c(1L, 3L, 5L)`.
+#'
+#'   **Group header selectors** (resolved at render time):
+#'   * `"group_headers"` — all group header rows (from `group_by` with
+#'     `label` or `leaf`).
+#'   * `"group_headers:<level>"` — only headers at a specific hierarchy
+#'     level (e.g., `"group_headers:soc"`). For `leaf` hierarchies only.
 #' @param bold,italic,underline Logical or `NULL` to inherit.
 #' @param color Foreground (text) colour, or `NULL`.
 #' @param background Background (fill) colour, or `NULL`.
@@ -417,6 +423,21 @@ fr_style <- function(
 #'   fr_styles(
 #'     fr_row_style(rows = "all", background = "#FAFAFA"),
 #'     fr_style(region = "header", bold = TRUE, background = "#E0E0E0")
+#'   )
+#'
+#' ## ── Bold all group header rows ────────────────────────────────────────
+#'
+#' data.frame(
+#'   variable = c("Sex", "Sex", "Age", "Age"),
+#'   stat = c("Female", "Male", "Mean (SD)", "Median"),
+#'   value = c("27 (60.0)", "18 (40.0)", "75.0 (6.8)", "74.0"),
+#'   stringsAsFactors = FALSE
+#' ) |>
+#'   fr_table() |>
+#'   fr_cols(variable = fr_col(visible = FALSE)) |>
+#'   fr_rows(group_by = list(cols = "variable", label = "stat")) |>
+#'   fr_styles(
+#'     fr_row_style(rows = "group_headers", bold = TRUE, background = "#E8E8E8")
 #'   )
 #'
 #' @seealso [fr_col_style()] for column-level styling, [fr_style()] for
@@ -741,7 +762,10 @@ fr_styles <- function(spec, ...) {
     }
   }
 
-  # Eagerly resolve tidyselect cols, conditional styles, and row selectors
+  # Eagerly resolve tidyselect cols, conditional styles, and row selectors.
+  # Deferred selectors ("group_headers", "group_headers:<level>") are stored
+
+  # as-is and resolved later in finalize_rows() after header injection.
   resolved <- list()
   for (style in dots) {
     style <- resolve_style_cols(style, spec$data, call = call)
@@ -751,6 +775,7 @@ fr_styles <- function(spec, ...) {
       if (inherits(style$rows, "fr_rows_selector")) {
         style$rows <- resolve_rows_selector(style$rows, spec$data, call = call)
       }
+      # Skip eager resolution for deferred group_headers selectors
       resolved <- c(resolved, list(style))
     }
   }

@@ -126,8 +126,42 @@ spec <- demog_long |>
 This inserts `"Sex"` and `"Age (years)"` as header rows in the `stat`
 column at each group boundary. Detail rows are automatically indented
 underneath (when `indent_by` is not set, it is inferred from `label`).
-Style group header rows (e.g. bold) via `fr_styles()` and
-`fr_rows_matches()`.
+
+### Styling group headers
+
+Bold group headers with `group_style`:
+
+```{r group-style}
+spec <- demog_long |>
+  fr_table() |>
+  fr_cols(variable = fr_col(visible = FALSE)) |>
+  fr_rows(
+    group_by = list(cols = "variable", label = "stat"),
+    group_style = list(bold = TRUE)
+  )
+```
+
+For full control, use `fr_styles()` with `rows = "group_headers"`:
+
+```{r group-style-full}
+spec <- demog_long |>
+  fr_table() |>
+  fr_cols(variable = fr_col(visible = FALSE)) |>
+  fr_rows(group_by = list(cols = "variable", label = "stat")) |>
+  fr_styles(
+    fr_row_style(rows = "group_headers", bold = TRUE, background = "#F0F0F0")
+  )
+```
+
+Both approaches work for `leaf` hierarchies too. Target specific levels
+with per-level `group_style` or `rows = "group_headers:soc"`:
+
+```{r group-style-leaf, eval = FALSE}
+fr_rows(
+  group_by = list(cols = c("soc", "pt"), leaf = "pt"),
+  group_style = list(soc = list(bold = TRUE))
+)
+```
 
 ## `group_keep`: visual-only grouping
 

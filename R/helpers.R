@@ -125,6 +125,18 @@ resolve_rows_selector <- function(selector, data, call = caller_env()) {
 }
 
 
+#' Check if a rows value is a deferred group header selector
+#'
+#' Returns `TRUE` for `"group_headers"` or `"group_headers:<level>"` strings.
+#' These are resolved later in `finalize_rows()` after group header injection.
+#' @noRd
+is_group_header_selector <- function(rows) {
+  is.character(rows) &&
+    length(rows) == 1L &&
+    startsWith(rows, "group_headers")
+}
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 4a. Shared Tidyselect Resolution
 #
@@ -396,9 +408,12 @@ apply_fr_theme <- function(spec) {
     spec$header$span_gap <- setup[["header"]]$span_gap
   }
 
-  # Row defaults: group_keep
+  # Row defaults: group_keep, group_style
   if (!is.null(setup[["group_keep"]])) {
     spec$body$group_keep <- setup[["group_keep"]]
+  }
+  if (!is.null(setup[["group_style"]])) {
+    spec$body$group_style <- setup[["group_style"]]
   }
 
   # Footnote separator default

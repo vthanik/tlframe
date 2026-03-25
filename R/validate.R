@@ -271,3 +271,124 @@ validate_n_param <- function(n, format = NULL, call = caller_env()) {
 
   invisible(NULL)
 }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# validate_group_style — Validate and normalise group_style parameter
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' @noRd
+validate_group_style <- function(style, call = caller_env()) {
+  if (is.null(style)) {
+    return(NULL)
+  }
+  if (!is.list(style) || length(style) == 0L) {
+    cli_abort(
+      c(
+        "{.arg group_style} must be a named list of style properties.",
+        "x" = "You supplied {.obj_type_friendly {style}}.",
+        "i" = "Example: {.code group_style = list(bold = TRUE)}"
+      ),
+      call = call
+    )
+  }
+  if (is.null(names(style)) || any(names(style) == "")) {
+    cli_abort(
+      c(
+        "{.arg group_style} must be a named list.",
+        "i" = "Example: {.code group_style = list(bold = TRUE)}"
+      ),
+      call = call
+    )
+  }
+
+  style_keys <- c(
+    "bold", "italic", "underline", "color", "background",
+    "font_size", "align", "valign"
+  )
+
+  nms <- names(style)
+  is_flat <- all(nms %in% style_keys)
+
+  if (is_flat) {
+    # Flat style: validate and resolve colors
+    style <- validate_style_props(style, arg = "group_style", call = call)
+    return(style)
+  }
+
+  # Check if names look like they could be style keys (typos, etc.)
+  bad_keys <- setdiff(nms, style_keys)
+  # If any value is not a list, these are meant to be style keys but are invalid
+  has_non_list <- any(!vapply(style[bad_keys], is.list, logical(1)))
+  if (has_non_list) {
+    cli_abort(
+      c(
+        "Unknown style propert{?y/ies} in {.arg group_style}: {.val {bad_keys}}.",
+        "i" = "Valid properties: {.val {style_keys}}.",
+        "i" = paste0(
+          "For per-level styling, wrap in a list: ",
+          "{.code group_style = list(soc = list(bold = TRUE))}"
+        )
+      ),
+      call = call
+    )
+  }
+
+  # Per-level style: each value must be a named list of style props
+  for (lvl in nms) {
+    style[[lvl]] <- validate_style_props(
+      style[[lvl]],
+      arg = paste0("group_style$", lvl),
+      call = call
+    )
+  }
+  style
+}
+
+
+#' Validate style property values within a named list
+#' @noRd
+validate_style_props <- function(props, arg = "style", call = caller_env()) {
+  valid_keys <- c(
+    "bold", "italic", "underline", "color", "background",
+    "font_size", "align", "valign"
+  )
+  bad <- setdiff(names(props), valid_keys)
+  if (length(bad) > 0L) {
+    cli_abort(
+      c(
+        "Unknown style propert{?y/ies} in {.arg {arg}}: {.val {bad}}.",
+        "i" = "Valid properties: {.val {valid_keys}}."
+      ),
+      call = call
+    )
+  }
+  if (!is.null(props$color)) {
+    props$color <- resolve_color(props$color, arg = paste0(arg, "$color"), call = call)
+  }
+  if (!is.null(props$background)) {
+    props$background <- resolve_color(
+      props$background,
+      arg = paste0(arg, "$background"),
+      call = call
+    )
+  }
+  if (!is.null(props$font_size)) {
+    check_positive_num(props$font_size, arg = paste0(arg, "$font_size"), call = call)
+  }
+  if (!is.null(props$align)) {
+    props$align <- match_arg_fr(
+      props$align,
+      fr_env$valid_aligns,
+      call = call
+    )
+  }
+  if (!is.null(props$valign)) {
+    props$valign <- match_arg_fr(
+      props$valign,
+      fr_env$valid_valigns,
+      call = call
+    )
+  }
+  props
+}

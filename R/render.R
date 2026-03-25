@@ -759,10 +759,12 @@ finalize_rows <- function(spec) {
 
   # Inject group header rows when group_label is set.
   # Must happen BEFORE blank_after (so headers are part of the group) and
+
   # BEFORE style remapping (so user styles apply to correct positions).
   group_label_col <- spec$body$group_label
   group_cols <- spec$body$group_by
   page_by_cols <- spec$body$page_by
+  gl_header_rows <- integer(0)
   if (!is.null(group_label_col) && length(group_cols) > 0L) {
     gl_result <- inject_group_headers(
       spec$data,
@@ -771,15 +773,31 @@ finalize_rows <- function(spec) {
       preserve_cols = page_by_cols
     )
     spec$data <- gl_result$data
+    gl_header_rows <- gl_result$header_rows
 
     # Remap existing style indices to account for injected header rows
-    if (length(gl_result$header_rows) > 0L) {
+    if (length(gl_header_rows) > 0L) {
       spec$cell_styles <- remap_style_indices_for_injected(
         spec$cell_styles,
-        gl_result$header_rows
+        gl_header_rows
       )
     }
   }
+
+  # Apply group_style and resolve deferred "group_headers" selectors.
+  # Must happen AFTER header injection + remapping but BEFORE blank_after.
+  group_positions <- identify_group_header_rows(spec, gl_header_rows)
+
+  if (!is.null(spec$body$group_style) && length(group_positions$all) > 0L) {
+    gs_styles <- build_group_styles(spec$body$group_style, group_positions)
+    # Prepend so explicit fr_styles() calls take precedence
+    spec$cell_styles <- c(gs_styles, spec$cell_styles)
+  }
+
+  spec$cell_styles <- resolve_deferred_group_selectors(
+    spec$cell_styles,
+    group_positions
+  )
 
   # Insert blank rows at group boundaries (explicit blank_after only).
   blank_cols <- spec$body$blank_after

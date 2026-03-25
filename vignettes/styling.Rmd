@@ -158,6 +158,7 @@ spec
 | Constructor | Scope | Key args |
 |------------|-------|----------|
 | `fr_row_style()` | Entire row(s) | `rows`, `bold`, `background`, `color`, `align`, `valign`, `height`, ... |
+| `fr_row_style(rows = "group_headers")` | Group header rows | `bold`, `background`, `color`, ... |
 | `fr_col_style()` | Entire column(s) | `cols`, `bold`, `background`, `color`, `align`, `valign`, ... |
 | `fr_style()` | Row-column intersection | `region`, `rows`, `cols`, `bold`, `background`, `color`, `align`, `valign`, `colspan`, ... |
 | `fr_style_if()` | Data-driven (conditional) | `condition`, `cols`, `apply_to`, `bold`, `background`, `color`, `align`, ... |
@@ -166,6 +167,52 @@ spec
 `valign` controls vertical placement within the cell: `"top"`, `"middle"`, or `"bottom"`.
 
 Like `fr_spans()`, `fr_styles()` **appends** on repeated calls.
+
+### Group header styling
+
+When `fr_rows()` creates group headers (via `group_by` with `label` or
+`leaf`), style them with `group_style` on `fr_rows()` or
+`rows = "group_headers"` in `fr_styles()`:
+
+```{r group-header-quick}
+demog_long <- data.frame(
+  variable = c("Sex", "Sex", "Age", "Age"),
+  stat     = c("Female", "Male", "Mean (SD)", "Median"),
+  value    = c("27 (60.0)", "18 (40.0)", "75.0 (6.8)", "74.0"),
+  stringsAsFactors = FALSE
+)
+
+# Quick path: group_style on fr_rows()
+spec <- demog_long |>
+  fr_table() |>
+  fr_cols(variable = fr_col(visible = FALSE)) |>
+  fr_rows(
+    group_by = list(cols = "variable", label = "stat"),
+    group_style = list(bold = TRUE)
+  )
+```
+
+```{r group-header-full}
+# Full path: fr_styles() with group_headers selector
+spec <- demog_long |>
+  fr_table() |>
+  fr_cols(variable = fr_col(visible = FALSE)) |>
+  fr_rows(group_by = list(cols = "variable", label = "stat")) |>
+  fr_styles(
+    fr_row_style(rows = "group_headers", bold = TRUE, background = "#F0F0F0")
+  )
+```
+
+For leaf hierarchies, target specific levels with
+`rows = "group_headers:soc"`:
+
+```{r group-header-level, eval = FALSE}
+spec |>
+  fr_styles(
+    fr_row_style(rows = "group_headers:soc", bold = TRUE),
+    fr_row_style(rows = "group_headers:hlt", italic = TRUE)
+  )
+```
 
 ### Content-based row selection
 
@@ -247,16 +294,16 @@ The condition is a one-sided formula using `.x` as the pronoun, or a plain
 function. It is evaluated at render time against the actual data, so it works
 correctly even when row positions are unknown in advance.
 
-**Bold "Total" rows** — match exact text in a column:
+**Bold "Randomized" row** — match exact text in a column:
 
 ```{r style-if-total}
-spec <- tbl_demog |>
+spec <- tbl_disp |>
   fr_table() |>
   fr_hlines("header") |>
   fr_styles(
     fr_style_if(
-      cols = "characteristic",
-      condition = ~ .x == "Total",
+      cols = "category",
+      condition = ~ .x == "Randomized",
       apply_to = "row",
       bold = TRUE, background = "#E8E8E8"
     )
@@ -323,21 +370,21 @@ spec <- tbl_ae_soc |>
 The `condition` argument also accepts a plain function instead of a formula:
 
 ```{r style-if-fn, eval = FALSE}
-is_total <- function(x) x == "Total"
+is_randomized <- function(x) x == "Randomized"
 
-tbl_demog |>
+tbl_disp |>
   fr_table() |>
   fr_styles(
     fr_style_if(
-      cols = "characteristic",
-      condition = is_total,
+      cols = "category",
+      condition = is_randomized,
       apply_to = "row",
       bold = TRUE, background = "#E8E8E8"
     )
   )
 ```
 
-> **SAS:** `COMPUTE characteristic; IF characteristic = "Total" THEN CALL DEFINE(_ROW_, "STYLE", "STYLE=[FONT_WEIGHT=BOLD BACKGROUND=GRAY]"); ENDCOMP;`
+> **SAS:** `COMPUTE category; IF category = "Randomized" THEN CALL DEFINE(_ROW_, "STYLE", "STYLE=[FONT_WEIGHT=BOLD BACKGROUND=GRAY]"); ENDCOMP;`
 
 `fr_style_if()` objects are passed to `fr_styles()` alongside `fr_row_style()`,
 `fr_col_style()`, and `fr_style()`. All four constructor types can be mixed in

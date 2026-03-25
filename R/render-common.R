@@ -518,6 +518,123 @@ remap_style_indices_for_injected <- function(cell_styles, header_rows) {
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# 1d-ii. Group Header Styling Helpers
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' Identify group header row positions in the finalized data
+#'
+#' Returns a list with `$all` (all header rows) and `$by_level` (named list
+#' mapping level names to row positions). Works for both label-group and
+#' leaf-hierarchy paths.
+#'
+#' @param spec The spec after header injection.
+#' @param gl_header_rows Integer vector from `inject_group_headers()$header_rows`.
+#'   May be `integer(0)` if no label-group injection occurred.
+#' @return List with `all` (integer) and `by_level` (named list of integer).
+#' @noRd
+identify_group_header_rows <- function(spec, gl_header_rows) {
+  all_rows <- integer(0)
+  by_level <- list()
+
+  # Path 1: label groups — headers injected by inject_group_headers()
+  if (length(gl_header_rows) > 0L) {
+    all_rows <- gl_header_rows
+  }
+
+  # Path 2: leaf hierarchies — identified by __row_level__ column
+
+  leaf_col <- spec$body$group_leaf
+  if (!is.null(leaf_col) && "__row_level__" %in% names(spec$data)) {
+    row_levels <- spec$data[["__row_level__"]]
+    non_leaf_mask <- row_levels != leaf_col
+    all_rows <- which(non_leaf_mask)
+
+    # Split by level for per-level targeting
+    unique_levels <- unique(row_levels[non_leaf_mask])
+    for (lvl in unique_levels) {
+      by_level[[lvl]] <- which(row_levels == lvl)
+    }
+  }
+
+  list(all = all_rows, by_level = by_level)
+}
+
+
+#' Build fr_cell_style objects from a group_style specification
+#'
+#' @param group_style Named list (flat or per-level) from `spec$body$group_style`.
+#' @param positions List from `identify_group_header_rows()`.
+#' @return List of `fr_cell_style` objects.
+#' @noRd
+build_group_styles <- function(group_style, positions) {
+  style_keys <- c(
+    "bold", "italic", "underline", "color", "background",
+    "font_size", "align", "valign"
+  )
+
+  is_flat <- all(names(group_style) %in% style_keys)
+
+  if (is_flat) {
+    # Single style for all group header rows
+    return(list(make_row_style_from_list(group_style, positions$all)))
+  }
+
+  # Per-level: each named element targets rows at that level
+  styles <- list()
+  for (lvl in names(group_style)) {
+    rows <- positions$by_level[[lvl]]
+    if (length(rows) > 0L) {
+      styles <- c(styles, list(make_row_style_from_list(group_style[[lvl]], rows)))
+    }
+  }
+  styles
+}
+
+
+#' Create an fr_cell_style (row type) from a named property list
+#' @noRd
+make_row_style_from_list <- function(props, rows) {
+  new_fr_row_style(
+    rows = rows,
+    bold = props$bold,
+    italic = props$italic,
+    underline = props$underline,
+    color = props$color,
+    background = props$background,
+    font_size = props$font_size,
+    align = props$align,
+    valign = props$valign
+  )
+}
+
+
+#' Resolve deferred "group_headers" selectors in cell_styles
+#'
+#' Replaces `rows = "group_headers"` or `rows = "group_headers:<level>"` with
+#' actual integer row positions from `positions`.
+#'
+#' @param cell_styles List of `fr_cell_style` objects.
+#' @param positions List from `identify_group_header_rows()`.
+#' @return Updated list of `fr_cell_style` objects.
+#' @noRd
+resolve_deferred_group_selectors <- function(cell_styles, positions) {
+  for (i in seq_along(cell_styles)) {
+    rows <- cell_styles[[i]]$rows
+    if (!is_group_header_selector(rows)) next
+
+    if (rows == "group_headers") {
+      cell_styles[[i]]$rows <- positions$all
+    } else {
+      # Parse "group_headers:<level>"
+      level <- sub("^group_headers:", "", rows)
+      cell_styles[[i]]$rows <- positions$by_level[[level]] %||% integer(0)
+    }
+  }
+  cell_styles
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # 1e. Blank-After Row Insertion
 #
 # Inserts empty rows into the data frame at group boundaries defined by
