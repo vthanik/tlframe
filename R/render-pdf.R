@@ -80,17 +80,13 @@ fr_install_latex_deps <- function(repository = NULL) {
   has_tlmgr <- nzchar(Sys.which("tlmgr"))
 
   if (!has_xelatex && !has_tinytex_dist) {
-    sys_hint <- switch(
-      Sys.info()[["sysname"]],
-      Linux = "Or install system TeX Live: {.code sudo apt-get install texlive-xetex} (Debian/Ubuntu) or {.code sudo dnf install texlive-xetex} (RHEL/Fedora)",
-      Darwin = "Or install MacTeX: {.url https://tug.org/mactex/}",
-      Windows = "Or install MiKTeX: {.url https://miktex.org/download}",
-      "Or install a TeX distribution (TeX Live, MiKTeX, or MacTeX)"
-    )
     cli_abort(c(
       "No LaTeX distribution found.",
-      "i" = "Install TinyTeX from R: {.code tinytex::install_tinytex()}",
-      "i" = sys_hint
+      "i" = "Install TinyTeX (recommended, works on all platforms):",
+      " " = "{.code install.packages(\"tinytex\")}",
+      " " = "{.code tinytex::install_tinytex()}",
+      " " = "{.code arframe::fr_install_latex_deps()}",
+      "i" = "Or use an existing TeX distribution: TeX Live, MiKTeX, or MacTeX."
     ), call = call)
   }
 
