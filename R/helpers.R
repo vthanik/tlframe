@@ -83,11 +83,19 @@ normalise_text <- function(
 #' @noRd
 
 # S3 generic for row selector resolution.
-# Dispatches on selector class. Default method handles fr_rows_selector.
-# Custom selector classes can implement resolve_rows_selector.<class>()
-# for extensibility (e.g., fr_rows_between, fr_rows_where).
+# Dispatches on selector class for extensibility.
 resolve_rows_selector <- function(selector, ...) {
   UseMethod("resolve_rows_selector")
+}
+
+resolve_rows_selector.default <- function(selector, ...) {
+  cli_abort(
+    c(
+      "Unknown row selector type: {.obj_type_friendly {selector}}.",
+      "i" = "Use {.fn fr_rows_matches} to create a row selector."
+    ),
+    call = caller_env()
+  )
 }
 
 #' @noRd

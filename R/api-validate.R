@@ -81,10 +81,22 @@ fr_validate <- function(x, ...) {
 
 #' @rdname fr_validate
 #' @export
+fr_validate.default <- function(x, ...) {
+  cli_abort(
+    c(
+      "{.arg x} must be an {.cls fr_spec} object.",
+      "x" = "You supplied {.obj_type_friendly {x}}.",
+      "i" = "Create a spec with {.fn fr_table}."
+    ),
+    call = caller_env()
+  )
+}
+
+#' @rdname fr_validate
+#' @export
 fr_validate.fr_spec <- function(x, ..., strict = FALSE) {
   spec <- x
   call <- caller_env()
-  check_fr_spec(spec, call = call)
   check_scalar_lgl(strict, arg = "strict", call = call)
 
   issues <- character(0)

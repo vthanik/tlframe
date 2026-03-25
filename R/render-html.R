@@ -1170,6 +1170,10 @@ html_body_rows <- function(
   dec_geom <- spec$decimal_geometry
   is_decimal_col <- col_names %in% names(dec_geom %||% list())
   row_idx <- orig_rows %||% seq_len(nr)
+  decimal_css <- c(
+    "white-space:pre",
+    "font-family:'Source Code Pro','Courier New',monospace"
+  )
 
   rows <- vector("list", nr)
   for (i in seq_len(nr)) {
@@ -1239,11 +1243,7 @@ html_body_rows <- function(
             fixed = TRUE
           )
           # Decimal-aligned cells: monospace + pre-formatted whitespace
-          style_parts <- c(
-            style_parts,
-            "white-space:pre",
-            "font-family:'Source Code Pro','Courier New',monospace"
-          )
+          style_parts <- c(style_parts, decimal_css)
         } else {
           content <- ""
         }

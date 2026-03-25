@@ -1427,35 +1427,28 @@ fr_env$stat_type_registry <- list(
   )
 )
 
-# Derived lookup vectors from stat_type_registry
-fr_env$stat_type_patterns <- vapply(
-  fr_env$stat_type_registry,
-  `[[`,
-  character(1),
-  "pattern"
-)
+# Helper to rebuild derived stat type vectors from the registry.
+# Called at package load and again after each fr_register_stat_type() call.
+rebuild_stat_type_vectors <- function() {
+  fr_env$stat_type_patterns <- vapply(
+    fr_env$stat_type_registry, `[[`, character(1), "pattern"
+  )
+  fam <- vapply(
+    fr_env$stat_type_registry, `[[`, character(1), "family"
+  )
+  # Exclude types with "missing" family from family vector
+  fr_env$stat_type_family <- fam[!fam %in% "missing"]
+  fr_env$stat_type_richness <- vapply(
+    fr_env$stat_type_registry, `[[`, integer(1), "richness"
+  )
+}
 
-fr_env$stat_type_family <- vapply(
-  fr_env$stat_type_registry,
-  `[[`,
-  character(1),
-  "family"
-)
-# Remove types without a meaningful family (missing)
-fr_env$stat_type_family <- fr_env$stat_type_family[
-  !fr_env$stat_type_family %in% "missing"
-]
+# Build derived vectors at load time (single source of truth)
+rebuild_stat_type_vectors()
 
 # Types excluded from cross-group signature comparison (filler rows present in
 # every group — n_only counts, missing/unknown placeholders)
 fr_env$stat_sig_skip <- c("n_only", "missing", "unknown")
-
-fr_env$stat_type_richness <- vapply(
-  fr_env$stat_type_registry,
-  `[[`,
-  integer(1),
-  "richness"
-)
 
 # Tie-breaker priority across families
 fr_env$stat_family_priority <- c(
@@ -1465,21 +1458,6 @@ fr_env$stat_family_priority <- c(
   count = 2L,
   float = 1L
 )
-
-
-# Helper to rebuild derived stat type vectors from the registry.
-# Called once at package load and again after each fr_register_stat_type() call.
-rebuild_stat_type_vectors <- function() {
-  fr_env$stat_type_patterns <- vapply(
-    fr_env$stat_type_registry, `[[`, character(1), "pattern"
-  )
-  fr_env$stat_type_family <- vapply(
-    fr_env$stat_type_registry, `[[`, character(1), "family"
-  )
-  fr_env$stat_type_richness <- vapply(
-    fr_env$stat_type_registry, `[[`, integer(1), "richness"
-  )
-}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1549,6 +1527,8 @@ fr_register_stat_type <- function(
       call = call
     )
   }
+
+  check_positive_num(richness, arg = "richness", call = call)
 
   # Validate regex compiles
   tryCatch(

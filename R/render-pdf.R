@@ -332,13 +332,6 @@ compile_xelatex_doc <- function(tex_path) {
     }
   }
 
-  # Clean up auxiliary files (.log, .aux, .out, .fls, .fdb_latexmk)
-  # tinytex::xelatex(clean = TRUE) handles this for the tinytex path;
-  # this covers the system2 fallback and any leftover files.
-  aux_exts <- c(".log", ".aux", ".out", ".fls", ".fdb_latexmk")
-  aux_files <- file.path(tex_dir, paste0(base_name, aux_exts))
-  unlink(aux_files[file.exists(aux_files)])
-
   invisible(file.path(tex_dir, paste0(base_name, ".pdf")))
 }
 
@@ -425,10 +418,9 @@ report_latex_failure <- function(
 #' @param base_name File base name (no extension).
 #' @noRd
 cleanup_latex_temps <- function(tex_dir, base_name) {
-  exts <- c(".aux", ".log", ".out", ".toc")
-  for (ext in exts) {
-    unlink(file.path(tex_dir, paste0(base_name, ext)))
-  }
+  exts <- c(".aux", ".log", ".out", ".toc", ".fls", ".fdb_latexmk")
+  aux_files <- file.path(tex_dir, paste0(base_name, exts))
+  unlink(aux_files[file.exists(aux_files)])
 }
 
 

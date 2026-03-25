@@ -2,10 +2,13 @@
 % Please edit documentation in R/api-validate.R
 \name{fr_validate}
 \alias{fr_validate}
+\alias{fr_validate.default}
 \alias{fr_validate.fr_spec}
 \title{Validate a Table Specification Before Rendering}
 \usage{
 fr_validate(x, ...)
+
+\method{fr_validate}{default}(x, ...)
 
 \method{fr_validate}{fr_spec}(x, ..., strict = FALSE)
 }
