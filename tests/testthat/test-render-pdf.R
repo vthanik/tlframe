@@ -52,17 +52,11 @@ test_that("render_pdf cleans up temp files", {
 })
 
 test_that("compile_xelatex_doc errors when XeLaTeX not found (mocked)", {
-  local_mocked_bindings(find_xelatex = function() NULL, .package = "arframe")
-  # Also mock tinytex as unavailable
-  local_mocked_bindings(
-    requireNamespace = function(pkg, ...) {
-      if (pkg == "tinytex") {
-        return(FALSE)
-      }
-      base::requireNamespace(pkg, ...)
-    },
-    .package = "base"
+  skip_if(
+    requireNamespace("tinytex", quietly = TRUE),
+    "Cannot mock requireNamespace when tinytex is installed"
   )
+  local_mocked_bindings(find_xelatex = function() NULL, .package = "arframe")
   tmp_tex <- tempfile(fileext = ".tex")
   on.exit(unlink(tmp_tex), add = TRUE)
   writeLines(
@@ -90,10 +84,18 @@ test_that("fr_latex_deps returns character vector containing tabularray", {
 
 # ── fr_install_latex_deps() ─────────────────────────────────────────────────
 
-test_that("fr_install_latex_deps skips tinytex when unavailable", {
-  # When all packages are already installed, it should succeed
-  # regardless of tinytex availability
+test_that("fr_install_latex_deps succeeds when all packages present", {
+  skip_if(!nzchar(Sys.which("xelatex")), "XeLaTeX not available")
   expect_no_error(fr_install_latex_deps())
+})
+
+test_that("fr_install_latex_deps errors when no TeX found", {
+  skip_if(nzchar(Sys.which("xelatex")), "XeLaTeX available — cannot test no-TeX path")
+  skip_if(
+    requireNamespace("tinytex", quietly = TRUE) && tinytex::is_tinytex(),
+    "TinyTeX available — cannot test no-TeX path"
+  )
+  expect_error(fr_install_latex_deps(), "No LaTeX distribution")
 })
 
 

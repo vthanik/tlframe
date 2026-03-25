@@ -4,48 +4,44 @@
 \alias{fr_install_latex_deps}
 \title{Install Required LaTeX Packages}
 \usage{
-fr_install_latex_deps(
-  timeout = 10L,
-  repository = "https://mirror.ctan.org/systems/texlive/tlnet"
-)
+fr_install_latex_deps(repository = NULL)
 }
 \arguments{
-\item{timeout}{Integer. Maximum seconds to wait for
-\code{\link[tinytex:tlmgr]{tinytex::tlmgr_install()}} before falling back to system \code{tlmgr}.
-Default \code{10L}.}
-
-\item{repository}{Character. CTAN mirror URL for the system \code{tlmgr}
-fallback. Default \code{"https://mirror.ctan.org/systems/texlive/tlnet"}.
-Change this if your network requires a specific mirror.}
+\item{repository}{Character or \code{NULL}. CTAN mirror URL for the system
+\code{tlmgr} fallback (Tier 2). Default \code{NULL} uses
+\code{"https://mirror.ctan.org/systems/texlive/tlnet"}. Set this for
+corporate networks that require a specific mirror.}
 }
 \value{
 Invisible \code{NULL}. Called for its side effect of installing packages.
 }
 \description{
 Proactively installs all LaTeX packages needed by arframe's PDF backend.
-Checks which packages are missing via \code{kpsewhich}, then installs them.
+Checks which packages are missing, then installs them using a three-tier
+strategy:
 }
 \details{
-The installation strategy uses a two-step approach:
 \enumerate{
-\item Try \code{\link[tinytex:tlmgr]{tinytex::tlmgr_install()}} with a timeout (default 10 seconds).
-\item If tinytex times out or fails (common on corporate networks where
-\code{tlmgr} is restricted), fall back to the system \code{tlmgr} with an
-explicit CTAN mirror repository URL.
+\item \strong{TinyTeX} — if \code{\link[tinytex:is_tinytex]{tinytex::is_tinytex()}} is \code{TRUE}, uses
+\code{\link[tinytex:tlmgr]{tinytex::tlmgr_install()}} (user-writable, auto-updates).
+\item \strong{System tlmgr} — if TinyTeX fails or is absent but system \code{tlmgr} is
+on \code{PATH}, calls \verb{tlmgr --repository <mirror> install} directly. This
+handles corporate RHEL/Ubuntu systems with system TeX Live.
+\item \strong{Error} — if no TeX distribution is found, provides install instructions.
 }
+
+Missing packages are detected via \code{\link[tinytex:check_installed]{tinytex::check_installed()}} when
+available, falling back to \code{kpsewhich} on the command line.
 }
 \examples{
 \dontrun{
-# Standard usage (tries tinytex first, falls back to system tlmgr)
+# Standard usage
 fr_install_latex_deps()
 
 # Corporate network with specific mirror
 fr_install_latex_deps(
   repository = "https://ctan.mirror.garr.it/mirrors/ctan/systems/texlive/tlnet"
 )
-
-# Skip tinytex entirely (go straight to system tlmgr)
-fr_install_latex_deps(timeout = 0L)
 }
 
 }

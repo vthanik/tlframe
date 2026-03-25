@@ -35,20 +35,23 @@ fr_latex_deps <- function() {
 #' Install Required LaTeX Packages
 #'
 #' Proactively installs all LaTeX packages needed by arframe's PDF backend.
-#' Checks which packages are missing via `kpsewhich`, then installs them.
+#' Checks which packages are missing, then installs them using a three-tier
+#' strategy:
 #'
-#' The installation strategy uses a two-step approach:
-#' 1. Try [tinytex::tlmgr_install()] with a timeout (default 10 seconds).
-#' 2. If tinytex times out or fails (common on corporate networks where
-#'    `tlmgr` is restricted), fall back to the system `tlmgr` with an
-#'    explicit CTAN mirror repository URL.
+#' 1. **TinyTeX** — if [tinytex::is_tinytex()] is `TRUE`, uses
+#'    [tinytex::tlmgr_install()] (user-writable, auto-updates).
+#' 2. **System tlmgr** — if TinyTeX fails or is absent but system `tlmgr` is
+#'    on `PATH`, calls `tlmgr --repository <mirror> install` directly. This
+#'    handles corporate RHEL/Ubuntu systems with system TeX Live.
+#' 3. **Error** — if no TeX distribution is found, provides install instructions.
 #'
-#' @param timeout Integer. Maximum seconds to wait for
-#'   [tinytex::tlmgr_install()] before falling back to system `tlmgr`.
-#'   Default `10L`.
-#' @param repository Character. CTAN mirror URL for the system `tlmgr`
-#'   fallback. Default `"https://mirror.ctan.org/systems/texlive/tlnet"`.
-#'   Change this if your network requires a specific mirror.
+#' Missing packages are detected via [tinytex::check_installed()] when
+#' available, falling back to `kpsewhich` on the command line.
+#'
+#' @param repository Character or `NULL`. CTAN mirror URL for the system
+#'   `tlmgr` fallback (Tier 2). Default `NULL` uses
+#'   `"https://mirror.ctan.org/systems/texlive/tlnet"`. Set this for
+#'   corporate networks that require a specific mirror.
 #'
 #' @return Invisible `NULL`. Called for its side effect of installing packages.
 #'
@@ -57,139 +60,146 @@ fr_latex_deps <- function() {
 #'
 #' @examples
 #' \dontrun{
-#' # Standard usage (tries tinytex first, falls back to system tlmgr)
+#' # Standard usage
 #' fr_install_latex_deps()
 #'
 #' # Corporate network with specific mirror
 #' fr_install_latex_deps(
 #'   repository = "https://ctan.mirror.garr.it/mirrors/ctan/systems/texlive/tlnet"
 #' )
-#'
-#' # Skip tinytex entirely (go straight to system tlmgr)
-#' fr_install_latex_deps(timeout = 0L)
 #' }
 #'
 #' @export
-fr_install_latex_deps <- function(
-  timeout = 10L,
-  repository = "https://mirror.ctan.org/systems/texlive/tlnet"
-) {
-  pkgs <- fr_env$required_latex_pkgs
-  missing <- find_missing_latex_pkgs(pkgs)
+fr_install_latex_deps <- function(repository = NULL) {
+  call <- caller_env()
 
+  # Detect TeX environment
+  has_tinytex_pkg <- requireNamespace("tinytex", quietly = TRUE)
+  has_tinytex_dist <- has_tinytex_pkg && tinytex::is_tinytex()
+  has_xelatex <- nzchar(Sys.which("xelatex"))
+  has_tlmgr <- nzchar(Sys.which("tlmgr"))
+
+  if (!has_xelatex && !has_tinytex_dist) {
+    cli_abort(c(
+      "No LaTeX distribution found.",
+      "i" = "Install TinyTeX: {.code tinytex::install_tinytex()}",
+      "i" = "Or install system TeX Live: {.code sudo dnf install texlive-xetex}"
+    ), call = call)
+  }
+
+  # Find missing packages
+  missing <- find_missing_latex_pkgs(fr_env$required_latex_pkgs)
   if (length(missing) == 0L) {
     cli_inform(c("v" = "All required LaTeX packages are already installed."))
     return(invisible(NULL))
   }
-
   cli_inform(c("i" = "Missing LaTeX package{?s}: {.val {missing}}."))
 
-  # Try tinytex::tlmgr_install first (with timeout via background process)
-  if (requireNamespace("tinytex", quietly = TRUE) && timeout > 0L) {
-    cli_inform(c("i" = "Trying {.fn tinytex::tlmgr_install} (timeout: {timeout}s)..."))
-    success <- try_tinytex_install(missing, timeout)
-    if (success) {
-      still_missing <- find_missing_latex_pkgs(missing)
-      if (length(still_missing) == 0L) {
-        cli_inform(c("v" = "All packages installed via tinytex."))
-        return(invisible(NULL))
+  # Tier 1: TinyTeX distribution (user-writable tlmgr)
+  if (has_tinytex_dist && has_tinytex_pkg) {
+    cli_inform(c("i" = "Installing via TinyTeX..."))
+    tryCatch(
+      tinytex::tlmgr_install(missing),
+      error = function(e) {
+        cli::cli_warn(c(
+          "!" = "TinyTeX install failed: {conditionMessage(e)}",
+          "i" = "Falling back to system tlmgr."
+        ), call = call)
       }
-      missing <- still_missing
+    )
+    still <- find_missing_latex_pkgs(missing)
+    if (length(still) == 0L) {
+      cli_inform(c("v" = "All packages installed via TinyTeX."))
+      return(invisible(NULL))
     }
-    cli_inform(c(
-      "!" = "tinytex::tlmgr_install timed out or failed.",
-      "i" = "Falling back to system {.code tlmgr}."
-    ))
+    missing <- still
   }
 
-  # Fallback: system tlmgr with explicit repository
-  sys_tlmgr <- Sys.which("tlmgr")
-  if (!nzchar(sys_tlmgr)) {
-    cli_abort(c(
-      "Cannot install LaTeX packages: no {.code tlmgr} found.",
-      "i" = "Install the missing packages manually:",
-      " " = "{.code tlmgr --repository {repository} install {paste(missing, collapse = ' ')}}"
-    ), call = caller_env())
+  # Tier 2: System tlmgr with repository
+  if (has_tlmgr) {
+    repo <- repository %||% "https://mirror.ctan.org/systems/texlive/tlnet"
+    cli_inform(c("i" = "Installing via system tlmgr (repository: {.url {repo}})..."))
+    result <- system2(
+      "tlmgr",
+      c("--repository", repo, "install", missing),
+      stdout = TRUE,
+      stderr = TRUE
+    )
+    exit_code <- attr(result, "status") %||% 0L
+    if (exit_code != 0L) {
+      cli::cli_warn(c(
+        "!" = "System tlmgr returned exit code {exit_code}.",
+        "i" = "Output: {paste(utils::tail(result, 3), collapse = '\\n')}",
+        "i" = "Try manually: {.code tlmgr --repository {repo} install {paste(missing, collapse = ' ')}}"
+      ), call = call)
+    }
+    return(check_and_report(missing, call))
   }
 
-  cli_inform(c("i" = "Installing via system tlmgr: {.val {missing}}."))
-  result <- system2(
-    sys_tlmgr,
-    c("--repository", repository, "install", missing),
-    stdout = TRUE,
-    stderr = TRUE
-  )
-  exit_code <- attr(result, "status") %||% 0L
-
-  if (exit_code != 0L) {
-    cli_abort(c(
-      "System {.code tlmgr install} failed (exit code {exit_code}).",
-      "i" = "Output: {paste(utils::tail(result, 5), collapse = '\\n')}",
-      "i" = "Try manually: {.code tlmgr --repository {repository} install {paste(missing, collapse = ' ')}}"
-    ), call = caller_env())
+  # Tier 3: tinytex R package without TinyTeX dist — try anyway
+  if (has_tinytex_pkg) {
+    cli_inform(c("i" = "Attempting install via tinytex..."))
+    tryCatch(
+      tinytex::tlmgr_install(missing),
+      error = function(e) {
+        cli::cli_warn(c(
+          "!" = "tinytex install failed: {conditionMessage(e)}",
+          "i" = "Install packages manually or set up system TeX Live."
+        ), call = call)
+      }
+    )
+    return(check_and_report(missing, call))
   }
 
-  still_missing <- find_missing_latex_pkgs(missing)
+  cli_abort(c(
+    "Cannot install LaTeX packages: no package manager available.",
+    "i" = "Install {.pkg tinytex}: {.code install.packages('tinytex')}",
+    "i" = "Then: {.code tinytex::install_tinytex()}"
+  ), call = call)
+}
+
+
+#' Check and report on missing packages after an install attempt
+#' @noRd
+check_and_report <- function(pkgs, call) {
+  still_missing <- find_missing_latex_pkgs(pkgs)
   if (length(still_missing) > 0L) {
     cli::cli_warn(c(
       "!" = "Still missing after install: {.val {still_missing}}.",
       "i" = "Try installing manually or check your TeX Live setup."
-    ))
+    ), call = call)
   } else {
-    cli_inform(c("v" = "All packages installed via system tlmgr."))
+    cli_inform(c("v" = "All packages installed successfully."))
   }
-
   invisible(NULL)
 }
 
 
-#' Try tinytex::tlmgr_install with a timeout via a subprocess
+#' Find missing LaTeX packages
 #'
-#' Runs the install in a background R process and waits up to `timeout`
-#' seconds. Returns TRUE on success, FALSE on timeout or error.
-#' @noRd
-try_tinytex_install <- function(pkgs, timeout) {
-  # Build a one-liner R script to run in a subprocess
-  pkg_str <- paste0("'", pkgs, "'", collapse = ", ")
-  script <- sprintf("tinytex::tlmgr_install(c(%s))", pkg_str)
-  rscript <- file.path(R.home("bin"), "Rscript")
-
-  tf <- tempfile(fileext = ".R")
-  writeLines(script, tf)
-  on.exit(unlink(tf), add = TRUE)
-
-  # Run with timeout — system2 doesn't support timeout directly,
-  # so use the system timeout command on Unix
-  if (.Platform$OS.type == "unix") {
-    exit <- tryCatch(
-      system2("timeout", c(timeout, rscript, "--vanilla", tf),
-              stdout = FALSE, stderr = FALSE),
-      error = function(e) 1L
-    )
-  } else {
-    # Windows: no system timeout, run directly and hope it completes
-    exit <- tryCatch(
-      system2(rscript, c("--vanilla", tf),
-              stdout = FALSE, stderr = FALSE, timeout = timeout),
-      error = function(e) 1L
-    )
-  }
-
-  identical(exit, 0L)
-}
-
-
-#' Find missing LaTeX packages by checking for their .sty files
+#' Uses tinytex::check_installed() when available, falls back to kpsewhich.
+#' Returns package names that are NOT installed.
 #' @noRd
 find_missing_latex_pkgs <- function(pkgs) {
+  # Prefer tinytex's check_installed() — works with any TeX distribution
+  if (requireNamespace("tinytex", quietly = TRUE)) {
+    installed <- tryCatch(
+      tinytex::check_installed(pkgs),
+      error = function(e) NULL
+    )
+    if (!is.null(installed)) {
+      return(pkgs[!installed])
+    }
+  }
+
+  # Fallback: kpsewhich
   kpsewhich <- Sys.which("kpsewhich")
   if (!nzchar(kpsewhich)) return(pkgs)
 
   missing <- character(0)
   for (pkg in pkgs) {
-    sty <- paste0(pkg, ".sty")
     found <- tryCatch(
-      system2(kpsewhich, sty, stdout = TRUE, stderr = TRUE),
+      system2(kpsewhich, paste0(pkg, ".sty"), stdout = TRUE, stderr = TRUE),
       error = function(e) ""
     )
     if (length(found) == 0L || !nzchar(found[1L])) {
