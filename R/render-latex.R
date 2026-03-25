@@ -1251,10 +1251,12 @@ latex_cell_style_specs <- function(cell_grid, nr, nc, nrow_header) {
   if (nrow(cell_grid) == 0L) {
     return(character(0))
   }
-  specs <- character(0)
+  n_cells <- nrow(cell_grid)
+  spec_list <- vector("list", n_cells)
+  idx <- 0L
 
-  for (idx in seq_len(nrow(cell_grid))) {
-    g <- cell_grid[idx, ]
+  for (k in seq_len(n_cells)) {
+    g <- cell_grid[k, ]
     parts <- character(0)
 
     if (isTRUE(g$bold)) {
@@ -1275,22 +1277,20 @@ latex_cell_style_specs <- function(cell_grid, nr, nc, nrow_header) {
     if (length(parts) > 0L) {
       # tabularray row index: header rows + body row index
       tblr_row <- nrow_header + g$row_idx
-      specs <- c(
-        specs,
-        paste0(
-          "cell{",
-          tblr_row,
-          "}{",
-          g$col_idx,
-          "} = {",
-          paste0(parts, collapse = ", "),
-          "}"
-        )
+      idx <- idx + 1L
+      spec_list[[idx]] <- paste0(
+        "cell{",
+        tblr_row,
+        "}{",
+        g$col_idx,
+        "} = {",
+        paste0(parts, collapse = ", "),
+        "}"
       )
     }
   }
 
-  specs
+  if (idx == 0L) character(0) else unlist(spec_list[seq_len(idx)])
 }
 
 
@@ -1303,7 +1303,8 @@ latex_header_style_specs <- function(
   columns = NULL,
   header_default_align = NULL
 ) {
-  specs <- character(0)
+  spec_list <- vector("list", nc)
+  idx <- 0L
 
   for (j in seq_len(nc)) {
     g <- hgrid[j, ]
@@ -1332,22 +1333,20 @@ latex_header_style_specs <- function(
     }
 
     if (length(parts) > 0L) {
-      specs <- c(
-        specs,
-        paste0(
-          "cell{",
-          header_row_idx,
-          "}{",
-          j,
-          "} = {",
-          paste0(parts, collapse = ", "),
-          "}"
-        )
+      idx <- idx + 1L
+      spec_list[[idx]] <- paste0(
+        "cell{",
+        header_row_idx,
+        "}{",
+        j,
+        "} = {",
+        paste0(parts, collapse = ", "),
+        "}"
       )
     }
   }
 
-  specs
+  if (idx == 0L) character(0) else unlist(spec_list[seq_len(idx)])
 }
 
 

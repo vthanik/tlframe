@@ -305,8 +305,7 @@ parse_stat_values_batch <- function(values, types) {
       },
 
       est_ci = {
-        m <- stringi::stri_match_first_regex(vals, est_ci_parse_re)
-        m[is.na(m)] <- ""
+        m <- na_to_empty(stringi::stri_match_first_regex(vals, est_ci_parse_re))
         mapply(
           function(es, ei, ed, et, ls, li, ld, lt, hs, hi, hd, ht, raw) {
             list(
@@ -345,8 +344,10 @@ parse_stat_values_batch <- function(values, types) {
       },
 
       est_ci_bracket = {
-        m <- stringi::stri_match_first_regex(vals, est_ci_bracket_parse_re)
-        m[is.na(m)] <- ""
+        m <- na_to_empty(stringi::stri_match_first_regex(
+          vals,
+          est_ci_bracket_parse_re
+        ))
         mapply(
           function(es, ei, ed, et, ls, li, ld, lt, hs, hi, hd, ht, raw) {
             list(
@@ -412,8 +413,10 @@ parse_stat_values_batch <- function(values, types) {
       },
 
       est_ci_pval = {
-        m <- stringi::stri_match_first_regex(vals, est_ci_pval_parse_re)
-        m[is.na(m)] <- ""
+        m <- na_to_empty(stringi::stri_match_first_regex(
+          vals,
+          est_ci_pval_parse_re
+        ))
         mapply(
           function(
             es,
@@ -2272,8 +2275,7 @@ compute_all_decimal_geometry <- function(spec) {
       next
     }
 
-    vals <- as.character(spec$data[[nm]])
-    vals[is.na(vals)] <- ""
+    vals <- na_to_empty(as.character(spec$data[[nm]]))
 
     col_width_twips <- inches_to_twips(col$width)
 

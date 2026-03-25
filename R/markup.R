@@ -540,7 +540,14 @@ eval_markup <- function(text, env = caller_env()) {
   if (!has_fr_markup(text)) {
     return(text)
   }
-  as.character(glue(text, .envir = env, .open = "{", .close = "}"))
+  result <- as.character(glue(text, .envir = env, .open = "{", .close = "}"))
+  # glue can return a vector if the expression produces multiple values;
+
+  # collapse to preserve the scalar contract.
+  if (length(result) != 1L) {
+    result <- paste0(result, collapse = "")
+  }
+  result
 }
 
 

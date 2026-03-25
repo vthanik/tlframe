@@ -6,7 +6,17 @@
 # Validation Helpers (rlang::caller_arg / caller_env)
 # ══════════════════════════════════════════════════════════════════════════════
 
-#' Validate a string is one of allowed values
+#' Validate a string is one of allowed values (case-insensitive)
+#'
+#' Lowercases `x` before matching against `choices`. Always returns the
+#' lowercase form, so callers should store lowercase canonical values.
+#' Returns `choices[[1L]]` when `x` is `NULL` (default selection).
+#'
+#' @param x Character scalar to validate, or `NULL` for default.
+#' @param choices Character vector of valid (lowercase) values.
+#' @param arg Argument name for error messages.
+#' @param call Caller environment for backtrace.
+#' @return Lowercase character scalar matching one of `choices`.
 #' @noRd
 match_arg_fr <- function(x, choices, arg = caller_arg(x), call = caller_env()) {
   if (is.null(x)) {
@@ -303,8 +313,14 @@ validate_group_style <- function(style, call = caller_env()) {
   }
 
   style_keys <- c(
-    "bold", "italic", "underline", "color", "background",
-    "font_size", "align", "valign"
+    "bold",
+    "italic",
+    "underline",
+    "color",
+    "background",
+    "font_size",
+    "align",
+    "valign"
   )
 
   nms <- names(style)
@@ -350,8 +366,14 @@ validate_group_style <- function(style, call = caller_env()) {
 #' @noRd
 validate_style_props <- function(props, arg = "style", call = caller_env()) {
   valid_keys <- c(
-    "bold", "italic", "underline", "color", "background",
-    "font_size", "align", "valign"
+    "bold",
+    "italic",
+    "underline",
+    "color",
+    "background",
+    "font_size",
+    "align",
+    "valign"
   )
   bad <- setdiff(names(props), valid_keys)
   if (length(bad) > 0L) {
@@ -364,7 +386,11 @@ validate_style_props <- function(props, arg = "style", call = caller_env()) {
     )
   }
   if (!is.null(props$color)) {
-    props$color <- resolve_color(props$color, arg = paste0(arg, "$color"), call = call)
+    props$color <- resolve_color(
+      props$color,
+      arg = paste0(arg, "$color"),
+      call = call
+    )
   }
   if (!is.null(props$background)) {
     props$background <- resolve_color(
@@ -374,7 +400,11 @@ validate_style_props <- function(props, arg = "style", call = caller_env()) {
     )
   }
   if (!is.null(props$font_size)) {
-    check_positive_num(props$font_size, arg = paste0(arg, "$font_size"), call = call)
+    check_positive_num(
+      props$font_size,
+      arg = paste0(arg, "$font_size"),
+      call = call
+    )
   }
   if (!is.null(props$align)) {
     props$align <- match_arg_fr(

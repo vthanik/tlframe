@@ -28,6 +28,25 @@ arframe_error <- function(message, ..., class = NULL, call = caller_env()) {
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# 1b. NA-to-Empty Utility
+#
+# Replaces NA values with empty strings. Works on both character vectors
+# and matrices (e.g., from stri_match_first_regex). Centralises the
+# x[is.na(x)] <- "" idiom for single-point maintenance.
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' Replace NA values with empty strings
+#'
+#' @param x Character vector or matrix.
+#' @return `x` with all `NA` elements replaced by `""`.
+#' @noRd
+na_to_empty <- function(x) {
+  x[is.na(x)] <- ""
+  x
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # 2. Text Normalisation
 #
 # All text inputs (titles, footnotes, labels, cell data) pass through
@@ -135,11 +154,14 @@ resolve_rows_selector.fr_rows_selector <- function(
     } else {
       paste0("value ", selector$value)
     }
-    cli::cli_warn(c(
-      "{.fn fr_rows_matches}: no rows matched in column {.val {col}}.",
-      "i" = "Selector: {pattern_desc}.",
-      "i" = "Styles targeting these rows will have no effect."
-    ), call = caller_env())
+    cli::cli_warn(
+      c(
+        "{.fn fr_rows_matches}: no rows matched in column {.val {col}}.",
+        "i" = "Selector: {pattern_desc}.",
+        "i" = "Styles targeting these rows will have no effect."
+      ),
+      call = caller_env()
+    )
   }
 
   as.integer(matched)

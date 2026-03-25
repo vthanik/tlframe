@@ -208,7 +208,7 @@ compute_col_width <- function(data, col_name, label, page) {
       "i" = "Column {.val {col_name}} is all NA -- width estimated from label only (min 0.5in)."
     ))
   } else {
-    col_values[is.na(col_values)] <- ""
+    col_values <- na_to_empty(col_values)
     col_values <- unique(col_values)
     max_content_twips <- max(measure_text_width_twips(
       col_values,
@@ -296,11 +296,14 @@ scale_auto_columns <- function(columns, auto_names, remaining) {
   ))
   if (auto_total <= 0 || remaining <= 0) {
     if (auto_total <= 0) {
-      cli::cli_warn(c(
-        "Auto-width columns have zero estimated width.",
-        "i" = "Columns {.val {auto_names}} may render with no visible width.",
-        "i" = "Set explicit widths via {.fn fr_cols} if needed."
-      ), call = caller_env())
+      cli::cli_warn(
+        c(
+          "Auto-width columns have zero estimated width.",
+          "i" = "Columns {.val {auto_names}} may render with no visible width.",
+          "i" = "Set explicit widths via {.fn fr_cols} if needed."
+        ),
+        call = caller_env()
+      )
     }
     return(columns)
   }

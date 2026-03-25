@@ -346,3 +346,51 @@ test_that("rows=page_by without page_by config is silently stored", {
     fr_styles(fr_row_style(rows = "page_by", bold = TRUE))
   expect_length(spec$page_by_styles, 1L)
 })
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# fr_register_stat_type()
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("fr_register_stat_type adds custom type to registry", {
+  # Register a custom type
+  fr_register_stat_type(
+    name = "test_ratio_ci",
+    pattern = "^-?\\d+\\.?\\d*\\s*\\(-?\\d+\\.?\\d*,\\s*-?\\d+\\.?\\d*\\)$",
+    family = "compound",
+    richness = 4L
+  )
+  on.exit({
+    # Clean up: remove custom type
+    fr_env$stat_type_registry[["test_ratio_ci"]] <- NULL
+    rebuild_stat_type_vectors()
+  }, add = TRUE)
+
+  expect_true("test_ratio_ci" %in% names(fr_env$stat_type_registry))
+  expect_equal(fr_env$stat_type_patterns[["test_ratio_ci"]],
+    "^-?\\d+\\.?\\d*\\s*\\(-?\\d+\\.?\\d*,\\s*-?\\d+\\.?\\d*\\)$")
+})
+
+
+test_that("fr_register_stat_type rejects duplicate names", {
+  expect_error(
+    fr_register_stat_type(name = "scalar_float", pattern = "^\\d+$"),
+    "already exists"
+  )
+})
+
+
+test_that("fr_register_stat_type validates richness", {
+  expect_error(
+    fr_register_stat_type(name = "test_bad", pattern = "^x$", richness = -1),
+    "positive"
+  )
+})
+
+
+test_that("fr_register_stat_type validates regex", {
+  expect_error(
+    fr_register_stat_type(name = "test_bad_re", pattern = "[invalid"),
+    "regex"
+  )
+})

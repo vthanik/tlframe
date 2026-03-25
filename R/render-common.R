@@ -96,8 +96,7 @@ build_cell_grid <- function(data, columns, cell_styles, page) {
   grid$content <- unlist(
     lapply(col_names, function(nm) {
       x <- as.character(data[[nm]])
-      x[is.na(x)] <- ""
-      x
+      na_to_empty(x)
     }),
     use.names = FALSE
   )
@@ -184,12 +183,15 @@ resolve_style_mask <- function(style, grid, col_names) {
   } else if (is.numeric(style$cols)) {
     col_mask <- grid$col_idx %in% style$cols
   } else {
-    cli::cli_warn(c(
-      "Malformed {.arg cols} selector in style definition.",
-      "x" = "{.arg cols} has unexpected type {.obj_type_friendly {style$cols}}.",
-      "i" = "Expected {.cls character}, {.cls numeric}, {.val all}, or {.val NULL}.",
-      "i" = "Falling back to targeting all columns."
-    ), call = caller_env())
+    cli::cli_warn(
+      c(
+        "Malformed {.arg cols} selector in style definition.",
+        "x" = "{.arg cols} has unexpected type {.obj_type_friendly {style$cols}}.",
+        "i" = "Expected {.cls character}, {.cls numeric}, {.val all}, or {.val NULL}.",
+        "i" = "Falling back to targeting all columns."
+      ),
+      call = caller_env()
+    )
     col_mask <- rep(TRUE, nrow(grid))
   }
 
@@ -568,8 +570,14 @@ identify_group_header_rows <- function(spec, gl_header_rows) {
 #' @noRd
 build_group_styles <- function(group_style, positions) {
   style_keys <- c(
-    "bold", "italic", "underline", "color", "background",
-    "font_size", "align", "valign"
+    "bold",
+    "italic",
+    "underline",
+    "color",
+    "background",
+    "font_size",
+    "align",
+    "valign"
   )
 
   is_flat <- all(names(group_style) %in% style_keys)
@@ -584,7 +592,10 @@ build_group_styles <- function(group_style, positions) {
   for (lvl in names(group_style)) {
     rows <- positions$by_level[[lvl]]
     if (length(rows) > 0L) {
-      styles <- c(styles, list(make_row_style_from_list(group_style[[lvl]], rows)))
+      styles <- c(
+        styles,
+        list(make_row_style_from_list(group_style[[lvl]], rows))
+      )
     }
   }
   styles
@@ -620,7 +631,9 @@ make_row_style_from_list <- function(props, rows) {
 resolve_deferred_group_selectors <- function(cell_styles, positions) {
   for (i in seq_along(cell_styles)) {
     rows <- cell_styles[[i]]$rows
-    if (!is_group_header_selector(rows)) next
+    if (!is_group_header_selector(rows)) {
+      next
+    }
 
     if (rows == "group_headers") {
       cell_styles[[i]]$rows <- positions$all
@@ -644,8 +657,13 @@ resolve_deferred_group_selectors <- function(cell_styles, positions) {
 #' @noRd
 resolve_page_by_style <- function(styles) {
   result <- list(
-    bold = NULL, italic = NULL, underline = NULL,
-    color = NULL, background = NULL, font_size = NULL, align = NULL
+    bold = NULL,
+    italic = NULL,
+    underline = NULL,
+    color = NULL,
+    background = NULL,
+    font_size = NULL,
+    align = NULL
   )
   for (s in styles) {
     for (prop in names(result)) {
@@ -664,10 +682,18 @@ resolve_page_by_style <- function(styles) {
 build_page_by_inline_css <- function(styles) {
   s <- resolve_page_by_style(styles)
   props <- character(0)
-  if (isTRUE(s$bold)) props <- c(props, "font-weight: bold")
-  if (isTRUE(s$italic)) props <- c(props, "font-style: italic")
-  if (isTRUE(s$underline)) props <- c(props, "text-decoration: underline")
-  if (!is.null(s$color)) props <- c(props, paste0("color: ", s$color))
+  if (isTRUE(s$bold)) {
+    props <- c(props, "font-weight: bold")
+  }
+  if (isTRUE(s$italic)) {
+    props <- c(props, "font-style: italic")
+  }
+  if (isTRUE(s$underline)) {
+    props <- c(props, "text-decoration: underline")
+  }
+  if (!is.null(s$color)) {
+    props <- c(props, paste0("color: ", s$color))
+  }
   if (!is.null(s$background)) {
     props <- c(props, paste0("background-color: ", s$background))
   }
@@ -677,7 +703,9 @@ build_page_by_inline_css <- function(styles) {
   if (!is.null(s$align)) {
     props <- c(props, paste0("text-align: ", s$align))
   }
-  if (length(props) == 0L) return("")
+  if (length(props) == 0L) {
+    return("")
+  }
   paste0(" style=\"", paste0(props, collapse = "; "), "\"")
 }
 
@@ -1139,8 +1167,7 @@ apply_leading_indent <- function(spec) {
       next
     }
 
-    vals <- as.character(spec$data[[nm]])
-    vals[is.na(vals)] <- ""
+    vals <- na_to_empty(as.character(spec$data[[nm]]))
     # Cache stripped result to avoid double regex
     stripped <- sub("^ +", "", vals)
     n_lead <- nchar(vals) - nchar(stripped)
@@ -1584,27 +1611,33 @@ escape_and_resolve <- function(text, escape_fn, resolver_fn) {
   sentinels <- regmatches(text, m)[[1L]]
   non_sentinels <- regmatches(text, m, invert = TRUE)[[1L]]
 
-  parts <- character(0)
+  # Collect parts in a list (O(n)) instead of growing a vector (O(n²))
+  n_parts <- length(non_sentinels) + length(sentinels)
+  parts <- vector("list", n_parts)
+  idx <- 0L
   for (i in seq_along(non_sentinels)) {
     if (nzchar(non_sentinels[i])) {
-      parts <- c(parts, escape_fn(non_sentinels[i]))
+      idx <- idx + 1L
+      parts[[idx]] <- escape_fn(non_sentinels[i])
     }
     if (i <= length(sentinels)) {
       tok_parts <- regmatches(
         sentinels[i],
         regexec(pattern, sentinels[i], perl = TRUE)
       )[[1L]]
+      idx <- idx + 1L
       if (length(tok_parts) >= 3L) {
-        resolved <- resolver_fn(tok_parts[[2L]], tok_parts[[3L]])
-        parts <- c(parts, resolved)
+        parts[[idx]] <- resolver_fn(tok_parts[[2L]], tok_parts[[3L]])
       } else {
-        # Malformed sentinel: pass through unresolved
-        parts <- c(parts, escape_fn(sentinels[i]))
+        cli::cli_warn(
+          "Malformed sentinel token encountered and escaped: {.val {sentinels[i]}}."
+        )
+        parts[[idx]] <- escape_fn(sentinels[i])
       }
     }
   }
 
-  paste0(parts, collapse = "")
+  paste0(unlist(parts[seq_len(idx)]), collapse = "")
 }
 
 

@@ -1165,8 +1165,10 @@ new_fr_spec <- function(
 #' @export
 print.fr_spec <- function(x, ..., compact = FALSE) {
   # Auto-preview in Viewer panel (RStudio, Positron, or any IDE with viewer)
+  # Skip viewer when running inside testthat to ensure text output is captured
+  in_testthat <- identical(Sys.getenv("TESTTHAT"), "true")
   viewer <- getOption("viewer")
-  if (interactive() && !is.null(viewer)) {
+  if (interactive() && !is.null(viewer) && !in_testthat) {
     tryCatch(
       {
         tmp <- tempfile(fileext = ".html")
@@ -1181,10 +1183,13 @@ print.fr_spec <- function(x, ..., compact = FALSE) {
         }
       },
       error = function(e) {
-        cli::cli_warn(c(
-          "!" = "HTML preview failed.",
-          "i" = conditionMessage(e)
-        ), call = caller_env())
+        cli::cli_warn(
+          c(
+            "!" = "HTML preview failed.",
+            "i" = conditionMessage(e)
+          ),
+          call = caller_env()
+        )
         NULL
       }
     )
@@ -1424,7 +1429,11 @@ format.fr_spec <- function(x, ...) {
   n_titles <- length(x$meta$titles)
   sprintf(
     "<fr_spec> %s: %d rows x %d cols, %d style(s), %d title(s)",
-    type, nr, nc, n_styles, n_titles
+    type,
+    nr,
+    nc,
+    n_styles,
+    n_titles
   )
 }
 

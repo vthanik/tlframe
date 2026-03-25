@@ -60,10 +60,13 @@ normalize_ard_num <- function(col) {
           tryCatch(
             as.numeric(s[[1L]]),
             warning = function(w) {
-              cli_warn(c(
-                "Non-numeric value in ARD stat column.",
-                "i" = "Value {.val {s[[1L]]}} coerced to {.val NA}."
-              ), call = caller_env())
+              cli_warn(
+                c(
+                  "Non-numeric value in ARD stat column.",
+                  "i" = "Value {.val {s[[1L]]}} coerced to {.val NA}."
+                ),
+                call = caller_env()
+              )
               NA_real_
             },
             error = function(e) NA_real_
@@ -746,7 +749,7 @@ fr_wide_ard <- function(
   # Replace NA cells with empty string
   for (a in arm_levels) {
     if (a %in% names(wide)) {
-      wide[[a]][is.na(wide[[a]])] <- ""
+      wide[[a]] <- na_to_empty(wide[[a]])
     }
   }
 
