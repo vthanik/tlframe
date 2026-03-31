@@ -738,7 +738,7 @@ fr_wide_ard <- function(
 
   # ── Handle hierarchical vs flat output ──────────────────────────────────
   if (hierarchy$is_hierarchical) {
-    wide <- build_hierarchical_wide(df, statistic, hierarchy, call)
+    wide <- build_hierarchical_wide(df, statistic, hierarchy, column, call)
   } else {
     wide <- build_flat_wide(df, statistic, extra_group_cols, call)
   }
@@ -930,173 +930,190 @@ build_flat_wide <- function(
 # ══════════════════════════════════════════════════════════════════════════════
 
 #' @noRd
-build_hierarchical_wide <- function(df, statistic, hierarchy, call) {
+build_hierarchical_wide <- function(df, statistic, hierarchy, column, call) {
   arm_levels <- unique(df$arm[!is.na(df$arm)])
-  soc_col <- hierarchy$soc_col
-  pt_col <- hierarchy$pt_col
+  hier_vars <- hierarchy$hier_vars
+  n_levels <- hierarchy$n_levels
 
-  # Extract SOC-level values (handles both list and atomic)
-  if (soc_col %in% names(df)) {
-    df$soc_val <- normalize_ard_chr(df[[soc_col]])
-    # For overall PT rows (arm = NA), group2 is absent but the SOC value
-    # lives in group1_level. Fill in missing soc_val from group1_level.
-    if ("group1_level" %in% names(df)) {
-      g1_val <- normalize_ard_chr(df$group1_level)
-      missing_soc <- is.na(df$soc_val) & !is.na(g1_val)
-      df$soc_val[missing_soc] <- g1_val[missing_soc]
-    }
-  } else {
-    df$soc_val <- NA_character_
+  # Backward compat: if hier_vars is empty, use soc_var/pt_var
+
+  if (length(hier_vars) == 0L) {
+    hier_vars <- c(hierarchy$soc_var, hierarchy$pt_var)
+    hier_vars <- unique(hier_vars[!is.na(hier_vars)])
+    n_levels <- length(hier_vars)
   }
 
-  soc_var <- hierarchy$soc_var
-  pt_var <- hierarchy$pt_var
+  # Normalize group level columns into _gN_val scratch columns for parent lookup
+  gval_col <- function(g) paste0("_g", g, "_val")
+  max_g <- 1L
+  while (paste0("group", max_g + 1L, "_level") %in% names(df)) {
+    g <- max_g + 1L
+    df[[gval_col(g)]] <- normalize_ard_chr(df[[paste0("group", g, "_level")]])
+    max_g <- g
+  }
+  if ("group1_level" %in% names(df)) {
+    df[[gval_col(1L)]] <- normalize_ard_chr(df$group1_level)
+  }
+
+  # Fix overall rows: cards removes the by-variable from group columns when
+  # overall=TRUE, shifting hierarchy groups left by one position. Per-arm PT
+  # rows have group2_level=SOC_val, but overall PT rows have group1_level=SOC_val.
+  # Shift _g values right so parent filters work consistently.
+  if (!is.null(column) && gval_col(1L) %in% names(df) && "group1" %in% names(df)) {
+    g1_names <- normalize_ard_chr(df$group1)
+    is_shifted <- !is.na(g1_names) & g1_names != column &
+      g1_names %in% hier_vars
+    if (any(is_shifted)) {
+      # Pre-create all destination columns
+      needed <- gval_col(seq(2L, max_g + 1L))
+      for (nc in setdiff(needed, names(df))) df[[nc]] <- NA_character_
+      # Shift right: _gN → _g(N+1), working right to left
+      for (g in seq(max_g, 1L, -1L)) {
+        df[[gval_col(g + 1L)]][is_shifted] <- df[[gval_col(g)]][is_shifted]
+      }
+      df[[gval_col(1L)]][is_shifted] <- NA_character_
+    }
+  }
+
+  # Resolve format strings per hierarchy variable
+  fmt_strs <- list()
+  for (hv in hier_vars) {
+    hv_df <- df[df$variable == hv, , drop = FALSE]
+    if (nrow(hv_df) == 0L) next
+    fs <- resolve_ard_statistic(hv, "categorical", statistic)
+    if (is_multirow_spec(fs)) fs <- fs[[1L]]
+    validate_format_stats(fs, unique(hv_df$stat_name), hv, call)
+    fmt_strs[[hv]] <- fs
+  }
 
   result_rows <- list()
   idx <- 0L
 
-  # ── Process ..ard_hierarchical_overall.. sentinel FIRST ──────────────────
-  overall_df <- df[
-    df$variable == "..ard_hierarchical_overall..",
-    ,
-    drop = FALSE
-  ]
+  # Meta column names for output: soc, pt for 2-level (backward compat)
+  # For N>2: soc, hlt, pt (3-level), soc, hlgt, hlt, pt (4-level), etc.
+  if (n_levels <= 2L) {
+    out_cols <- c("soc", "pt")[seq_len(n_levels)]
+  } else {
+    # First = soc, last = pt, middle = l2, l3, ...
+    out_cols <- c("soc", paste0("l", seq(2L, n_levels - 1L)), "pt")
+  }
+
+  # Helper: make a row data.frame with hierarchy columns filled
+  make_row <- function(level_vals, row_type, arm_val, cell) {
+    row <- as.list(stats::setNames(
+      rep(NA_character_, n_levels), out_cols
+    ))
+    for (i in seq_along(level_vals)) {
+      if (i <= n_levels) row[[out_cols[i]]] <- level_vals[i]
+    }
+    row$row_type <- row_type
+    row$arm <- arm_val
+    row$cell_text <- cell
+    as.data.frame(row, stringsAsFactors = FALSE)
+  }
+
+  # ── Process ..ard_hierarchical_overall.. sentinel FIRST ──
+  overall_df <- df[df$variable == "..ard_hierarchical_overall..", , drop = FALSE]
   if (nrow(overall_df) > 0L) {
     fmt_str <- resolve_ard_statistic(
-      "..ard_hierarchical_overall..",
-      "categorical",
-      statistic
+      "..ard_hierarchical_overall..", "categorical", statistic
     )
-    if (is_multirow_spec(fmt_str)) {
-      fmt_str <- fmt_str[[1L]]
-    }
+    if (is_multirow_spec(fmt_str)) fmt_str <- fmt_str[[1L]]
     validate_format_stats(
-      fmt_str,
-      unique(overall_df$stat_name),
-      "..ard_hierarchical_overall..",
-      call
+      fmt_str, unique(overall_df$stat_name),
+      "..ard_hierarchical_overall..", call
     )
-
+    sentinel <- "..ard_hierarchical_overall.."
     for (arm_val in arm_levels) {
       cell <- interpolate_stats(overall_df, arm_val, fmt_str)
       idx <- idx + 1L
-      result_rows[[idx]] <- data.frame(
-        soc = "..ard_hierarchical_overall..",
-        pt = "..ard_hierarchical_overall..",
-        row_type = "overall",
-        arm = arm_val,
-        cell_text = cell,
-        stringsAsFactors = FALSE
+      result_rows[[idx]] <- make_row(
+        rep(sentinel, n_levels), "overall", arm_val, cell
       )
     }
   }
 
-  # ── Process SOC/PT rows ────────────────────────────────────────────────
-  soc_df <- df[df$variable == soc_var, , drop = FALSE]
-  soc_levels <- unique(soc_df$var_level[!is.na(soc_df$var_level)])
-  pt_df <- df[df$variable == pt_var, , drop = FALSE]
+  # ── Process hierarchy levels recursively ──
+  # Pre-split df by variable for O(1) lookups in recursion
+  df_by_var <- split(df, df$variable)
 
-  # Resolve and validate format strings once (invariant across SOC levels)
-  fmt_str <- resolve_ard_statistic(soc_var, "categorical", statistic)
-  if (is_multirow_spec(fmt_str)) {
-    fmt_str <- fmt_str[[1L]]
-  }
-  validate_format_stats(
-    fmt_str,
-    unique(soc_df$stat_name),
-    soc_var,
-    call
-  )
+  process_level <- function(level, parent_filters) {
+    hv <- hier_vars[level]
+    if (is.null(fmt_strs[[hv]])) return()
+    lv_df <- df_by_var[[hv]]
+    if (is.null(lv_df) || nrow(lv_df) == 0L) return()
 
-  fmt_str_pt <- resolve_ard_statistic(pt_var, "categorical", statistic)
-  if (is_multirow_spec(fmt_str_pt)) {
-    fmt_str_pt <- fmt_str_pt[[1L]]
-  }
-  validate_format_stats(
-    fmt_str_pt,
-    unique(pt_df$stat_name),
-    pt_var,
-    call
-  )
-
-  for (soc in soc_levels) {
-    soc_subset <- soc_df[
-      !is.na(soc_df$var_level) & soc_df$var_level == soc,
-      ,
-      drop = FALSE
-    ]
-
-    for (arm_val in arm_levels) {
-      cell <- interpolate_stats(soc_subset, arm_val, fmt_str)
-      idx <- idx + 1L
-      result_rows[[idx]] <- data.frame(
-        soc = soc,
-        pt = soc,
-        row_type = "soc",
-        arm = arm_val,
-        cell_text = cell,
-        stringsAsFactors = FALSE
-      )
+    for (pf in parent_filters) {
+      col <- pf$col
+      val <- pf$val
+      if (col %in% names(lv_df)) {
+        lv_df <- lv_df[!is.na(lv_df[[col]]) & lv_df[[col]] == val, , drop = FALSE]
+      }
     }
 
-    # PT rows under this SOC
-    if (!is.null(soc_col) && soc_col %in% names(pt_df)) {
-      pt_under_soc <- pt_df[
-        !is.na(pt_df$soc_val) & pt_df$soc_val == soc,
-        ,
-        drop = FALSE
-      ]
-    } else {
-      pt_under_soc <- pt_df
-    }
+    lv_levels <- unique(lv_df$var_level[!is.na(lv_df$var_level)])
 
-    pt_levels <- unique(pt_under_soc$var_level[!is.na(pt_under_soc$var_level)])
-
-    for (pt in pt_levels) {
-      pt_subset <- pt_under_soc[
-        !is.na(pt_under_soc$var_level) & pt_under_soc$var_level == pt,
-        ,
-        drop = FALSE
+    for (lv_val in lv_levels) {
+      lv_subset <- lv_df[
+        !is.na(lv_df$var_level) & lv_df$var_level == lv_val, , drop = FALSE
       ]
+
+      ancestors <- vapply(parent_filters, function(pf) pf$val, character(1))
+      level_vals <- c(ancestors, lv_val)
+      while (length(level_vals) < n_levels) {
+        level_vals <- c(level_vals, lv_val)
+      }
+
+      rtype <- if (n_levels <= 2L && level == 1L) {
+        "soc"
+      } else if (n_levels <= 2L && level == 2L) {
+        "pt"
+      } else {
+        tolower(hv)
+      }
+
       for (arm_val in arm_levels) {
-        cell <- interpolate_stats(pt_subset, arm_val, fmt_str_pt)
-        idx <- idx + 1L
-        result_rows[[idx]] <- data.frame(
-          soc = soc,
-          pt = pt,
-          row_type = "pt",
-          arm = arm_val,
-          cell_text = cell,
-          stringsAsFactors = FALSE
-        )
+        cell <- interpolate_stats(lv_subset, arm_val, fmt_strs[[hv]])
+        idx <<- idx + 1L
+        result_rows[[idx]] <<- make_row(level_vals, rtype, arm_val, cell)
+      }
+
+      if (level < n_levels) {
+        # cards puts: group2=L1, group3=L2, etc. — child of level N
+        # looks for _g(N+1)_val matching the current level's value
+        new_filters <- c(parent_filters, list(list(
+          col = gval_col(level + 1L), val = lv_val
+        )))
+        process_level(level + 1L, new_filters)
       }
     }
   }
 
+  process_level(1L, list())
+
   if (idx == 0L) {
-    return(data.frame(
-      soc = character(0L),
-      pt = character(0L),
-      row_type = character(0L),
+    empty <- as.data.frame(
+      stats::setNames(
+        replicate(n_levels, character(0L), simplify = FALSE),
+        out_cols
+      ),
       stringsAsFactors = FALSE
-    ))
+    )
+    empty$row_type <- character(0L)
+    return(empty)
   }
 
   long_df <- do.call(rbind, result_rows[seq_len(idx)])
 
   # Build row key for pivoting
-  long_df$row_key <- paste(
-    long_df$soc,
-    long_df$pt,
-    long_df$row_type,
-    sep = "\x1f"
-  )
+  meta_cols <- c(out_cols, "row_type")
+  long_df$row_key <- do.call(paste, c(long_df[meta_cols], list(sep = "\x1f")))
 
-  # Pivot: one row per unique (soc, pt, row_type)
+  # Pivot: one row per unique key
   row_keys <- unique(long_df$row_key)
   wide <- long_df[
     match(row_keys, long_df$row_key),
-    c("soc", "pt", "row_type"),
+    meta_cols,
     drop = FALSE
   ]
 
@@ -1122,7 +1139,10 @@ detect_ard_hierarchy <- function(df) {
     pt_col = NULL,
     soc_var = NULL,
     pt_var = NULL,
-    column_group = "group1"
+    column_group = "group1",
+    # N-level hierarchy support
+    n_levels = 0L,
+    hier_vars = character(0)
   )
 
   if (!all(c("group1", "variable") %in% names(df))) {
@@ -1132,12 +1152,10 @@ detect_ard_hierarchy <- function(df) {
   has_group2 <- "group2" %in% names(df) && "group2_level" %in% names(df)
 
   if (has_group2) {
-    group2_vals <- unique(normalize_ard_chr(df$group2)[
-      !is.na(normalize_ard_chr(df$group2))
-    ])
-    group1_vals <- unique(normalize_ard_chr(df$group1)[
-      !is.na(normalize_ard_chr(df$group1))
-    ])
+    g2_norm <- normalize_ard_chr(df$group2)
+    group2_vals <- unique(g2_norm[!is.na(g2_norm)])
+    g1_norm <- normalize_ard_chr(df$group1)
+    group1_vals <- unique(g1_norm[!is.na(g1_norm)])
     var_vals <- unique(df$variable)
 
     if (length(group2_vals) > 0L && length(var_vals) > 0L) {
@@ -1146,22 +1164,62 @@ detect_ard_hierarchy <- function(df) {
       # appear as a variable.
       if (all(group2_vals %in% var_vals)) {
         result$is_hierarchical <- TRUE
-        result$soc_col <- "group2_level"
-        result$soc_var <- group2_vals[[1L]]
-        result$pt_var <- setdiff(
-          var_vals,
-          c(
-            group2_vals,
-            group1_vals,
-            "..ard_hierarchical_overall.."
-          )
-        )
-        if (length(result$pt_var) > 0L) {
-          result$pt_var <- result$pt_var[[1L]]
-        } else {
-          result$pt_var <- var_vals[[1L]]
-        }
         result$column_group <- "group1"
+
+        # Detect all hierarchy variables in order (L1 = shallowest, LN = deepest)
+        # Strategy: for each variable, count how many group columns are non-NA
+        # when that variable appears. More groups = deeper in hierarchy.
+        # Root variable (L1) has NO parent group columns.
+        max_group <- 2L
+        while (paste0("group", max_group + 1L) %in% names(df)) {
+          max_group <- max_group + 1L
+        }
+
+        # Collect all hierarchy variable names (appear as variable AND in groups)
+        all_group_vals <- character(0)
+        for (g in 2:max_group) {
+          gcol <- paste0("group", g)
+          if (gcol %in% names(df)) {
+            g_norm <- normalize_ard_chr(df[[gcol]])
+            gvals <- unique(g_norm[!is.na(g_norm)])
+            all_group_vals <- c(all_group_vals, intersect(gvals, var_vals))
+          }
+        }
+
+        # Leaf = variable that never appears as a group value
+        leaf_vars <- setdiff(
+          var_vals,
+          c(all_group_vals, group1_vals, "..ard_hierarchical_overall..")
+        )
+
+        # Order by depth: count parent groups per variable
+        hier_candidates <- unique(c(all_group_vals, leaf_vars))
+        depth <- vapply(hier_candidates, function(hv) {
+          hv_rows <- df[df$variable == hv, , drop = FALSE]
+          if (nrow(hv_rows) == 0L) return(0L)
+          # Count non-NA group columns (group2, group3, ...) that hold var names
+          n_parents <- 0L
+          for (g in 2:max_group) {
+            gcol <- paste0("group", g)
+            if (gcol %in% names(hv_rows)) {
+              gv <- normalize_ard_chr(hv_rows[[gcol]])
+              if (any(!is.na(gv) & gv %in% hier_candidates)) {
+                n_parents <- n_parents + 1L
+              }
+            }
+          }
+          n_parents
+        }, integer(1))
+
+        all_hier_vars <- hier_candidates[order(depth)]
+
+        result$hier_vars <- all_hier_vars
+        result$n_levels <- length(all_hier_vars)
+
+        # Backward compat: soc_var = first, pt_var = last
+        result$soc_col <- "group2_level"
+        result$soc_var <- all_hier_vars[[1L]]
+        result$pt_var <- all_hier_vars[[length(all_hier_vars)]]
       }
     }
   }

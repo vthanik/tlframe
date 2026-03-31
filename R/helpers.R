@@ -107,6 +107,7 @@ resolve_rows_selector <- function(selector, ...) {
   UseMethod("resolve_rows_selector")
 }
 
+#' @exportS3Method
 resolve_rows_selector.default <- function(selector, ...) {
   cli_abort(
     c(
