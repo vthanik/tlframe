@@ -828,6 +828,7 @@ compute_stat_widths <- function(parsed_values, dominant_type) {
       list(
         w_sign_int = w_sign_int,
         w_dec = w_dec,
+        has_dec = TRUE,
         full_width = w_sign_int + 1L + w_dec
       )
     },
