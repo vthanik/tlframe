@@ -389,8 +389,10 @@ test_that("fr_register_stat_type validates richness", {
 
 
 test_that("fr_register_stat_type validates regex", {
-  expect_error(
-    fr_register_stat_type(name = "test_bad_re", pattern = "[invalid"),
-    "regex"
+  suppressWarnings(
+    expect_error(
+      fr_register_stat_type(name = "test_bad_re", pattern = "[invalid"),
+      "regex"
+    )
   )
 })

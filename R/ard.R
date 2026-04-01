@@ -1301,19 +1301,30 @@ is_multirow_spec <- function(fmt_spec) {
 # Internal: interpolate stats into a format string for a given arm
 # ══════════════════════════════════════════════════════════════════════════════
 
-#' Interpolate stats for a single arm value
+#' Interpolate a single arm's stat values into a format string.
+#'
+#' Shared workhorse for both `interpolate_stats()` (single arm) and
+#' `interpolate_stats_all()` (vectorised over arms). Handles zero suppression,
+#' fast-path glue interpolation, and tryCatch fallback.
+#'
+#' @param stat_vec Named character vector of formatted stat values.
+#' @param fmt_str Glue format string (e.g. `"{n} ({pct}%)"``).
+#' @param refs Character vector of pre-parsed glue references
+#'   (from `parse_glue_refs()`).
+#' @param arm_label Arm value used in warning messages on interpolation failure.
+#' @param pct_zero Logical — if `FALSE` and n equals zero, return just the n
+#'   value instead of interpolating (zero suppression).
+#' @return Character scalar (formatted cell text).
 #' @noRd
-interpolate_stats <- function(var_df, arm_val, fmt_str, pct_zero = FALSE) {
-  subset <- var_df[var_df$arm == arm_val, , drop = FALSE]
-  if (nrow(subset) == 0L) return("")
-  stat_vec <- stats::setNames(subset$stat_fmt, subset$stat_name)
+interpolate_single_arm <- function(stat_vec, fmt_str, refs, arm_label,
+                                   pct_zero) {
   # Zero suppression: when n=0 and pct_zero=FALSE, return just the n value
   if (!pct_zero && "n" %in% names(stat_vec)) {
     n_num <- suppressWarnings(as.numeric(stat_vec[["n"]]))
     if (!is.na(n_num) && n_num == 0) return(stat_vec[["n"]])
   }
   stat_list <- as.list(stat_vec)
-  refs <- parse_glue_refs(fmt_str)
+  # Fast path: all referenced stats present — skip tryCatch overhead
   if (all(refs %in% names(stat_list))) {
     as.character(glue::glue_data(
       stat_list, fmt_str, .open = "{", .close = "}"
@@ -1326,13 +1337,24 @@ interpolate_stats <- function(var_df, arm_val, fmt_str, pct_zero = FALSE) {
       error = function(e) {
         cli_warn(c(
           "Format string interpolation failed.",
-          "x" = "Format: {.val {fmt_str}} for arm {.val {arm_val}}.",
+          "x" = "Format: {.val {fmt_str}} for arm {.val {arm_label}}.",
           "i" = "Error: {conditionMessage(e)}"
         ))
         ""
       }
     )
   }
+}
+
+#' Interpolate stats for a single arm value
+#' @noRd
+interpolate_stats <- function(var_df, arm_val, fmt_str, pct_zero = FALSE) {
+  subset <- var_df[var_df$arm == arm_val, , drop = FALSE]
+  if (nrow(subset) == 0L) return("")
+  stat_vec <- stats::setNames(subset$stat_fmt, subset$stat_name)
+  refs <- parse_glue_refs(fmt_str)
+  interpolate_single_arm(stat_vec, fmt_str, refs, arm_label = arm_val,
+                         pct_zero = pct_zero)
 }
 
 #' Interpolate stats for ALL arms at once — returns named character vector.
@@ -1349,31 +1371,8 @@ interpolate_stats_all <- function(var_df, arm_levels, fmt_str,
     subset <- by_arm[[a]]
     if (is.null(subset) || nrow(subset) == 0L) return("")
     stat_vec <- stats::setNames(subset$stat_fmt, subset$stat_name)
-    # Zero suppression: when n=0 and pct_zero=FALSE, return just "0"
-    if (!pct_zero && "n" %in% names(stat_vec) && stat_vec[["n"]] == "0") {
-      return("0")
-    }
-    stat_list <- as.list(stat_vec)
-    # Fast path: all referenced stats present — skip tryCatch overhead
-    if (all(refs %in% names(stat_list))) {
-      as.character(glue::glue_data(
-        stat_list, fmt_str, .open = "{", .close = "}"
-      ))
-    } else {
-      tryCatch(
-        as.character(glue::glue_data(
-          stat_list, fmt_str, .open = "{", .close = "}"
-        )),
-        error = function(e) {
-          cli_warn(c(
-            "Format string interpolation failed.",
-            "x" = "Format: {.val {fmt_str}} for arm {.val {a}}.",
-            "i" = "Error: {conditionMessage(e)}"
-          ))
-          ""
-        }
-      )
-    }
+    interpolate_single_arm(stat_vec, fmt_str, refs, arm_label = a,
+                           pct_zero = pct_zero)
   }, character(1L))
 }
 

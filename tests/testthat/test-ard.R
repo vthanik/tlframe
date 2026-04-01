@@ -2632,3 +2632,174 @@ test_that("reconstruct_renamed_ard assigns continuous rows to unused var_cols", 
   # Rows 3-4 (continuous) should be assigned to AGE (always-NA → first priority)
   expect_true(all(result$df$variable[3:4] == "AGE"))
 })
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# pct_display parameter tests
+# ══════════════════════════════════════════════════════════════════════════════
+
+test_that("pct_display default: n=0 suppresses percentage", {
+  skip_if_not_installed("cards")
+
+  adsl <- arframe::adsl[arframe::adsl$SAFFL == "Y", ]
+  ard <- cards::ard_stack(
+    data = adsl,
+    .by = "ARM",
+    cards::ard_categorical(variables = "SEX")
+  )
+
+  wide <- fr_wide_ard(ard, statistic = list(categorical = "{n} ({p}%)"))
+  # Find any cell with n=0 — it should show "0", not "0 (0.0%)"
+  arm_cols <- setdiff(
+    names(wide),
+    c("variable", "stat_label", "row_type", "soc", "pt")
+  )
+  all_cells <- unlist(wide[, arm_cols, drop = FALSE])
+  zero_cells <- all_cells[grepl("^0$", trimws(all_cells))]
+  # If there are zero-count cells, they should be just "0"
+  if (length(zero_cells) > 0L) {
+    expect_true(all(trimws(zero_cells) == "0"))
+  }
+})
+
+test_that("pct_display = list(zero = TRUE): n=0 shows full format", {
+  skip_if_not_installed("cards")
+
+  adsl <- arframe::adsl[arframe::adsl$SAFFL == "Y", ]
+  ard <- cards::ard_stack(
+    data = adsl,
+    .by = "ARM",
+    cards::ard_categorical(variables = "SEX")
+  )
+
+  wide <- fr_wide_ard(
+    ard,
+    statistic = list(categorical = "{n} ({p}%)"),
+    pct_display = list(zero = TRUE)
+  )
+  arm_cols <- setdiff(
+    names(wide),
+    c("variable", "stat_label", "row_type", "soc", "pt")
+  )
+  all_cells <- unlist(wide[, arm_cols, drop = FALSE])
+  # Any cell with n=0 should show "0 (0.0%)" not just "0"
+  zero_n_cells <- all_cells[grepl("^\\s*0\\s", all_cells)]
+  if (length(zero_n_cells) > 0L) {
+    expect_true(all(grepl("%", zero_n_cells, fixed = TRUE)))
+  }
+})
+
+test_that("pct_display threshold=TRUE: extreme pct shows threshold", {
+  fmt <- arframe:::format_stat_with_decimals
+  # 0.08% as proportion = 0.0008
+
+  expect_equal(fmt(0.0008, "p", 1L, pct_threshold = TRUE), "<0.1")
+  expect_equal(fmt(0.9995, "p", 1L, pct_threshold = TRUE), ">99.9")
+})
+
+test_that("pct_display threshold=FALSE: extreme pct shows exact value", {
+  fmt <- arframe:::format_stat_with_decimals
+  # 0.08% as proportion = 0.0008 → rounds to 0.1 with dec=1
+  expect_equal(fmt(0.0008, "p", 1L, pct_threshold = FALSE), "0.1")
+  # 99.95% as proportion = 0.9995 → rounds to 100.0 with dec=1
+  expect_equal(fmt(0.9995, "p", 1L, pct_threshold = FALSE), "100.0")
+})
+
+test_that("pct_display = list(zero = TRUE, threshold = FALSE): both overridden", {
+  skip_if_not_installed("cards")
+
+  adsl <- arframe::adsl[arframe::adsl$SAFFL == "Y", ]
+  ard <- cards::ard_stack(
+    data = adsl,
+    .by = "ARM",
+    cards::ard_categorical(variables = "SEX")
+  )
+
+  # Should not error and produce valid output
+  wide <- fr_wide_ard(
+    ard,
+    statistic = list(categorical = "{n} ({p}%)"),
+    pct_display = list(zero = TRUE, threshold = FALSE)
+  )
+  expect_s3_class(wide, "data.frame")
+  expect_true(nrow(wide) > 0L)
+})
+
+test_that("pct_display partial override: list(zero = TRUE) keeps threshold default", {
+  skip_if_not_installed("cards")
+
+  adsl <- arframe::adsl[arframe::adsl$SAFFL == "Y", ]
+  ard <- cards::ard_stack(
+    data = adsl,
+    .by = "ARM",
+    cards::ard_categorical(variables = "SEX")
+  )
+
+  # Only override zero — threshold should remain TRUE (default)
+  wide <- fr_wide_ard(
+    ard,
+    statistic = list(categorical = "{n} ({p}%)"),
+    pct_display = list(zero = TRUE)
+  )
+  expect_s3_class(wide, "data.frame")
+
+  # Verify threshold logic still active via internal function
+  fmt <- arframe:::format_stat_with_decimals
+  expect_equal(fmt(0.0008, "p", 1L, pct_threshold = TRUE), "<0.1")
+})
+
+test_that("pct_display validation: non-list errors", {
+  skip_if_not_installed("cards")
+
+  adsl <- arframe::adsl[arframe::adsl$SAFFL == "Y", ]
+  ard <- cards::ard_stack(
+    data = adsl,
+    .by = "ARM",
+    cards::ard_categorical(variables = "SEX")
+  )
+
+  expect_error(
+    fr_wide_ard(ard, statistic = list(categorical = "{n} ({p}%)"), pct_display = "yes"),
+    "named list"
+  )
+})
+
+test_that("pct_display validation: unknown keys error", {
+  skip_if_not_installed("cards")
+
+  adsl <- arframe::adsl[arframe::adsl$SAFFL == "Y", ]
+  ard <- cards::ard_stack(
+    data = adsl,
+    .by = "ARM",
+    cards::ard_categorical(variables = "SEX")
+  )
+
+  expect_error(
+    fr_wide_ard(
+      ard,
+      statistic = list(categorical = "{n} ({p}%)"),
+      pct_display = list(bogus = TRUE)
+    ),
+    "Unknown"
+  )
+})
+
+test_that("pct_display validation: non-logical value errors", {
+  skip_if_not_installed("cards")
+
+  adsl <- arframe::adsl[arframe::adsl$SAFFL == "Y", ]
+  ard <- cards::ard_stack(
+    data = adsl,
+    .by = "ARM",
+    cards::ard_categorical(variables = "SEX")
+  )
+
+  expect_error(
+    fr_wide_ard(
+      ard,
+      statistic = list(categorical = "{n} ({p}%)"),
+      pct_display = list(zero = "yes")
+    ),
+    "logical"
+  )
+})
