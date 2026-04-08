@@ -125,10 +125,13 @@ render_latex <- function(spec, page_groups, col_panels, path) {
 # LaTeX Document Components
 # ══════════════════════════════════════════════════════════════════════════════
 
-#' Build \\setmainfont command, with open-source fallback for missing fonts
+#' Build \\setmainfont command, with open-source fallback for missing fonts.
+#' Returns empty string when no usable font is found so XeLaTeX uses its
+#' default (Latin Modern) instead of failing with a fontspec error.
 #' @noRd
 latex_setmainfont <- function(font_name) {
   resolved <- resolve_latex_font(font_name)
+  if (!is_system_font_available(resolved)) return("")
   paste0("\\setmainfont{", resolved, "}")
 }
 

@@ -18,6 +18,7 @@
 ^presentations$
 ^\.github$
 ^deploy-site\.sh$
+^\.doc-stash$
 ^audit-findings\.md$
 ^ARFRAME-PLAN\.txt$
 ^ARBUILDER-PLAN\.md$
