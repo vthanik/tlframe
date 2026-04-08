@@ -1,12 +1,12 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # decimal.R — Full stat display alignment engine (18-type taxonomy)
 #
-# Architecture:
-#   1. detect_stat_types()      — vectorized type classification across a column
-#   2. parse_stat_value()       — extract typed components via regex
-#   3. compute_stat_widths()    — column-wide max character widths per component
-#   4. rebuild_stat_aligned()   — reconstruct as space-padded fixed-width string
-#   5. align_decimal_column()   — master pipeline: detect → parse → widths → rebuild
+# Architecture (first-principles vectorized redesign):
+#   1. detect_stat_types()         — vectorized type classification (one regex pass per type)
+#   2. parse_stat_components_vec() — column-oriented component frame (list of char vectors)
+#   3. compute_stat_widths_vec()   — vectorized max(nchar()) per component field
+#   4. rebuild_column_aligned_vec()— type-grouped vectorized stri_pad_* reconstruction
+#   5. align_decimal_column()      — master pipeline: detect → parse → widths → rebuild
 #   6. compute_all_decimal_geometry() — integration with finalize_spec()
 #
 # All formatted strings have the same nchar (padded). In monospace fonts
@@ -18,17 +18,13 @@
 
 #' Detect the stat display type of a single value
 #'
+#' Thin scalar wrapper around `detect_stat_types()`.
+#'
 #' @param value Character scalar (trimmed).
 #' @return Character scalar — one of the type names, or "unknown".
 #' @noRd
 detect_stat_type <- function(value) {
-  value <- trimws(value)
-  for (i in seq_along(fr_env$stat_type_patterns)) {
-    if (grepl(fr_env$stat_type_patterns[[i]], value, perl = TRUE)) {
-      return(names(fr_env$stat_type_patterns)[[i]])
-    }
-  }
-  "unknown"
+  detect_stat_types(value)[[1L]]
 }
 
 
@@ -137,83 +133,150 @@ n_over_N_pct_ci_parse_re <- paste0(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 3. Typed Parsing
+# 3. Scalar Compatibility Wrappers (thin wrappers for tests / external callers)
 # ══════════════════════════════════════════════════════════════════════════════
 
 #' Parse a stat value into typed components
 #'
-#' Thin wrapper around `parse_stat_values_batch()` for scalar input.
+#' Thin scalar wrapper around `parse_stat_components_vec()`. Returns a named
+#' list of scalars (one per component field) for a single value.
 #'
 #' @param value Character scalar.
 #' @param type_name Character scalar — detected type.
 #' @return Named list with type-specific fields.
 #' @noRd
 parse_stat_value <- function(value, type_name) {
-  parse_stat_values_batch(value, type_name)[[1L]]
+  lapply(parse_stat_components_vec(value, type_name), `[[`, 1L)
 }
 
 
-#' Batch-parse stat values by type (vectorized regex)
+# ══════════════════════════════════════════════════════════════════════════════
+# 4. Vectorized Engine — Component Frame + Vectorized Reconstruction
+#
+# First-principles redesign of the alignment pipeline:
+#
+#   parse_stat_components_vec()    — "column-oriented" parser
+#     Returns a named list of character vectors (one vector per component
+#     field, all length n). Replaces the "row-oriented" list-of-named-lists
+#     from parse_stat_values_batch(), eliminating the O(n) list overhead that
+#     prevented vectorized padding operations.
+#
+#   compute_stat_widths_vec()      — vectorized width computation
+#     Same logic as compute_stat_widths() but operates directly on character
+#     vectors via max(nchar(vec)) instead of vapply(list, ..., nchar).
+#     No more per-element list dereference overhead.
+#
+#   rebuild_column_aligned_vec()   — fully vectorized reconstruction
+#     Groups values by type, then applies stri_pad_left/stri_pad_right/paste0
+#     on each TYPE GROUP as a vector, not as n individual function calls.
+#     A 1000-row column of est_ci values: 1 rebuild call → 10 vectorized ops.
+#     Previously: 1000 calls to rebuild_stat_aligned() with a 25-branch switch.
+#
+#   align_decimal_column()         — same public interface, new internal path
+#     Dispatches through the new engine. Output is byte-for-byte identical to
+#     the old path.
+# ══════════════════════════════════════════════════════════════════════════════
+
+#' Parse stat values into a column-oriented component frame (vectorized)
+#'
+#' Returns a named list of character vectors — one vector per component field,
+#' all of length n. Fields irrelevant to a given type default to "".
+#' This layout enables vectorized padding: `stri_pad_left(comps$est_int, w)`
+#' processes all n values in one C-level call instead of n R function calls.
 #'
 #' @param values Character vector of trimmed cell values.
-#' @param types Character vector of detected types (same length as values).
-#' @return List of named lists (same length as values).
+#' @param types  Character vector of detected types (same length as values).
+#' @return Named list of character vectors, all length n.
 #' @noRd
-parse_stat_values_batch <- function(values, types) {
+parse_stat_components_vec <- function(values, types) {
   n <- length(values)
-  parsed <- vector("list", n)
 
-  for (tp in unique(types)) {
+  # All component field names. Pre-allocated to "" (zero-cost for unused fields).
+  comp_fields <- c(
+    "n",
+    "sign",
+    "int",
+    "dec",
+    "prefix",
+    "est_sign",
+    "est_int",
+    "est_dec",
+    "est_token",
+    "lo_sign",
+    "lo_int",
+    "lo_dec",
+    "lo_token",
+    "hi_sign",
+    "hi_int",
+    "hi_dec",
+    "hi_token",
+    "pv_prefix",
+    "pv_int",
+    "pv_dec",
+    "pv_token",
+    "sprd_sign",
+    "sprd_int",
+    "sprd_dec",
+    "pct_prefix",
+    "pct_int",
+    "pct_dec",
+    "pct_sign",
+    "num",
+    "den",
+    "den_int",
+    "den_dec",
+    "rate_sign",
+    "rate_int",
+    "rate_dec",
+    "ci_lo_sign",
+    "ci_lo_int",
+    "ci_lo_dec",
+    "ci_hi_sign",
+    "ci_hi_int",
+    "ci_hi_dec",
+    "l_sign",
+    "l_int",
+    "l_dec",
+    "r_sign",
+    "r_int",
+    "r_dec",
+    "open_delim",
+    "close_delim",
+    "left",
+    "sep",
+    "right"
+  )
+
+  empty <- rep("", n)
+  out <- c(
+    list(type = types, raw = values),
+    stats::setNames(lapply(comp_fields, function(.) empty), comp_fields)
+  )
+
+  # Fill component vectors by type — one batch regex per type group.
+  for (tp in unique(types[!types %in% c("missing", "unknown")])) {
     idx <- which(types == tp)
     vals <- values[idx]
 
-    batch <- switch(
+    switch(
       tp,
 
-      missing = lapply(vals, function(v) list(type = "missing", raw = v)),
-
-      n_only = lapply(vals, function(v) list(type = "n_only", n = v, raw = v)),
+      n_only = {
+        out$n[idx] <- vals
+      },
 
       scalar_float = {
         m <- stringi::stri_match_first_regex(vals, "^(-?)(\\d+)\\.(\\d+)$")
-        mapply(
-          function(sign, int, dec, raw) {
-            list(
-              type = "scalar_float",
-              sign = sign,
-              int = int,
-              dec = dec,
-              raw = raw
-            )
-          },
-          m[, 2],
-          m[, 3],
-          m[, 4],
-          vals,
-          SIMPLIFY = FALSE,
-          USE.NAMES = FALSE
-        )
+        out$sign[idx] <- m[, 2L]
+        out$int[idx] <- m[, 3L]
+        out$dec[idx] <- m[, 4L]
       },
 
       pvalue = {
         m <- stringi::stri_match_first_regex(vals, "^([<>=])(\\d+)\\.(\\d+)$")
-        mapply(
-          function(prefix, int, dec, raw) {
-            list(
-              type = "pvalue",
-              prefix = prefix,
-              int = int,
-              dec = dec,
-              raw = raw
-            )
-          },
-          m[, 2],
-          m[, 3],
-          m[, 4],
-          vals,
-          SIMPLIFY = FALSE,
-          USE.NAMES = FALSE
-        )
+        out$prefix[idx] <- m[, 2L]
+        out$int[idx] <- m[, 3L]
+        out$dec[idx] <- m[, 4L]
       },
 
       n_pct = {
@@ -221,27 +284,11 @@ parse_stat_values_batch <- function(values, types) {
           vals,
           "^(\\d+)\\s*\\(\\s*([<>]?)(\\d+)\\.?(\\d*)\\s*(%?)\\s*\\)$"
         )
-        mapply(
-          function(n_val, pp, pi, pd, ps, raw) {
-            list(
-              type = "n_pct",
-              n = n_val,
-              pct_prefix = pp,
-              pct_int = pi,
-              pct_dec = pd,
-              pct_sign = ps,
-              raw = raw
-            )
-          },
-          m[, 2],
-          m[, 3],
-          m[, 4],
-          m[, 5],
-          m[, 6],
-          vals,
-          SIMPLIFY = FALSE,
-          USE.NAMES = FALSE
-        )
+        out$n[idx] <- m[, 2L]
+        out$pct_prefix[idx] <- m[, 3L]
+        out$pct_int[idx] <- m[, 4L]
+        out$pct_dec[idx] <- m[, 5L]
+        out$pct_sign[idx] <- m[, 6L]
       },
 
       n_over_N_pct = {
@@ -249,29 +296,12 @@ parse_stat_values_batch <- function(values, types) {
           vals,
           "^(\\d+)\\s*/\\s*(\\d+)\\s*\\(\\s*([<>]?)(\\d+)\\.?(\\d*)\\s*(%?)\\s*\\)$"
         )
-        mapply(
-          function(num, den, pp, pi, pd, ps, raw) {
-            list(
-              type = "n_over_N_pct",
-              num = num,
-              den = den,
-              pct_prefix = pp,
-              pct_int = pi,
-              pct_dec = pd,
-              pct_sign = ps,
-              raw = raw
-            )
-          },
-          m[, 2],
-          m[, 3],
-          m[, 4],
-          m[, 5],
-          m[, 6],
-          m[, 7],
-          vals,
-          SIMPLIFY = FALSE,
-          USE.NAMES = FALSE
-        )
+        out$num[idx] <- m[, 2L]
+        out$den[idx] <- m[, 3L]
+        out$pct_prefix[idx] <- m[, 4L]
+        out$pct_int[idx] <- m[, 5L]
+        out$pct_dec[idx] <- m[, 6L]
+        out$pct_sign[idx] <- m[, 7L]
       },
 
       est_spread = {
@@ -279,68 +309,38 @@ parse_stat_values_batch <- function(values, types) {
           vals,
           "^(-?)(\\d+)\\.?(\\d*)\\s*\\(\\s*(-?)(\\d+)\\.?(\\d*)\\s*\\)$"
         )
-        mapply(
-          function(es, ei, ed, ss, si, sd, raw) {
-            list(
-              type = "est_spread",
-              est_sign = es,
-              est_int = ei,
-              est_dec = ed,
-              sprd_sign = ss,
-              sprd_int = si,
-              sprd_dec = sd,
-              raw = raw
-            )
-          },
-          m[, 2],
-          m[, 3],
-          m[, 4],
-          m[, 5],
-          m[, 6],
-          m[, 7],
-          vals,
-          SIMPLIFY = FALSE,
-          USE.NAMES = FALSE
-        )
+        out$est_sign[idx] <- m[, 2L]
+        out$est_int[idx] <- m[, 3L]
+        out$est_dec[idx] <- m[, 4L]
+        out$sprd_sign[idx] <- m[, 5L]
+        out$sprd_int[idx] <- m[, 6L]
+        out$sprd_dec[idx] <- m[, 7L]
+      },
+
+      est_spread_pct = {
+        m <- stringi::stri_match_first_regex(vals, est_spread_pct_parse_re)
+        out$est_sign[idx] <- m[, 2L]
+        out$est_int[idx] <- m[, 3L]
+        out$est_dec[idx] <- m[, 4L]
+        out$sprd_sign[idx] <- m[, 5L]
+        out$sprd_int[idx] <- m[, 6L]
+        out$sprd_dec[idx] <- m[, 7L]
       },
 
       est_ci = {
         m <- na_to_empty(stringi::stri_match_first_regex(vals, est_ci_parse_re))
-        mapply(
-          function(es, ei, ed, et, ls, li, ld, lt, hs, hi, hd, ht, raw) {
-            list(
-              type = "est_ci",
-              est_sign = es,
-              est_int = ei,
-              est_dec = ed,
-              est_token = et,
-              lo_sign = ls,
-              lo_int = li,
-              lo_dec = ld,
-              lo_token = lt,
-              hi_sign = hs,
-              hi_int = hi,
-              hi_dec = hd,
-              hi_token = ht,
-              raw = raw
-            )
-          },
-          m[, 2],
-          m[, 3],
-          m[, 4],
-          m[, 5],
-          m[, 6],
-          m[, 7],
-          m[, 8],
-          m[, 9],
-          m[, 10],
-          m[, 11],
-          m[, 12],
-          m[, 13],
-          vals,
-          SIMPLIFY = FALSE,
-          USE.NAMES = FALSE
-        )
+        out$est_sign[idx] <- m[, 2L]
+        out$est_int[idx] <- m[, 3L]
+        out$est_dec[idx] <- m[, 4L]
+        out$est_token[idx] <- m[, 5L]
+        out$lo_sign[idx] <- m[, 6L]
+        out$lo_int[idx] <- m[, 7L]
+        out$lo_dec[idx] <- m[, 8L]
+        out$lo_token[idx] <- m[, 9L]
+        out$hi_sign[idx] <- m[, 10L]
+        out$hi_int[idx] <- m[, 11L]
+        out$hi_dec[idx] <- m[, 12L]
+        out$hi_token[idx] <- m[, 13L]
       },
 
       est_ci_bracket = {
@@ -348,68 +348,18 @@ parse_stat_values_batch <- function(values, types) {
           vals,
           est_ci_bracket_parse_re
         ))
-        mapply(
-          function(es, ei, ed, et, ls, li, ld, lt, hs, hi, hd, ht, raw) {
-            list(
-              type = "est_ci_bracket",
-              est_sign = es,
-              est_int = ei,
-              est_dec = ed,
-              est_token = et,
-              lo_sign = ls,
-              lo_int = li,
-              lo_dec = ld,
-              lo_token = lt,
-              hi_sign = hs,
-              hi_int = hi,
-              hi_dec = hd,
-              hi_token = ht,
-              raw = raw
-            )
-          },
-          m[, 2],
-          m[, 3],
-          m[, 4],
-          m[, 5],
-          m[, 6],
-          m[, 7],
-          m[, 8],
-          m[, 9],
-          m[, 10],
-          m[, 11],
-          m[, 12],
-          m[, 13],
-          vals,
-          SIMPLIFY = FALSE,
-          USE.NAMES = FALSE
-        )
-      },
-
-      est_spread_pct = {
-        m <- stringi::stri_match_first_regex(vals, est_spread_pct_parse_re)
-        mapply(
-          function(es, ei, ed, ss, si, sd, raw) {
-            list(
-              type = "est_spread_pct",
-              est_sign = es,
-              est_int = ei,
-              est_dec = ed,
-              sprd_sign = ss,
-              sprd_int = si,
-              sprd_dec = sd,
-              raw = raw
-            )
-          },
-          m[, 2],
-          m[, 3],
-          m[, 4],
-          m[, 5],
-          m[, 6],
-          m[, 7],
-          vals,
-          SIMPLIFY = FALSE,
-          USE.NAMES = FALSE
-        )
+        out$est_sign[idx] <- m[, 2L]
+        out$est_int[idx] <- m[, 3L]
+        out$est_dec[idx] <- m[, 4L]
+        out$est_token[idx] <- m[, 5L]
+        out$lo_sign[idx] <- m[, 6L]
+        out$lo_int[idx] <- m[, 7L]
+        out$lo_dec[idx] <- m[, 8L]
+        out$lo_token[idx] <- m[, 9L]
+        out$hi_sign[idx] <- m[, 10L]
+        out$hi_int[idx] <- m[, 11L]
+        out$hi_dec[idx] <- m[, 12L]
+        out$hi_token[idx] <- m[, 13L]
       },
 
       est_ci_pval = {
@@ -417,204 +367,72 @@ parse_stat_values_batch <- function(values, types) {
           vals,
           est_ci_pval_parse_re
         ))
-        mapply(
-          function(
-            es,
-            ei,
-            ed,
-            et,
-            ls,
-            li,
-            ld,
-            lt,
-            hs,
-            hi,
-            hd,
-            ht,
-            pp,
-            pi,
-            pd,
-            pt,
-            raw
-          ) {
-            list(
-              type = "est_ci_pval",
-              est_sign = es,
-              est_int = ei,
-              est_dec = ed,
-              est_token = et,
-              lo_sign = ls,
-              lo_int = li,
-              lo_dec = ld,
-              lo_token = lt,
-              hi_sign = hs,
-              hi_int = hi,
-              hi_dec = hd,
-              hi_token = ht,
-              pv_prefix = pp,
-              pv_int = pi,
-              pv_dec = pd,
-              pv_token = pt,
-              raw = raw
-            )
-          },
-          m[, 2],
-          m[, 3],
-          m[, 4],
-          m[, 5],
-          m[, 6],
-          m[, 7],
-          m[, 8],
-          m[, 9],
-          m[, 10],
-          m[, 11],
-          m[, 12],
-          m[, 13],
-          m[, 14],
-          m[, 15],
-          m[, 16],
-          m[, 17],
-          vals,
-          SIMPLIFY = FALSE,
-          USE.NAMES = FALSE
-        )
+        out$est_sign[idx] <- m[, 2L]
+        out$est_int[idx] <- m[, 3L]
+        out$est_dec[idx] <- m[, 4L]
+        out$est_token[idx] <- m[, 5L]
+        out$lo_sign[idx] <- m[, 6L]
+        out$lo_int[idx] <- m[, 7L]
+        out$lo_dec[idx] <- m[, 8L]
+        out$lo_token[idx] <- m[, 9L]
+        out$hi_sign[idx] <- m[, 10L]
+        out$hi_int[idx] <- m[, 11L]
+        out$hi_dec[idx] <- m[, 12L]
+        out$hi_token[idx] <- m[, 13L]
+        out$pv_prefix[idx] <- m[, 14L]
+        out$pv_int[idx] <- m[, 15L]
+        out$pv_dec[idx] <- m[, 16L]
+        out$pv_token[idx] <- m[, 17L]
       },
 
       est_spread_pct_ci = {
         m <- stringi::stri_match_first_regex(vals, est_spread_pct_ci_parse_re)
-        mapply(
-          function(es, ei, ed, ss, si, sd, cls, cli, cld, chs, chi, chd, raw) {
-            list(
-              type = "est_spread_pct_ci",
-              est_sign = es,
-              est_int = ei,
-              est_dec = ed,
-              sprd_sign = ss,
-              sprd_int = si,
-              sprd_dec = sd,
-              ci_lo_sign = cls,
-              ci_lo_int = cli,
-              ci_lo_dec = cld,
-              ci_hi_sign = chs,
-              ci_hi_int = chi,
-              ci_hi_dec = chd,
-              raw = raw
-            )
-          },
-          m[, 2],
-          m[, 3],
-          m[, 4],
-          m[, 5],
-          m[, 6],
-          m[, 7],
-          m[, 8],
-          m[, 9],
-          m[, 10],
-          m[, 11],
-          m[, 12],
-          m[, 13],
-          vals,
-          SIMPLIFY = FALSE,
-          USE.NAMES = FALSE
-        )
+        out$est_sign[idx] <- m[, 2L]
+        out$est_int[idx] <- m[, 3L]
+        out$est_dec[idx] <- m[, 4L]
+        out$sprd_sign[idx] <- m[, 5L]
+        out$sprd_int[idx] <- m[, 6L]
+        out$sprd_dec[idx] <- m[, 7L]
+        out$ci_lo_sign[idx] <- m[, 8L]
+        out$ci_lo_int[idx] <- m[, 9L]
+        out$ci_lo_dec[idx] <- m[, 10L]
+        out$ci_hi_sign[idx] <- m[, 11L]
+        out$ci_hi_int[idx] <- m[, 12L]
+        out$ci_hi_dec[idx] <- m[, 13L]
       },
 
       n_pct_rate = {
         m <- stringi::stri_match_first_regex(vals, n_pct_rate_parse_re)
-        mapply(
-          function(n_val, pp, pi, pd, ps, rs, ri, rd, raw) {
-            list(
-              type = "n_pct_rate",
-              n = n_val,
-              pct_prefix = pp,
-              pct_int = pi,
-              pct_dec = pd,
-              pct_sign = ps,
-              rate_sign = rs,
-              rate_int = ri,
-              rate_dec = rd,
-              raw = raw
-            )
-          },
-          m[, 2],
-          m[, 3],
-          m[, 4],
-          m[, 5],
-          m[, 6],
-          m[, 7],
-          m[, 8],
-          m[, 9],
-          vals,
-          SIMPLIFY = FALSE,
-          USE.NAMES = FALSE
-        )
+        out$n[idx] <- m[, 2L]
+        out$pct_prefix[idx] <- m[, 3L]
+        out$pct_int[idx] <- m[, 4L]
+        out$pct_dec[idx] <- m[, 5L]
+        out$pct_sign[idx] <- m[, 6L]
+        out$rate_sign[idx] <- m[, 7L]
+        out$rate_int[idx] <- m[, 8L]
+        out$rate_dec[idx] <- m[, 9L]
       },
 
       n_over_N_pct_ci = {
         m <- stringi::stri_match_first_regex(vals, n_over_N_pct_ci_parse_re)
-        mapply(
-          function(
-            num,
-            den,
-            pp,
-            pi,
-            pd,
-            ps,
-            cls,
-            cli,
-            cld,
-            chs,
-            chi,
-            chd,
-            raw
-          ) {
-            list(
-              type = "n_over_N_pct_ci",
-              num = num,
-              den = den,
-              pct_prefix = pp,
-              pct_int = pi,
-              pct_dec = pd,
-              pct_sign = ps,
-              ci_lo_sign = cls,
-              ci_lo_int = cli,
-              ci_lo_dec = cld,
-              ci_hi_sign = chs,
-              ci_hi_int = chi,
-              ci_hi_dec = chd,
-              raw = raw
-            )
-          },
-          m[, 2],
-          m[, 3],
-          m[, 4],
-          m[, 5],
-          m[, 6],
-          m[, 7],
-          m[, 8],
-          m[, 9],
-          m[, 10],
-          m[, 11],
-          m[, 12],
-          m[, 13],
-          vals,
-          SIMPLIFY = FALSE,
-          USE.NAMES = FALSE
-        )
+        out$num[idx] <- m[, 2L]
+        out$den[idx] <- m[, 3L]
+        out$pct_prefix[idx] <- m[, 4L]
+        out$pct_int[idx] <- m[, 5L]
+        out$pct_dec[idx] <- m[, 6L]
+        out$pct_sign[idx] <- m[, 7L]
+        out$ci_lo_sign[idx] <- m[, 8L]
+        out$ci_lo_int[idx] <- m[, 9L]
+        out$ci_lo_dec[idx] <- m[, 10L]
+        out$ci_hi_sign[idx] <- m[, 11L]
+        out$ci_hi_int[idx] <- m[, 12L]
+        out$ci_hi_dec[idx] <- m[, 13L]
       },
 
       n_over_N = {
         m <- stringi::stri_match_first_regex(vals, "^(\\d+)\\s*/\\s*(\\d+)$")
-        mapply(
-          function(num, den, raw) {
-            list(type = "n_over_N", num = num, den = den, raw = raw)
-          },
-          m[, 2],
-          m[, 3],
-          vals,
-          SIMPLIFY = FALSE,
-          USE.NAMES = FALSE
-        )
+        out$num[idx] <- m[, 2L]
+        out$den[idx] <- m[, 3L]
       },
 
       n_over_float = {
@@ -622,23 +440,9 @@ parse_stat_values_batch <- function(values, types) {
           vals,
           "^(\\d+)\\s*/\\s*(\\d+)\\.(\\d+)$"
         )
-        mapply(
-          function(num, di, dd, raw) {
-            list(
-              type = "n_over_float",
-              num = num,
-              den_int = di,
-              den_dec = dd,
-              raw = raw
-            )
-          },
-          m[, 2],
-          m[, 3],
-          m[, 4],
-          vals,
-          SIMPLIFY = FALSE,
-          USE.NAMES = FALSE
-        )
+        out$num[idx] <- m[, 2L]
+        out$den_int[idx] <- m[, 3L]
+        out$den_dec[idx] <- m[, 4L]
       },
 
       range_pair = {
@@ -646,173 +450,106 @@ parse_stat_values_batch <- function(values, types) {
           vals,
           "^[\\(\\[]?\\s*(-?)(\\d+)\\.?(\\d*)\\s*,\\s*(-?)(\\d+)\\.?(\\d*)\\s*[\\)\\]]?$"
         )
-        # Detect outer delimiters: "(", "[", or none
-        open_delim <- ifelse(
+        out$l_sign[idx] <- m[, 2L]
+        out$l_int[idx] <- m[, 3L]
+        out$l_dec[idx] <- m[, 4L]
+        out$r_sign[idx] <- m[, 5L]
+        out$r_int[idx] <- m[, 6L]
+        out$r_dec[idx] <- m[, 7L]
+        out$open_delim[idx] <- ifelse(
           grepl("^\\s*\\(", vals),
           "(",
           ifelse(grepl("^\\s*\\[", vals), "[", "")
         )
-        close_delim <- ifelse(
+        out$close_delim[idx] <- ifelse(
           grepl("\\)\\s*$", vals),
           ")",
           ifelse(grepl("\\]\\s*$", vals), "]", "")
-        )
-        mapply(
-          function(ls, li, ld, rs, ri, rd, raw, od, cd) {
-            list(
-              type = "range_pair",
-              l_sign = ls,
-              l_int = li,
-              l_dec = ld,
-              r_sign = rs,
-              r_int = ri,
-              r_dec = rd,
-              open_delim = od,
-              close_delim = cd,
-              raw = raw
-            )
-          },
-          m[, 2],
-          m[, 3],
-          m[, 4],
-          m[, 5],
-          m[, 6],
-          m[, 7],
-          vals,
-          open_delim,
-          close_delim,
-          SIMPLIFY = FALSE,
-          USE.NAMES = FALSE
         )
       },
 
       int_range = {
         m <- stringi::stri_match_first_regex(
           vals,
-          "^(\\d+)\\s+([-\u2013\u2014])\\s+(\\d+)$"
+          paste0("^(\\d+)\\s+([-\u2013\u2014])\\s+(\\d+)$")
         )
-        mapply(
-          function(left, sep, right, raw) {
-            list(
-              type = "int_range",
-              left = left,
-              sep = sep,
-              right = right,
-              raw = raw
-            )
-          },
-          m[, 2],
-          m[, 3],
-          m[, 4],
-          vals,
-          SIMPLIFY = FALSE,
-          USE.NAMES = FALSE
-        )
-      },
-
-      # unknown fallback
-      lapply(vals, function(v) list(type = "unknown", raw = v))
+        out$left[idx] <- m[, 2L]
+        out$sep[idx] <- m[, 3L]
+        out$right[idx] <- m[, 4L]
+      }
     )
-
-    parsed[idx] <- batch
   }
 
-  parsed
+  out
 }
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# 4. Column-Wide Width Computation
-# ══════════════════════════════════════════════════════════════════════════════
-
-#' Check if any parsed value has a non-empty field
-#' @noRd
-has_field <- function(typed, field_name) {
-  any(vapply(typed, function(p) nzchar(p[[field_name]]), logical(1)))
-}
-
-#' Max width of sign+int OR token (for token-aware positions)
-#' @noRd
-maxw_si_or_tok <- function(typed, sign_key, int_key, tok_key) {
-  vals <- vapply(
-    typed,
-    function(p) {
-      tok <- p[[tok_key]]
-      if (nzchar(tok)) {
-        nchar(tok)
-      } else {
-        nchar(p[[sign_key]]) + nchar(p[[int_key]])
-      }
-    },
-    integer(1)
-  )
-  max(0L, vals)
-}
-
-#' Compute max character widths per component across a column
+#' Compute column-wide max widths per component (vectorized, component frame)
 #'
-#' @param parsed_values List of parsed value lists.
-#' @param dominant_type Character — the dominant type for this column.
-#' @return Named list with max widths and `full_width`.
+#' Replaces compute_stat_widths() with direct max(nchar(vec)) on character
+#' vectors. Preserves all sibling expansion and grid logic.
+#'
+#' @param comps Component frame from parse_stat_components_vec().
+#' @param dominant_type Character.
+#' @param types Character vector of all types.
+#' @param custom_idx Integer vector or NULL. When provided, use this as the
+#'   index set instead of auto-detecting from dominant_type (for subsidiary
+#'   width computation).
+#' @return Named list with max widths and full_width.
 #' @noRd
-compute_stat_widths <- function(parsed_values, dominant_type) {
-  # Sibling expansion: types that share the same field structure should
-  # contribute to width computation so the alignment grid fits all values.
-  #
-  # Same-structure siblings (identical fields, differ only in formatting):
-  #   est_spread <-> est_spread_pct  (% suffix vs none)
-  #   est_ci     <-> est_ci_bracket  (() vs [] delimiters)
-  #
-  # Subset siblings (fewer fields — adapted with empty stubs):
-  #   n_over_N_pct <- n_over_N       (num/den shared, pct fields stubbed)
-  same_siblings <- switch(
-    dominant_type,
-    est_spread_pct = "est_spread",
-    est_spread = "est_spread_pct",
-    est_ci = "est_ci_bracket",
-    est_ci_bracket = "est_ci",
-    NULL
-  )
-  type_set <- c(dominant_type, same_siblings)
-  typed <- Filter(function(p) p$type %in% type_set, parsed_values)
+compute_stat_widths_vec <- function(
+  comps,
+  dominant_type,
+  types,
+  custom_idx = NULL
+) {
+  if (!is.null(custom_idx)) {
+    idx <- custom_idx
+  } else {
+    # Sibling expansion: types sharing the same field structure
+    same_sibling <- switch(
+      dominant_type,
+      est_spread_pct = "est_spread",
+      est_spread = "est_spread_pct",
+      est_ci = "est_ci_bracket",
+      est_ci_bracket = "est_ci",
+      NULL
+    )
+    type_set <- c(dominant_type, same_sibling)
+    idx <- which(types %in% type_set)
 
-  # Subset siblings: adapt with empty fields for missing slots
-  if (dominant_type == "n_over_N_pct") {
-    sib <- Filter(function(p) p$type == "n_over_N", parsed_values)
-    if (length(sib) > 0L) {
-      typed <- c(
-        typed,
-        lapply(sib, function(p) {
-          p$pct_prefix <- ""
-          p$pct_int <- ""
-          p$pct_dec <- ""
-          p$pct_sign <- ""
-          p
-        })
-      )
+    # Subset sibling: n_over_N contributes to n_over_N_pct grid
+    if (dominant_type == "n_over_N_pct") {
+      idx <- c(idx, which(types == "n_over_N"))
     }
   }
 
-  if (length(typed) == 0L) {
-    raw_widths <- vapply(parsed_values, function(p) nchar(p$raw), integer(1))
-    return(list(full_width = max(0L, raw_widths)))
+  if (length(idx) == 0L) {
+    raw_w <- nchar(comps$raw)
+    return(list(full_width = max(0L, raw_w)))
   }
 
-  maxw <- function(key) {
-    vals <- vapply(typed, function(p) nchar(p[[key]]), integer(1))
-    max(0L, vals)
+  # Vectorized helpers closed over comps and idx
+  maxw <- function(f) max(0L, nchar(comps[[f]][idx]))
+  maxw_si <- function(intf, signf) {
+    max(0L, nchar(paste0(comps[[signf]][idx], comps[[intf]][idx])))
   }
-
-  maxw_with_sign <- function(int_key, sign_key) {
-    vals <- vapply(
-      typed,
-      function(p) {
-        nchar(p[[sign_key]]) + nchar(p[[int_key]])
-      },
-      integer(1)
-    )
-    max(0L, vals)
+  maxw_tok_si <- function(tokf, signf, intf) {
+    tok <- comps[[tokf]][idx]
+    has_tok <- nzchar(tok)
+    w <- integer(length(idx))
+    if (any(has_tok)) {
+      w[has_tok] <- nchar(tok[has_tok])
+    }
+    if (any(!has_tok)) {
+      w[!has_tok] <- nchar(paste0(
+        comps[[signf]][idx[!has_tok]],
+        comps[[intf]][idx[!has_tok]]
+      ))
+    }
+    max(0L, w)
   }
+  has_any <- function(f) any(nzchar(comps[[f]][idx]))
 
   switch(
     dominant_type,
@@ -823,46 +560,46 @@ compute_stat_widths <- function(parsed_values, dominant_type) {
     },
 
     scalar_float = {
-      w_sign_int <- maxw_with_sign("int", "sign")
+      w_si <- maxw_si("int", "sign")
       w_dec <- maxw("dec")
       list(
-        w_sign_int = w_sign_int,
+        w_sign_int = w_si,
         w_dec = w_dec,
         has_dec = TRUE,
-        full_width = w_sign_int + 1L + w_dec
+        full_width = w_si + 1L + w_dec
       )
     },
 
     pvalue = {
-      w_prefix <- maxw("prefix")
+      w_pfx <- maxw("prefix")
       w_int <- maxw("int")
       w_dec <- maxw("dec")
       list(
-        w_prefix = w_prefix,
+        w_prefix = w_pfx,
         w_int = w_int,
         w_dec = w_dec,
-        full_width = w_prefix + w_int + 1L + w_dec
+        full_width = w_pfx + w_int + 1L + w_dec
       )
     },
 
     n_pct = {
       w_n <- maxw("n")
-      w_pct_prefix <- maxw("pct_prefix")
-      w_pct_int <- maxw("pct_int")
-      w_pct_dec <- maxw("pct_dec")
-      w_pct_sign <- maxw("pct_sign")
-      has_dec <- has_field(typed, "pct_dec")
-      fw <- w_n + 2L + w_pct_prefix + w_pct_int
+      w_pp <- maxw("pct_prefix")
+      w_pi <- maxw("pct_int")
+      w_pd <- maxw("pct_dec")
+      w_ps <- maxw("pct_sign")
+      has_dec <- has_any("pct_dec")
+      fw <- w_n + 2L + w_pp + w_pi
       if (has_dec) {
-        fw <- fw + 1L + w_pct_dec
+        fw <- fw + 1L + w_pd
       }
-      fw <- fw + w_pct_sign + 1L
+      fw <- fw + w_ps + 1L
       list(
         w_n = w_n,
-        w_pct_prefix = w_pct_prefix,
-        w_pct_int = w_pct_int,
-        w_pct_dec = w_pct_dec,
-        w_pct_sign = w_pct_sign,
+        w_pct_prefix = w_pp,
+        w_pct_int = w_pi,
+        w_pct_dec = w_pd,
+        w_pct_sign = w_ps,
         has_dec = has_dec,
         full_width = fw
       )
@@ -871,23 +608,23 @@ compute_stat_widths <- function(parsed_values, dominant_type) {
     n_over_N_pct = {
       w_num <- maxw("num")
       w_den <- maxw("den")
-      w_pct_prefix <- maxw("pct_prefix")
-      w_pct_int <- maxw("pct_int")
-      w_pct_dec <- maxw("pct_dec")
-      w_pct_sign <- maxw("pct_sign")
-      has_dec <- has_field(typed, "pct_dec")
-      fw <- w_num + 1L + w_den + 2L + w_pct_prefix + w_pct_int
+      w_pp <- maxw("pct_prefix")
+      w_pi <- maxw("pct_int")
+      w_pd <- maxw("pct_dec")
+      w_ps <- maxw("pct_sign")
+      has_dec <- has_any("pct_dec")
+      fw <- w_num + 1L + w_den + 2L + w_pp + w_pi
       if (has_dec) {
-        fw <- fw + 1L + w_pct_dec
+        fw <- fw + 1L + w_pd
       }
-      fw <- fw + w_pct_sign + 1L
+      fw <- fw + w_ps + 1L
       list(
         w_num = w_num,
         w_den = w_den,
-        w_pct_prefix = w_pct_prefix,
-        w_pct_int = w_pct_int,
-        w_pct_dec = w_pct_dec,
-        w_pct_sign = w_pct_sign,
+        w_pct_prefix = w_pp,
+        w_pct_int = w_pi,
+        w_pct_dec = w_pd,
+        w_pct_sign = w_ps,
         has_dec = has_dec,
         full_width = fw
       )
@@ -895,25 +632,16 @@ compute_stat_widths <- function(parsed_values, dominant_type) {
 
     est_spread = ,
     est_spread_pct = {
-      # Unified: siblings share width grid. The "dec slot" accounts for %
-      # so "4%" (2 chars) and "75" (2 chars) occupy the same slot width.
-      w_est_si <- maxw_with_sign("est_int", "est_sign")
+      w_est_si <- maxw_si("est_int", "est_sign")
       w_est_dec <- maxw("est_dec")
-      w_sprd_si <- maxw_with_sign("sprd_int", "sprd_sign")
-      has_est_dec <- has_field(typed, "est_dec")
-      has_sprd_dec <- has_field(typed, "sprd_dec")
-      # Dec slot: nchar(dec) + 1 for pct values, nchar(dec) for non-pct
-      w_sprd_dec_slot <- max(
-        0L,
-        vapply(
-          typed,
-          function(p) {
-            w <- nchar(p$sprd_dec)
-            if (p$type == "est_spread_pct") w + 1L else w
-          },
-          integer(1)
-        )
-      )
+      w_sprd_si <- maxw_si("sprd_int", "sprd_sign")
+      has_est_dec <- has_any("est_dec")
+      has_sprd_dec <- has_any("sprd_dec")
+      # Dec slot: nchar(dec) + 1 for pct suffix, nchar(dec) otherwise
+      is_pct_type <- comps$type[idx] == "est_spread_pct"
+      dec_w <- nchar(comps$sprd_dec[idx])
+      dec_w[is_pct_type] <- dec_w[is_pct_type] + 1L
+      w_sprd_dec_slot <- max(0L, dec_w)
       fw <- w_est_si
       if (has_est_dec) {
         fw <- fw + 1L + w_est_dec
@@ -922,7 +650,7 @@ compute_stat_widths <- function(parsed_values, dominant_type) {
       if (has_sprd_dec) {
         fw <- fw + 1L + w_sprd_dec_slot
       }
-      fw <- fw + 1L # ")"
+      fw <- fw + 1L
       list(
         w_est_si = w_est_si,
         w_est_dec = w_est_dec,
@@ -936,15 +664,15 @@ compute_stat_widths <- function(parsed_values, dominant_type) {
 
     est_ci = ,
     est_ci_bracket = {
-      w_est_si <- maxw_si_or_tok(typed, "est_sign", "est_int", "est_token")
+      w_est_si <- maxw_tok_si("est_token", "est_sign", "est_int")
       w_est_dec <- maxw("est_dec")
-      w_lo_si <- maxw_si_or_tok(typed, "lo_sign", "lo_int", "lo_token")
+      w_lo_si <- maxw_tok_si("lo_token", "lo_sign", "lo_int")
       w_lo_dec <- maxw("lo_dec")
-      w_hi_si <- maxw_si_or_tok(typed, "hi_sign", "hi_int", "hi_token")
+      w_hi_si <- maxw_tok_si("hi_token", "hi_sign", "hi_int")
       w_hi_dec <- maxw("hi_dec")
-      has_est_dec <- has_field(typed, "est_dec")
-      has_lo_dec <- has_field(typed, "lo_dec")
-      has_hi_dec <- has_field(typed, "hi_dec")
+      has_est_dec <- has_any("est_dec")
+      has_lo_dec <- has_any("lo_dec")
+      has_hi_dec <- has_any("hi_dec")
       fw <- w_est_si
       if (has_est_dec) {
         fw <- fw + 1L + w_est_dec
@@ -975,36 +703,31 @@ compute_stat_widths <- function(parsed_values, dominant_type) {
     n_over_N = {
       w_num <- maxw("num")
       w_den <- maxw("den")
-      list(
-        w_num = w_num,
-        w_den = w_den,
-        full_width = w_num + 1L + w_den
-      )
+      list(w_num = w_num, w_den = w_den, full_width = w_num + 1L + w_den)
     },
 
     n_over_float = {
       w_num <- maxw("num")
-      w_den_int <- maxw("den_int")
-      w_den_dec <- maxw("den_dec")
+      w_di <- maxw("den_int")
+      w_dd <- maxw("den_dec")
       list(
         w_num = w_num,
-        w_den_int = w_den_int,
-        w_den_dec = w_den_dec,
-        full_width = w_num + 1L + w_den_int + 1L + w_den_dec
+        w_den_int = w_di,
+        w_den_dec = w_dd,
+        full_width = w_num + 1L + w_di + 1L + w_dd
       )
     },
 
     est_ci_pval = {
-      # CI part (token-aware)
-      w_est_si <- maxw_si_or_tok(typed, "est_sign", "est_int", "est_token")
+      w_est_si <- maxw_tok_si("est_token", "est_sign", "est_int")
       w_est_dec <- maxw("est_dec")
-      w_lo_si <- maxw_si_or_tok(typed, "lo_sign", "lo_int", "lo_token")
+      w_lo_si <- maxw_tok_si("lo_token", "lo_sign", "lo_int")
       w_lo_dec <- maxw("lo_dec")
-      w_hi_si <- maxw_si_or_tok(typed, "hi_sign", "hi_int", "hi_token")
+      w_hi_si <- maxw_tok_si("hi_token", "hi_sign", "hi_int")
       w_hi_dec <- maxw("hi_dec")
-      has_est_dec <- has_field(typed, "est_dec")
-      has_lo_dec <- has_field(typed, "lo_dec")
-      has_hi_dec <- has_field(typed, "hi_dec")
+      has_est_dec <- has_any("est_dec")
+      has_lo_dec <- has_any("lo_dec")
+      has_hi_dec <- has_any("hi_dec")
       ci_fw <- w_est_si
       if (has_est_dec) {
         ci_fw <- ci_fw + 1L + w_est_dec
@@ -1018,10 +741,9 @@ compute_stat_widths <- function(parsed_values, dominant_type) {
         ci_fw <- ci_fw + 1L + w_hi_dec
       }
       ci_fw <- ci_fw + 1L
-      # Pval part (token-aware)
-      w_pv_pi <- maxw_si_or_tok(typed, "pv_prefix", "pv_int", "pv_token")
+      w_pv_pi <- maxw_tok_si("pv_token", "pv_prefix", "pv_int")
       w_pv_dec <- maxw("pv_dec")
-      has_pv_dec <- has_field(typed, "pv_dec")
+      has_pv_dec <- has_any("pv_dec")
       pv_fw <- w_pv_pi
       if (has_pv_dec) {
         pv_fw <- pv_fw + 1L + w_pv_dec
@@ -1045,32 +767,30 @@ compute_stat_widths <- function(parsed_values, dominant_type) {
     },
 
     n_pct_rate = {
-      # n_pct part
       w_n <- maxw("n")
-      w_pct_prefix <- maxw("pct_prefix")
-      w_pct_int <- maxw("pct_int")
-      w_pct_dec <- maxw("pct_dec")
-      w_pct_sign <- maxw("pct_sign")
-      has_dec <- has_field(typed, "pct_dec")
-      npct_fw <- w_n + 2L + w_pct_prefix + w_pct_int
+      w_pp <- maxw("pct_prefix")
+      w_pi <- maxw("pct_int")
+      w_pd <- maxw("pct_dec")
+      w_ps <- maxw("pct_sign")
+      has_dec <- has_any("pct_dec")
+      npct_fw <- w_n + 2L + w_pp + w_pi
       if (has_dec) {
-        npct_fw <- npct_fw + 1L + w_pct_dec
+        npct_fw <- npct_fw + 1L + w_pd
       }
-      npct_fw <- npct_fw + w_pct_sign + 1L
-      # rate part
-      w_rate_si <- maxw_with_sign("rate_int", "rate_sign")
+      npct_fw <- npct_fw + w_ps + 1L
+      w_rate_si <- maxw_si("rate_int", "rate_sign")
       w_rate_dec <- maxw("rate_dec")
-      has_rate_dec <- has_field(typed, "rate_dec")
+      has_rate_dec <- has_any("rate_dec")
       rate_fw <- w_rate_si
       if (has_rate_dec) {
         rate_fw <- rate_fw + 1L + w_rate_dec
       }
       list(
         w_n = w_n,
-        w_pct_prefix = w_pct_prefix,
-        w_pct_int = w_pct_int,
-        w_pct_dec = w_pct_dec,
-        w_pct_sign = w_pct_sign,
+        w_pct_prefix = w_pp,
+        w_pct_int = w_pi,
+        w_pct_dec = w_pd,
+        w_pct_sign = w_ps,
         has_dec = has_dec,
         w_rate_si = w_rate_si,
         w_rate_dec = w_rate_dec,
@@ -1081,26 +801,24 @@ compute_stat_widths <- function(parsed_values, dominant_type) {
     },
 
     n_over_N_pct_ci = {
-      # n/N (pct) part
       w_num <- maxw("num")
       w_den <- maxw("den")
-      w_pct_prefix <- maxw("pct_prefix")
-      w_pct_int <- maxw("pct_int")
-      w_pct_dec <- maxw("pct_dec")
-      w_pct_sign <- maxw("pct_sign")
-      has_dec <- has_field(typed, "pct_dec")
-      npct_fw <- w_num + 1L + w_den + 2L + w_pct_prefix + w_pct_int
+      w_pp <- maxw("pct_prefix")
+      w_pi <- maxw("pct_int")
+      w_pd <- maxw("pct_dec")
+      w_ps <- maxw("pct_sign")
+      has_dec <- has_any("pct_dec")
+      npct_fw <- w_num + 1L + w_den + 2L + w_pp + w_pi
       if (has_dec) {
-        npct_fw <- npct_fw + 1L + w_pct_dec
+        npct_fw <- npct_fw + 1L + w_pd
       }
-      npct_fw <- npct_fw + w_pct_sign + 1L
-      # bracket CI part
-      w_ci_lo_si <- maxw_with_sign("ci_lo_int", "ci_lo_sign")
+      npct_fw <- npct_fw + w_ps + 1L
+      w_ci_lo_si <- maxw_si("ci_lo_int", "ci_lo_sign")
       w_ci_lo_dec <- maxw("ci_lo_dec")
-      w_ci_hi_si <- maxw_with_sign("ci_hi_int", "ci_hi_sign")
+      w_ci_hi_si <- maxw_si("ci_hi_int", "ci_hi_sign")
       w_ci_hi_dec <- maxw("ci_hi_dec")
-      has_ci_lo_dec <- has_field(typed, "ci_lo_dec")
-      has_ci_hi_dec <- has_field(typed, "ci_hi_dec")
+      has_ci_lo_dec <- has_any("ci_lo_dec")
+      has_ci_hi_dec <- has_any("ci_hi_dec")
       ci_fw <- 1L + w_ci_lo_si
       if (has_ci_lo_dec) {
         ci_fw <- ci_fw + 1L + w_ci_lo_dec
@@ -1113,10 +831,10 @@ compute_stat_widths <- function(parsed_values, dominant_type) {
       list(
         w_num = w_num,
         w_den = w_den,
-        w_pct_prefix = w_pct_prefix,
-        w_pct_int = w_pct_int,
-        w_pct_dec = w_pct_dec,
-        w_pct_sign = w_pct_sign,
+        w_pct_prefix = w_pp,
+        w_pct_int = w_pi,
+        w_pct_dec = w_pd,
+        w_pct_sign = w_ps,
         has_dec = has_dec,
         w_ci_lo_si = w_ci_lo_si,
         w_ci_lo_dec = w_ci_lo_dec,
@@ -1124,19 +842,18 @@ compute_stat_widths <- function(parsed_values, dominant_type) {
         w_ci_hi_dec = w_ci_hi_dec,
         has_ci_lo_dec = has_ci_lo_dec,
         has_ci_hi_dec = has_ci_hi_dec,
-        gap = 1L, # 1 space (not compound_gap) — CI bracket is visually adjacent
+        gap = 1L,
         full_width = npct_fw + 1L + ci_fw
       )
     },
 
     est_spread_pct_ci = {
-      # est (spread%) part — always has %, so dec_slot = w_dec + 1
-      w_est_si <- maxw_with_sign("est_int", "est_sign")
+      w_est_si <- maxw_si("est_int", "est_sign")
       w_est_dec <- maxw("est_dec")
-      w_sprd_si <- maxw_with_sign("sprd_int", "sprd_sign")
-      w_sprd_dec_slot <- maxw("sprd_dec") + 1L # +1 for %
-      has_est_dec <- has_field(typed, "est_dec")
-      has_sprd_dec <- has_field(typed, "sprd_dec")
+      w_sprd_si <- maxw_si("sprd_int", "sprd_sign")
+      w_sprd_dec_slot <- maxw("sprd_dec") + 1L
+      has_est_dec <- has_any("est_dec")
+      has_sprd_dec <- has_any("sprd_dec")
       espct_fw <- w_est_si
       if (has_est_dec) {
         espct_fw <- espct_fw + 1L + w_est_dec
@@ -1145,14 +862,13 @@ compute_stat_widths <- function(parsed_values, dominant_type) {
       if (has_sprd_dec) {
         espct_fw <- espct_fw + 1L + w_sprd_dec_slot
       }
-      espct_fw <- espct_fw + 1L # ")"
-      # paren CI part
-      w_ci_lo_si <- maxw_with_sign("ci_lo_int", "ci_lo_sign")
+      espct_fw <- espct_fw + 1L
+      w_ci_lo_si <- maxw_si("ci_lo_int", "ci_lo_sign")
       w_ci_lo_dec <- maxw("ci_lo_dec")
-      w_ci_hi_si <- maxw_with_sign("ci_hi_int", "ci_hi_sign")
+      w_ci_hi_si <- maxw_si("ci_hi_int", "ci_hi_sign")
       w_ci_hi_dec <- maxw("ci_hi_dec")
-      has_ci_lo_dec <- has_field(typed, "ci_lo_dec")
-      has_ci_hi_dec <- has_field(typed, "ci_hi_dec")
+      has_ci_lo_dec <- has_any("ci_lo_dec")
+      has_ci_hi_dec <- has_any("ci_hi_dec")
       ci_fw <- 1L + w_ci_lo_si
       if (has_ci_lo_dec) {
         ci_fw <- ci_fw + 1L + w_ci_lo_dec
@@ -1181,18 +897,13 @@ compute_stat_widths <- function(parsed_values, dominant_type) {
     },
 
     range_pair = {
-      w_l_si <- maxw_with_sign("l_int", "l_sign")
+      w_l_si <- maxw_si("l_int", "l_sign")
       w_l_dec <- maxw("l_dec")
-      w_r_si <- maxw_with_sign("r_int", "r_sign")
+      w_r_si <- maxw_si("r_int", "r_sign")
       w_r_dec <- maxw("r_dec")
-      has_l_dec <- has_field(typed, "l_dec")
-      has_r_dec <- has_field(typed, "r_dec")
-      # Check if any values have outer delimiters
-      has_delim <- any(vapply(
-        typed,
-        function(p) nzchar(p$open_delim %||% ""),
-        logical(1)
-      ))
+      has_l_dec <- has_any("l_dec")
+      has_r_dec <- has_any("r_dec")
+      has_delim <- any(nzchar(comps$open_delim[idx]))
       fw <- w_l_si
       if (has_l_dec) {
         fw <- fw + 1L + w_l_dec
@@ -1202,7 +913,7 @@ compute_stat_widths <- function(parsed_values, dominant_type) {
         fw <- fw + 1L + w_r_dec
       }
       if (has_delim) {
-        fw <- fw + 2L # open + close delimiter
+        fw <- fw + 2L
       }
       list(
         w_l_si = w_l_si,
@@ -1226,853 +937,629 @@ compute_stat_widths <- function(parsed_values, dominant_type) {
       )
     },
 
-    # Fallback
     list(full_width = 0L)
   )
 }
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# 5. String Reconstruction
-# ══════════════════════════════════════════════════════════════════════════════
-
-#' Build a float part: sign+int right-aligned, optional ".dec" left-aligned
-#' @noRd
-pad_float_part <- function(sign, int, dec, w_si, w_dec, has_dec) {
-  padded_si <- stringi::stri_pad_left(paste0(sign, int), w_si)
-  if (isTRUE(has_dec)) {
-    paste0(padded_si, ".", stringi::stri_pad_right(dec, w_dec))
-  } else {
-    padded_si
-  }
-}
-
-#' Build a percentage part: prefix + int \[.dec\] + sign
-#' @noRd
-pad_pct_part <- function(pct_prefix, pct_int, pct_dec, pct_sign, widths) {
-  # Combine prefix and int before padding so symbols like < > stick to the number
-  pct <- stringi::stri_pad_left(
-    paste0(pct_prefix, pct_int),
-    widths$w_pct_prefix + widths$w_pct_int
-  )
-  if (isTRUE(widths$has_dec)) {
-    pct <- paste0(pct, ".", stringi::stri_pad_right(pct_dec, widths$w_pct_dec))
-  }
-  paste0(pct, stringi::stri_pad_right(pct_sign, widths$w_pct_sign))
-}
-
-
-#' Pad a numeric-or-token position
+#' Fully vectorized decimal column reconstruction
 #'
-#' If token, right-justify in w_si and space-fill the decimal part.
-#' If numeric, delegate to pad_float_part.
-#' @noRd
-pad_token_or_float <- function(token, sign, int, dec, w_si, w_dec, has_dec) {
-  if (nzchar(token)) {
-    padded <- stringi::stri_pad_left(token, w_si)
-    if (isTRUE(has_dec)) {
-      paste0(padded, strrep(" ", 1L + w_dec))
-    } else {
-      padded
-    }
-  } else {
-    pad_float_part(sign, int, dec, w_si, w_dec, has_dec)
-  }
-}
-
-
-#' Rebuild a parsed value as a fixed-width aligned string
+#' Groups values by type, then applies vectorized stri_pad_left/stri_pad_right/
+#' paste0 on each type group. A column of n est_ci values: 1 call to this
+#' function = ~12 vectorized ops. Previously: n calls to rebuild_stat_aligned().
 #'
-#' @param parsed Named list from `parse_stat_value()`.
-#' @param widths Named list from `compute_stat_widths()`.
-#' @param dominant_type Character — the dominant type.
-#' @return Character scalar padded to `widths$full_width`.
+#' @param comps  Component frame from parse_stat_components_vec().
+#' @param types  Character vector of detected types (length n).
+#' @param widths Named list from compute_stat_widths_vec().
+#' @param dominant_type Character.
+#' @return Character vector of length n. All strings padded to full_width.
 #' @noRd
-rebuild_stat_aligned <- function(parsed, widths, dominant_type) {
+rebuild_column_aligned_vec <- function(comps, types, widths, dominant_type) {
+  n <- length(types)
   fw <- widths$full_width
-  if (fw == 0L) {
-    return("")
+  result <- character(n)
+
+  # ── Vectorized inner helpers (close over comps) ─────────────────────────
+
+  # Pad sign+int right-justified, optional ".dec" left-justified
+  vfloat <- function(j, sf, intf, decf, w_si, w_dec, has_dec) {
+    si <- stringi::stri_pad_left(paste0(comps[[sf]][j], comps[[intf]][j]), w_si)
+    if (has_dec) {
+      paste0(si, ".", stringi::stri_pad_right(comps[[decf]][j], w_dec))
+    } else {
+      si
+    }
   }
 
-  # Missing / unknown -> pad to full width
-  if (parsed$type %in% c("missing", "unknown")) {
-    return(strrep(" ", fw))
+  # Pad token-or-float position (token takes precedence if non-empty)
+  vtokfloat <- function(j, tokf, sf, intf, decf, w_si, w_dec, has_dec) {
+    tok <- comps[[tokf]][j]
+    has_tok <- nzchar(tok)
+    out <- character(length(j))
+    if (any(has_tok)) {
+      p <- stringi::stri_pad_left(tok[has_tok], w_si)
+      out[has_tok] <- if (has_dec) paste0(p, strrep(" ", 1L + w_dec)) else p
+    }
+    if (any(!has_tok)) {
+      out[!has_tok] <- vfloat(
+        j[!has_tok],
+        sf,
+        intf,
+        decf,
+        w_si,
+        w_dec,
+        has_dec
+      )
+    }
+    out
   }
 
-  # If this value's type doesn't match dominant, try compatible alignment
-  if (parsed$type != dominant_type) {
-    # --- n_only fallbacks (all families) ---
-    if (parsed$type == "n_only") {
-      # When n_pct values exist in this column, align zero/n to n_pct count
-      # right-edge (e.g., 0 aligns under 230, not under 75 from est_spread)
-      w <- if (!is.null(widths$w_npct_n)) {
-        widths$w_npct_n
-      } else {
-        switch(
-          dominant_type,
-          n_pct = ,
-          n_pct_rate = widths$w_n,
-          n_over_N_pct = ,
-          n_over_N_pct_ci = ,
-          n_over_N = ,
-          n_over_float = widths$w_num,
-          est_spread = ,
-          est_spread_pct = ,
-          est_ci = ,
-          est_ci_bracket = ,
-          est_ci_pval = ,
-          est_spread_pct_ci = widths$w_est_si,
-          scalar_float = widths$w_sign_int,
-          pvalue = widths$w_int,
-          range_pair = widths$w_l_si,
-          int_range = widths$w_left,
-          NULL
-        )
-      }
-      if (!is.null(w)) {
-        padded_n <- stringi::stri_pad_left(parsed$n, w)
-        # When using n_pct subsidiary width, no decimal zone padding needed
-        # (zero aligns with count integers like 143, 230, not estimates)
-        if (is.null(widths$w_npct_n)) {
-          # For decimal-bearing dominant types without n_pct values,
-          # space-fill the decimal zone
-          dec_w <- switch(
+  # Pad a percentage part (prefix+int right, optional .dec, sign right)
+  vpct <- function(j, w) {
+    pct <- stringi::stri_pad_left(
+      paste0(comps$pct_prefix[j], comps$pct_int[j]),
+      w$w_pct_prefix + w$w_pct_int
+    )
+    if (isTRUE(w$has_dec)) {
+      pct <- paste0(
+        pct,
+        ".",
+        stringi::stri_pad_right(comps$pct_dec[j], w$w_pct_dec)
+      )
+    }
+    paste0(pct, stringi::stri_pad_right(comps$pct_sign[j], w$w_pct_sign))
+  }
+
+  # Build CI string with chosen delimiters
+  vci <- function(j, open_ch, close_ch) {
+    est <- vtokfloat(
+      j,
+      "est_token",
+      "est_sign",
+      "est_int",
+      "est_dec",
+      widths$w_est_si,
+      widths$w_est_dec,
+      widths$has_est_dec
+    )
+    lo <- vtokfloat(
+      j,
+      "lo_token",
+      "lo_sign",
+      "lo_int",
+      "lo_dec",
+      widths$w_lo_si,
+      widths$w_lo_dec,
+      widths$has_lo_dec
+    )
+    hi <- vtokfloat(
+      j,
+      "hi_token",
+      "hi_sign",
+      "hi_int",
+      "hi_dec",
+      widths$w_hi_si,
+      widths$w_hi_dec,
+      widths$has_hi_dec
+    )
+    paste0(est, " ", open_ch, lo, ", ", hi, close_ch)
+  }
+
+  # ── Process each type group ─────────────────────────────────────────────
+
+  # Dominant type set (includes same-structure siblings)
+  dom_set <- c(
+    dominant_type,
+    switch(
+      dominant_type,
+      est_spread_pct = "est_spread",
+      est_spread = "est_spread_pct",
+      est_ci = "est_ci_bracket",
+      est_ci_bracket = "est_ci",
+      character(0)
+    )
+  )
+
+  for (tp in unique(types[!types %in% c("missing", "unknown")])) {
+    j <- which(types == tp)
+
+    if (tp %in% dom_set) {
+      # ── Dominant / sibling type: vectorized rebuild ──────────────────
+      result[j] <- switch(
+        tp,
+
+        n_only = stringi::stri_pad_left(comps$n[j], widths$w_n),
+
+        scalar_float = vfloat(
+          j,
+          "sign",
+          "int",
+          "dec",
+          widths$w_sign_int,
+          widths$w_dec,
+          TRUE
+        ),
+
+        pvalue = {
+          pfx <- stringi::stri_pad_left(comps$prefix[j], widths$w_prefix)
+          int <- stringi::stri_pad_left(comps$int[j], widths$w_int)
+          dec <- stringi::stri_pad_right(comps$dec[j], widths$w_dec)
+          paste0(pfx, int, ".", dec)
+        },
+
+        n_pct = {
+          pn <- stringi::stri_pad_left(comps$n[j], widths$w_n)
+          n_val <- suppressWarnings(as.integer(comps$n[j]))
+          is_zero <- !is.na(n_val) & n_val == 0L
+          pct <- vpct(j, widths)
+          r <- paste0(pn, " (", pct, ")")
+          r[is_zero] <- stringi::stri_pad_right(pn[is_zero], fw)
+          r
+        },
+
+        n_over_N_pct = {
+          num <- stringi::stri_pad_left(comps$num[j], widths$w_num)
+          den <- stringi::stri_pad_right(comps$den[j], widths$w_den)
+          paste0(num, "/", den, " (", vpct(j, widths), ")")
+        },
+
+        est_spread = ,
+        est_spread_pct = {
+          est <- vfloat(
+            j,
+            "est_sign",
+            "est_int",
+            "est_dec",
+            widths$w_est_si,
+            widths$w_est_dec,
+            widths$has_est_dec
+          )
+          si_str <- stringi::stri_pad_left(
+            paste0(comps$sprd_sign[j], comps$sprd_int[j]),
+            widths$w_sprd_si
+          )
+          if (widths$has_sprd_dec) {
+            dec_str <- if (tp == "est_spread_pct") {
+              paste0(comps$sprd_dec[j], "%")
+            } else {
+              comps$sprd_dec[j]
+            }
+            sprd <- paste0(
+              si_str,
+              ".",
+              stringi::stri_pad_right(dec_str, widths$w_sprd_dec_slot)
+            )
+          } else {
+            sprd <- if (tp == "est_spread_pct") {
+              paste0(si_str, "%")
+            } else {
+              si_str
+            }
+          }
+          paste0(est, " (", sprd, ")")
+        },
+
+        est_ci = vci(j, "(", ")"),
+        est_ci_bracket = vci(j, "[", "]"),
+
+        est_ci_pval = {
+          ci_str <- vci(j, "(", ")")
+          pv <- vtokfloat(
+            j,
+            "pv_token",
+            "pv_prefix",
+            "pv_int",
+            "pv_dec",
+            widths$w_pv_pi,
+            widths$w_pv_dec,
+            widths$has_pv_dec
+          )
+          paste0(ci_str, strrep(" ", widths$gap), pv)
+        },
+
+        n_pct_rate = {
+          pn <- stringi::stri_pad_left(comps$n[j], widths$w_n)
+          n_val <- suppressWarnings(as.integer(comps$n[j]))
+          is_zero <- !is.na(n_val) & n_val == 0L
+          pct <- vpct(j, widths)
+          npct <- paste0(pn, " (", pct, ")")
+          rate <- vfloat(
+            j,
+            "rate_sign",
+            "rate_int",
+            "rate_dec",
+            widths$w_rate_si,
+            widths$w_rate_dec,
+            widths$has_rate_dec
+          )
+          r <- paste0(npct, strrep(" ", widths$gap), rate)
+          r[is_zero] <- stringi::stri_pad_right(pn[is_zero], fw)
+          r
+        },
+
+        n_over_N = {
+          num <- stringi::stri_pad_left(comps$num[j], widths$w_num)
+          den <- stringi::stri_pad_right(comps$den[j], widths$w_den)
+          paste0(num, "/", den)
+        },
+
+        n_over_float = {
+          num <- stringi::stri_pad_left(comps$num[j], widths$w_num)
+          di <- stringi::stri_pad_left(comps$den_int[j], widths$w_den_int)
+          dd <- stringi::stri_pad_right(comps$den_dec[j], widths$w_den_dec)
+          paste0(num, "/", di, ".", dd)
+        },
+
+        n_over_N_pct_ci = {
+          num <- stringi::stri_pad_left(comps$num[j], widths$w_num)
+          den <- stringi::stri_pad_right(comps$den[j], widths$w_den)
+          pct <- vpct(j, widths)
+          npct_str <- paste0(num, "/", den, " (", pct, ")")
+          ci_lo <- vfloat(
+            j,
+            "ci_lo_sign",
+            "ci_lo_int",
+            "ci_lo_dec",
+            widths$w_ci_lo_si,
+            widths$w_ci_lo_dec,
+            widths$has_ci_lo_dec
+          )
+          ci_hi <- vfloat(
+            j,
+            "ci_hi_sign",
+            "ci_hi_int",
+            "ci_hi_dec",
+            widths$w_ci_hi_si,
+            widths$w_ci_hi_dec,
+            widths$has_ci_hi_dec
+          )
+          paste0(
+            npct_str,
+            strrep(" ", widths$gap),
+            "[",
+            ci_lo,
+            ", ",
+            ci_hi,
+            "]"
+          )
+        },
+
+        est_spread_pct_ci = {
+          est <- vfloat(
+            j,
+            "est_sign",
+            "est_int",
+            "est_dec",
+            widths$w_est_si,
+            widths$w_est_dec,
+            widths$has_est_dec
+          )
+          si_str <- stringi::stri_pad_left(
+            paste0(comps$sprd_sign[j], comps$sprd_int[j]),
+            widths$w_sprd_si
+          )
+          if (widths$has_sprd_dec) {
+            dec_str <- paste0(comps$sprd_dec[j], "%")
+            sprd <- paste0(
+              si_str,
+              ".",
+              stringi::stri_pad_right(dec_str, widths$w_sprd_dec_slot)
+            )
+          } else {
+            sprd <- paste0(si_str, "%")
+          }
+          espct <- paste0(est, " (", sprd, ")")
+          ci_lo <- vfloat(
+            j,
+            "ci_lo_sign",
+            "ci_lo_int",
+            "ci_lo_dec",
+            widths$w_ci_lo_si,
+            widths$w_ci_lo_dec,
+            widths$has_ci_lo_dec
+          )
+          ci_hi <- vfloat(
+            j,
+            "ci_hi_sign",
+            "ci_hi_int",
+            "ci_hi_dec",
+            widths$w_ci_hi_si,
+            widths$w_ci_hi_dec,
+            widths$has_ci_hi_dec
+          )
+          paste0(espct, strrep(" ", widths$gap), "(", ci_lo, ", ", ci_hi, ")")
+        },
+
+        range_pair = {
+          l <- vfloat(
+            j,
+            "l_sign",
+            "l_int",
+            "l_dec",
+            widths$w_l_si,
+            widths$w_l_dec,
+            widths$has_l_dec
+          )
+          r <- vfloat(
+            j,
+            "r_sign",
+            "r_int",
+            "r_dec",
+            widths$w_r_si,
+            widths$w_r_dec,
+            widths$has_r_dec
+          )
+          paste0(comps$open_delim[j], l, ", ", r, comps$close_delim[j])
+        },
+
+        int_range = {
+          l <- stringi::stri_pad_left(comps$left[j], widths$w_left)
+          r <- stringi::stri_pad_left(comps$right[j], widths$w_right)
+          paste0(l, " ", comps$sep[j], " ", r)
+        },
+
+        stringi::stri_pad_right(comps$raw[j], fw)
+      )
+    } else {
+      # ── Non-dominant type: cross-type alignment fallback (vectorized) ──
+
+      result[j] <- switch(
+        tp,
+
+        n_only = {
+          int_slot_w <- switch(
             dominant_type,
+            n_pct = ,
+            n_pct_rate = widths$w_n,
+            n_over_N_pct = ,
+            n_over_N_pct_ci = ,
+            n_over_N = ,
+            n_over_float = widths$w_num %||% widths$w_n,
             est_spread = ,
             est_spread_pct = ,
             est_ci = ,
             est_ci_bracket = ,
             est_ci_pval = ,
-            est_spread_pct_ci = if (isTRUE(widths$has_est_dec)) {
-              1L + widths$w_est_dec
-            } else {
-              0L
-            },
-            scalar_float = if (isTRUE(widths$has_dec)) {
-              1L + widths$w_dec
-            } else {
-              0L
-            },
-            pvalue = 1L + widths$w_dec,
-            0L
+            est_spread_pct_ci = widths$w_est_si,
+            scalar_float = widths$w_sign_int,
+            pvalue = widths$w_int,
+            range_pair = widths$w_l_si,
+            int_range = widths$w_left,
+            NULL
           )
-          if (dec_w > 0L) {
-            padded_n <- stringi::stri_pad_right(padded_n, w + dec_w)
+          if (!is.null(int_slot_w)) {
+            pn <- stringi::stri_pad_left(comps$n[j], int_slot_w)
+            # Space-fill decimal zone for decimal-bearing dominant types
+            dec_w <- switch(
+              dominant_type,
+              est_spread = ,
+              est_spread_pct = ,
+              est_ci = ,
+              est_ci_bracket = ,
+              est_ci_pval = ,
+              est_spread_pct_ci = if (isTRUE(widths$has_est_dec)) {
+                1L + widths$w_est_dec
+              } else {
+                0L
+              },
+              scalar_float = if (isTRUE(widths$has_dec)) {
+                1L + widths$w_dec
+              } else {
+                0L
+              },
+              pvalue = 1L + widths$w_dec,
+              0L
+            )
+            if (dec_w > 0L) {
+              pn <- stringi::stri_pad_right(pn, int_slot_w + dec_w)
+            }
+            stringi::stri_pad_right(pn, fw)
+          } else {
+            stringi::stri_pad_right(comps$n[j], fw)
           }
-        }
-        return(stringi::stri_pad_right(padded_n, fw))
-      }
-    }
+        },
 
-    # --- scalar_float fallbacks ---
-    if (
-      parsed$type == "scalar_float" &&
-        dominant_type %in%
-          c(
-            "est_spread",
-            "est_spread_pct",
-            "est_ci",
-            "est_ci_bracket",
-            "est_ci_pval",
-            "est_spread_pct_ci"
-          )
-    ) {
-      est_part <- pad_float_part(
-        parsed$sign,
-        parsed$int,
-        parsed$dec,
-        widths$w_est_si,
-        widths$w_est_dec,
-        widths$has_est_dec
-      )
-      return(stringi::stri_pad_right(est_part, fw))
-    }
+        scalar_float = {
+          if (
+            dominant_type %in%
+              c(
+                "est_spread",
+                "est_spread_pct",
+                "est_ci",
+                "est_ci_bracket",
+                "est_ci_pval",
+                "est_spread_pct_ci"
+              )
+          ) {
+            est <- vfloat(
+              j,
+              "sign",
+              "int",
+              "dec",
+              widths$w_est_si,
+              widths$w_est_dec,
+              widths$has_est_dec
+            )
+            stringi::stri_pad_right(est, fw)
+          } else if (dominant_type == "n_pct") {
+            w_n <- widths$w_npct_n %||% widths$w_n
+            r <- vfloat(
+              j,
+              "sign",
+              "int",
+              "dec",
+              w_n,
+              max(nchar(comps$dec[j])),
+              any(nzchar(comps$dec[j]))
+            )
+            stringi::stri_pad_right(r, fw)
+          } else if (dominant_type == "pvalue") {
+            # Align decimal of scalar_float with pvalue's decimal position.
+            # pvalue format: [prefix][int].[dec] — so prefix+int occupies
+            # w_prefix + w_int characters before the dot.
+            w_si <- (widths$w_prefix %||% 0L) + (widths$w_int %||% 0L)
+            vfloat(j, "sign", "int", "dec", w_si, widths$w_dec, TRUE)
+          } else {
+            stringi::stri_pad_right(comps$raw[j], fw)
+          }
+        },
 
-    # --- pvalue fallbacks ---
-    if (parsed$type == "pvalue" && dominant_type == "scalar_float") {
-      return(pad_float_part(
-        parsed$prefix,
-        parsed$int,
-        parsed$dec,
-        widths$w_sign_int,
-        widths$w_dec,
-        TRUE
-      ))
-    }
-    if (
-      parsed$type == "pvalue" &&
-        dominant_type %in%
-          c(
-            "est_spread",
-            "est_spread_pct",
-            "est_ci",
-            "est_ci_bracket",
-            "est_ci_pval",
-            "est_spread_pct_ci"
-          )
-    ) {
-      est_part <- pad_float_part(
-        parsed$prefix,
-        parsed$int,
-        parsed$dec,
-        widths$w_est_si,
-        widths$w_est_dec,
-        widths$has_est_dec
-      )
-      return(stringi::stri_pad_right(est_part, fw))
-    }
+        pvalue = {
+          if (
+            dominant_type %in%
+              c(
+                "scalar_float",
+                "est_spread",
+                "est_spread_pct",
+                "est_ci",
+                "est_ci_bracket",
+                "est_ci_pval",
+                "est_spread_pct_ci"
+              )
+          ) {
+            w_si <- widths$w_sign_int %||% widths$w_est_si
+            est <- vfloat(j, "prefix", "int", "dec", w_si, widths$w_dec, TRUE)
+            stringi::stri_pad_right(est, fw)
+          } else {
+            stringi::stri_pad_right(comps$raw[j], fw)
+          }
+        },
 
-    # --- n_pct fallbacks ---
-    if (parsed$type == "n_pct" && dominant_type == "n_over_N_pct") {
-      padded_n <- stringi::stri_pad_left(parsed$n, widths$w_num)
-      slash_den <- strrep(" ", 1L + widths$w_den)
-      pct <- pad_pct_part(
-        parsed$pct_prefix,
-        parsed$pct_int,
-        parsed$pct_dec,
-        parsed$pct_sign,
-        widths
-      )
-      return(paste0(padded_n, slash_den, " (", pct, ")"))
-    }
+        n_pct = {
+          if (!is.null(widths$w_npct_n)) {
+            # When dominant is n_over_N_pct or n_over_N_pct_ci, align "(" by
+            # padding n to fill the "num/den" prefix width of the dominant type.
+            pn <- if (dominant_type %in% c("n_over_N_pct", "n_over_N_pct_ci")) {
+              prefix_w <- (widths$w_num %||% 0L) + 1L + (widths$w_den %||% 0L)
+              stringi::stri_pad_right(comps$n[j], prefix_w)
+            } else {
+              stringi::stri_pad_left(comps$n[j], widths$w_npct_n)
+            }
+            pct <- stringi::stri_pad_left(
+              paste0(comps$pct_prefix[j], comps$pct_int[j]),
+              widths$w_npct_pct_prefix + widths$w_npct_pct_int
+            )
+            if (isTRUE(widths$has_npct_dec)) {
+              pct <- paste0(
+                pct,
+                ".",
+                stringi::stri_pad_right(comps$pct_dec[j], widths$w_npct_pct_dec)
+              )
+            }
+            pct <- paste0(
+              pct,
+              stringi::stri_pad_right(comps$pct_sign[j], widths$w_npct_pct_sign)
+            )
+            stringi::stri_pad_right(paste0(pn, " (", pct, ")"), fw)
+          } else {
+            stringi::stri_pad_right(comps$raw[j], fw)
+          }
+        },
 
-    # --- est_ci <-> est_ci_bracket fallback (swap delimiters) ---
-    if (
-      parsed$type == "est_ci" &&
-        dominant_type == "est_ci_bracket" ||
-        parsed$type == "est_ci_bracket" && dominant_type == "est_ci"
-    ) {
-      est <- pad_token_or_float(
-        parsed$est_token,
-        parsed$est_sign,
-        parsed$est_int,
-        parsed$est_dec,
-        widths$w_est_si,
-        widths$w_est_dec,
-        widths$has_est_dec
-      )
-      lo <- pad_token_or_float(
-        parsed$lo_token,
-        parsed$lo_sign,
-        parsed$lo_int,
-        parsed$lo_dec,
-        widths$w_lo_si,
-        widths$w_lo_dec,
-        widths$has_lo_dec
-      )
-      hi <- pad_token_or_float(
-        parsed$hi_token,
-        parsed$hi_sign,
-        parsed$hi_int,
-        parsed$hi_dec,
-        widths$w_hi_si,
-        widths$w_hi_dec,
-        widths$has_hi_dec
-      )
-      if (dominant_type == "est_ci") {
-        return(paste0(est, " (", lo, ", ", hi, ")"))
-      } else {
-        return(paste0(est, " [", lo, ", ", hi, "]"))
-      }
-    }
+        n_over_N = {
+          if (dominant_type == "n_over_N_pct") {
+            num <- stringi::stri_pad_left(comps$num[j], widths$w_num)
+            stringi::stri_pad_right(num, fw)
+          } else {
+            stringi::stri_pad_right(comps$raw[j], fw)
+          }
+        },
 
-    # --- est_spread fallbacks ---
-    if (parsed$type == "est_spread" && dominant_type == "est_ci") {
-      est <- pad_float_part(
-        parsed$est_sign,
-        parsed$est_int,
-        parsed$est_dec,
-        widths$w_est_si,
-        widths$w_est_dec,
-        widths$has_est_dec
-      )
-      sprd <- pad_float_part(
-        parsed$sprd_sign,
-        parsed$sprd_int,
-        parsed$sprd_dec,
-        widths$w_lo_si,
-        widths$w_lo_dec,
-        widths$has_lo_dec
-      )
-      return(stringi::stri_pad_right(paste0(est, " (", sprd, ")"), fw))
-    }
-    if (parsed$type == "est_spread" && dominant_type == "est_ci_bracket") {
-      est <- pad_float_part(
-        parsed$est_sign,
-        parsed$est_int,
-        parsed$est_dec,
-        widths$w_est_si,
-        widths$w_est_dec,
-        widths$has_est_dec
-      )
-      sprd <- pad_float_part(
-        parsed$sprd_sign,
-        parsed$sprd_int,
-        parsed$sprd_dec,
-        widths$w_lo_si,
-        widths$w_lo_dec,
-        widths$has_lo_dec
-      )
-      return(stringi::stri_pad_right(paste0(est, " [", sprd, "]"), fw))
-    }
+        est_spread = ,
+        est_spread_pct = {
+          if (dominant_type %in% c("est_ci", "est_ci_bracket")) {
+            est <- vfloat(
+              j,
+              "est_sign",
+              "est_int",
+              "est_dec",
+              widths$w_est_si,
+              widths$w_est_dec,
+              widths$has_est_dec
+            )
+            sprd <- vfloat(
+              j,
+              "sprd_sign",
+              "sprd_int",
+              "sprd_dec",
+              widths$w_lo_si,
+              widths$w_lo_dec,
+              widths$has_lo_dec
+            )
+            open_ch <- if (dominant_type == "est_ci") "(" else "["
+            close_ch <- if (dominant_type == "est_ci") ")" else "]"
+            stringi::stri_pad_right(
+              paste0(est, " ", open_ch, sprd, close_ch),
+              fw
+            )
+          } else {
+            stringi::stri_pad_right(comps$raw[j], fw)
+          }
+        },
 
-    # --- est_spread_pct <-> est_spread (shared dec-slot grid) ---
-    if (
-      parsed$type %in%
-        c("est_spread", "est_spread_pct") &&
-        dominant_type %in% c("est_spread", "est_spread_pct")
-    ) {
-      # Redirect to same-type rebuild — unified dec_slot handles both
-      est <- pad_float_part(
-        parsed$est_sign,
-        parsed$est_int,
-        parsed$est_dec,
-        widths$w_est_si,
-        widths$w_est_dec,
-        widths$has_est_dec
-      )
-      padded_si <- stringi::stri_pad_left(
-        paste0(parsed$sprd_sign, parsed$sprd_int),
-        widths$w_sprd_si
-      )
-      if (isTRUE(widths$has_sprd_dec)) {
-        dec_str <- if (parsed$type == "est_spread_pct") {
-          paste0(parsed$sprd_dec, "%")
-        } else {
-          parsed$sprd_dec
-        }
-        sprd <- paste0(
-          padded_si,
-          ".",
-          stringi::stri_pad_right(dec_str, widths$w_sprd_dec_slot)
-        )
-      } else {
-        sprd <- if (parsed$type == "est_spread_pct") {
-          paste0(padded_si, "%")
-        } else {
-          padded_si
-        }
-      }
-      return(paste0(est, " (", sprd, ")"))
-    }
+        range_pair = {
+          if (
+            dominant_type %in%
+              c(
+                "est_spread",
+                "est_spread_pct",
+                "est_ci",
+                "est_ci_bracket"
+              )
+          ) {
+            l_has_dec <- any(nzchar(comps$l_dec[j]))
+            l <- vfloat(
+              j,
+              "l_sign",
+              "l_int",
+              "l_dec",
+              widths$w_est_si,
+              widths$w_est_dec,
+              l_has_dec && isTRUE(widths$has_est_dec)
+            )
+            if (isTRUE(widths$has_est_dec) && !l_has_dec) {
+              l <- stringi::stri_pad_right(
+                l,
+                widths$w_est_si + 1L + widths$w_est_dec
+              )
+            }
+            r <- paste0(comps$r_sign[j], comps$r_int[j])
+            has_r_dec <- nzchar(comps$r_dec[j])
+            r[has_r_dec] <- paste0(r[has_r_dec], ".", comps$r_dec[j][has_r_dec])
+            od <- comps$open_delim[j]
+            cd <- comps$close_delim[j]
+            stringi::stri_pad_right(paste0(od, l, ", ", r, cd), fw)
+          } else {
+            stringi::stri_pad_right(comps$raw[j], fw)
+          }
+        },
 
-    # --- n_over_N in n_over_N_pct dominant ---
-    if (parsed$type == "n_over_N" && dominant_type == "n_over_N_pct") {
-      padded_num <- stringi::stri_pad_left(parsed$num, widths$w_num)
-      padded_den <- stringi::stri_pad_right(parsed$den, widths$w_den)
-      return(stringi::stri_pad_right(
-        paste0(padded_num, "/", padded_den),
-        fw
-      ))
-    }
+        # Missing/unknown already handled; everything else raw-padded
+        missing = ,
+        unknown = strrep(" ", fw),
 
-    # --- range_pair fallbacks ---
-    if (
-      parsed$type == "range_pair" &&
-        dominant_type %in%
-          c("est_spread", "est_spread_pct", "est_ci", "est_ci_bracket")
-    ) {
-      # Only apply decimal padding when the value actually has a decimal part.
-      # Integer range values (e.g., "54, 89") should NOT get phantom decimals.
-      l_has_dec <- nzchar(parsed$l_dec)
-      l <- pad_float_part(
-        parsed$l_sign,
-        parsed$l_int,
-        parsed$l_dec,
-        widths$w_est_si,
-        widths$w_est_dec,
-        l_has_dec
+        stringi::stri_pad_right(comps$raw[j], fw)
       )
-      # If dominant has decimals but this value doesn't, space-fill the decimal zone
-      if (isTRUE(widths$has_est_dec) && !l_has_dec) {
-        l <- stringi::stri_pad_right(l, widths$w_est_si + 1L + widths$w_est_dec)
-      }
-      r <- paste0(parsed$r_sign, parsed$r_int)
-      if (nzchar(parsed$r_dec)) {
-        r <- paste0(r, ".", parsed$r_dec)
-      }
-      od <- parsed$open_delim %||% ""
-      cd <- parsed$close_delim %||% ""
-      return(stringi::stri_pad_right(paste0(od, l, ", ", r, cd), fw))
     }
-
-    # --- n_pct in estimate/float/compound dominant ---
-    # n_pct count aligns within its own n_pct values, not the dominant's integer
-    if (parsed$type == "n_pct" && !is.null(widths$w_npct_n)) {
-      padded_n <- stringi::stri_pad_left(parsed$n, widths$w_npct_n)
-      pct <- pad_pct_part(
-        parsed$pct_prefix,
-        parsed$pct_int,
-        parsed$pct_dec,
-        parsed$pct_sign,
-        list(
-          w_pct_prefix = widths$w_npct_pct_prefix,
-          w_pct_int = widths$w_npct_pct_int,
-          w_pct_dec = widths$w_npct_pct_dec,
-          w_pct_sign = widths$w_npct_pct_sign,
-          has_dec = widths$has_npct_dec
-        )
-      )
-      return(stringi::stri_pad_right(paste0(padded_n, " (", pct, ")"), fw))
-    }
-
-    # --- est_spread / est_spread_pct in n_pct dominant ---
-    # Align estimate integer with n_pct n-part so "75.1 (8.25)" lines up
-    # under "143 (56.3)" at the integer boundary.
-    if (
-      parsed$type %in%
-        c("est_spread", "est_spread_pct") &&
-        dominant_type == "n_pct"
-    ) {
-      w_n <- widths$w_npct_n %||% widths$w_n
-      est <- pad_float_part(
-        parsed$est_sign,
-        parsed$est_int,
-        parsed$est_dec,
-        w_n,
-        nchar(parsed$est_dec),
-        nzchar(parsed$est_dec)
-      )
-      padded_si <- stringi::stri_pad_left(
-        paste0(parsed$sprd_sign, parsed$sprd_int),
-        nchar(paste0(parsed$sprd_sign, parsed$sprd_int))
-      )
-      sprd <- if (nzchar(parsed$sprd_dec)) {
-        suffix <- if (parsed$type == "est_spread_pct") {
-          paste0(parsed$sprd_dec, "%")
-        } else {
-          parsed$sprd_dec
-        }
-        paste0(padded_si, ".", suffix)
-      } else {
-        if (parsed$type == "est_spread_pct") {
-          paste0(padded_si, "%")
-        } else {
-          padded_si
-        }
-      }
-      return(stringi::stri_pad_right(paste0(est, " (", sprd, ")"), fw))
-    }
-
-    # --- scalar_float in n_pct dominant ---
-    # Align integer part with n_pct n-part so "77.0" lines up under "143".
-    if (parsed$type == "scalar_float" && dominant_type == "n_pct") {
-      w_n <- widths$w_npct_n %||% widths$w_n
-      result <- pad_float_part(
-        parsed$sign,
-        parsed$int,
-        parsed$dec,
-        w_n,
-        nchar(parsed$dec),
-        nzchar(parsed$dec)
-      )
-      return(stringi::stri_pad_right(result, fw))
-    }
-
-    # --- range_pair in n_pct dominant ---
-    # Align left integer with n_pct n-part so "51, 89" lines up under "143".
-    if (parsed$type == "range_pair" && dominant_type == "n_pct") {
-      w_n <- widths$w_npct_n %||% widths$w_n
-      l_has_dec <- nzchar(parsed$l_dec)
-      l <- pad_float_part(
-        parsed$l_sign,
-        parsed$l_int,
-        parsed$l_dec,
-        w_n,
-        nchar(parsed$l_dec),
-        l_has_dec
-      )
-      r_has_dec <- nzchar(parsed$r_dec)
-      r <- pad_float_part(
-        parsed$r_sign,
-        parsed$r_int,
-        parsed$r_dec,
-        nchar(paste0(parsed$r_sign, parsed$r_int)),
-        nchar(parsed$r_dec),
-        r_has_dec
-      )
-      od <- parsed$open_delim %||% ""
-      cd <- parsed$close_delim %||% ""
-      return(stringi::stri_pad_right(paste0(od, l, ", ", r, cd), fw))
-    }
-
-    # Generic fallback: right-pad raw
-    return(stringi::stri_pad_right(parsed$raw, fw))
   }
 
-  # === Same-type rebuild ===
-  switch(
-    dominant_type,
-
-    n_only = {
-      stringi::stri_pad_left(parsed$n, widths$w_n)
-    },
-
-    scalar_float = {
-      pad_float_part(
-        parsed$sign,
-        parsed$int,
-        parsed$dec,
-        widths$w_sign_int,
-        widths$w_dec,
-        TRUE
-      )
-    },
-
-    pvalue = {
-      padded_pfx <- stringi::stri_pad_left(parsed$prefix, widths$w_prefix)
-      padded_int <- stringi::stri_pad_left(parsed$int, widths$w_int)
-      padded_dec <- stringi::stri_pad_right(parsed$dec, widths$w_dec)
-      paste0(padded_pfx, padded_int, ".", padded_dec)
-    },
-
-    n_pct = {
-      padded_n <- stringi::stri_pad_left(parsed$n, widths$w_n)
-      n_val <- suppressWarnings(as.integer(parsed$n))
-      if (!is.na(n_val) && n_val == 0L) {
-        return(stringi::stri_pad_right(padded_n, fw))
-      }
-      pct <- pad_pct_part(
-        parsed$pct_prefix,
-        parsed$pct_int,
-        parsed$pct_dec,
-        parsed$pct_sign,
-        widths
-      )
-      paste0(padded_n, " (", pct, ")")
-    },
-
-    n_over_N_pct = {
-      padded_num <- stringi::stri_pad_left(parsed$num, widths$w_num)
-      padded_den <- stringi::stri_pad_right(parsed$den, widths$w_den)
-      pct <- pad_pct_part(
-        parsed$pct_prefix,
-        parsed$pct_int,
-        parsed$pct_dec,
-        parsed$pct_sign,
-        widths
-      )
-      paste0(padded_num, "/", padded_den, " (", pct, ")")
-    },
-
-    est_spread = ,
-    est_spread_pct = {
-      est <- pad_float_part(
-        parsed$est_sign,
-        parsed$est_int,
-        parsed$est_dec,
-        widths$w_est_si,
-        widths$w_est_dec,
-        widths$has_est_dec
-      )
-      padded_si <- stringi::stri_pad_left(
-        paste0(parsed$sprd_sign, parsed$sprd_int),
-        widths$w_sprd_si
-      )
-      if (isTRUE(widths$has_sprd_dec)) {
-        dec_str <- if (parsed$type == "est_spread_pct") {
-          paste0(parsed$sprd_dec, "%")
-        } else {
-          parsed$sprd_dec
-        }
-        sprd <- paste0(
-          padded_si,
-          ".",
-          stringi::stri_pad_right(dec_str, widths$w_sprd_dec_slot)
-        )
-      } else {
-        sprd <- if (parsed$type == "est_spread_pct") {
-          paste0(padded_si, "%")
-        } else {
-          padded_si
-        }
-      }
-      paste0(est, " (", sprd, ")")
-    },
-
-    est_ci = {
-      est <- pad_token_or_float(
-        parsed$est_token,
-        parsed$est_sign,
-        parsed$est_int,
-        parsed$est_dec,
-        widths$w_est_si,
-        widths$w_est_dec,
-        widths$has_est_dec
-      )
-      lo <- pad_token_or_float(
-        parsed$lo_token,
-        parsed$lo_sign,
-        parsed$lo_int,
-        parsed$lo_dec,
-        widths$w_lo_si,
-        widths$w_lo_dec,
-        widths$has_lo_dec
-      )
-      hi <- pad_token_or_float(
-        parsed$hi_token,
-        parsed$hi_sign,
-        parsed$hi_int,
-        parsed$hi_dec,
-        widths$w_hi_si,
-        widths$w_hi_dec,
-        widths$has_hi_dec
-      )
-      paste0(est, " (", lo, ", ", hi, ")")
-    },
-
-    est_ci_bracket = {
-      est <- pad_token_or_float(
-        parsed$est_token,
-        parsed$est_sign,
-        parsed$est_int,
-        parsed$est_dec,
-        widths$w_est_si,
-        widths$w_est_dec,
-        widths$has_est_dec
-      )
-      lo <- pad_token_or_float(
-        parsed$lo_token,
-        parsed$lo_sign,
-        parsed$lo_int,
-        parsed$lo_dec,
-        widths$w_lo_si,
-        widths$w_lo_dec,
-        widths$has_lo_dec
-      )
-      hi <- pad_token_or_float(
-        parsed$hi_token,
-        parsed$hi_sign,
-        parsed$hi_int,
-        parsed$hi_dec,
-        widths$w_hi_si,
-        widths$w_hi_dec,
-        widths$has_hi_dec
-      )
-      paste0(est, " [", lo, ", ", hi, "]")
-    },
-
-    n_over_N = {
-      padded_num <- stringi::stri_pad_left(parsed$num, widths$w_num)
-      padded_den <- stringi::stri_pad_right(parsed$den, widths$w_den)
-      paste0(padded_num, "/", padded_den)
-    },
-
-    n_over_float = {
-      padded_num <- stringi::stri_pad_left(parsed$num, widths$w_num)
-      padded_di <- stringi::stri_pad_left(parsed$den_int, widths$w_den_int)
-      padded_dd <- stringi::stri_pad_right(parsed$den_dec, widths$w_den_dec)
-      paste0(padded_num, "/", padded_di, ".", padded_dd)
-    },
-
-    est_ci_pval = {
-      # CI part
-      est <- pad_token_or_float(
-        parsed$est_token,
-        parsed$est_sign,
-        parsed$est_int,
-        parsed$est_dec,
-        widths$w_est_si,
-        widths$w_est_dec,
-        widths$has_est_dec
-      )
-      lo <- pad_token_or_float(
-        parsed$lo_token,
-        parsed$lo_sign,
-        parsed$lo_int,
-        parsed$lo_dec,
-        widths$w_lo_si,
-        widths$w_lo_dec,
-        widths$has_lo_dec
-      )
-      hi <- pad_token_or_float(
-        parsed$hi_token,
-        parsed$hi_sign,
-        parsed$hi_int,
-        parsed$hi_dec,
-        widths$w_hi_si,
-        widths$w_hi_dec,
-        widths$has_hi_dec
-      )
-      ci_str <- paste0(est, " (", lo, ", ", hi, ")")
-      # Pval part
-      pv <- pad_token_or_float(
-        parsed$pv_token,
-        parsed$pv_prefix,
-        parsed$pv_int,
-        parsed$pv_dec,
-        widths$w_pv_pi,
-        widths$w_pv_dec,
-        widths$has_pv_dec
-      )
-      paste0(ci_str, strrep(" ", widths$gap), pv)
-    },
-
-    n_pct_rate = {
-      # n_pct part
-      padded_n <- stringi::stri_pad_left(parsed$n, widths$w_n)
-      n_val <- suppressWarnings(as.integer(parsed$n))
-      if (!is.na(n_val) && n_val == 0L) {
-        npct_str <- stringi::stri_pad_right(padded_n, fw)
-        return(npct_str)
-      }
-      pct <- pad_pct_part(
-        parsed$pct_prefix,
-        parsed$pct_int,
-        parsed$pct_dec,
-        parsed$pct_sign,
-        widths
-      )
-      npct_str <- paste0(padded_n, " (", pct, ")")
-      # rate part
-      rate <- pad_float_part(
-        parsed$rate_sign,
-        parsed$rate_int,
-        parsed$rate_dec,
-        widths$w_rate_si,
-        widths$w_rate_dec,
-        widths$has_rate_dec
-      )
-      paste0(npct_str, strrep(" ", widths$gap), rate)
-    },
-
-    n_over_N_pct_ci = {
-      # n/N (pct) part
-      padded_num <- stringi::stri_pad_left(parsed$num, widths$w_num)
-      padded_den <- stringi::stri_pad_right(parsed$den, widths$w_den)
-      pct <- pad_pct_part(
-        parsed$pct_prefix,
-        parsed$pct_int,
-        parsed$pct_dec,
-        parsed$pct_sign,
-        widths
-      )
-      npct_str <- paste0(padded_num, "/", padded_den, " (", pct, ")")
-      # bracket CI part
-      ci_lo <- pad_float_part(
-        parsed$ci_lo_sign,
-        parsed$ci_lo_int,
-        parsed$ci_lo_dec,
-        widths$w_ci_lo_si,
-        widths$w_ci_lo_dec,
-        widths$has_ci_lo_dec
-      )
-      ci_hi <- pad_float_part(
-        parsed$ci_hi_sign,
-        parsed$ci_hi_int,
-        parsed$ci_hi_dec,
-        widths$w_ci_hi_si,
-        widths$w_ci_hi_dec,
-        widths$has_ci_hi_dec
-      )
-      paste0(
-        npct_str,
-        strrep(" ", widths$gap),
-        "[",
-        ci_lo,
-        ", ",
-        ci_hi,
-        "]"
-      )
-    },
-
-    est_spread_pct_ci = {
-      # est (spread%) part
-      est <- pad_float_part(
-        parsed$est_sign,
-        parsed$est_int,
-        parsed$est_dec,
-        widths$w_est_si,
-        widths$w_est_dec,
-        widths$has_est_dec
-      )
-      padded_si <- stringi::stri_pad_left(
-        paste0(parsed$sprd_sign, parsed$sprd_int),
-        widths$w_sprd_si
-      )
-      if (isTRUE(widths$has_sprd_dec)) {
-        sprd <- paste0(
-          padded_si,
-          ".",
-          stringi::stri_pad_right(
-            paste0(parsed$sprd_dec, "%"),
-            widths$w_sprd_dec_slot
-          )
-        )
-      } else {
-        sprd <- paste0(padded_si, "%")
-      }
-      espct_str <- paste0(est, " (", sprd, ")")
-      # paren CI part
-      ci_lo <- pad_float_part(
-        parsed$ci_lo_sign,
-        parsed$ci_lo_int,
-        parsed$ci_lo_dec,
-        widths$w_ci_lo_si,
-        widths$w_ci_lo_dec,
-        widths$has_ci_lo_dec
-      )
-      ci_hi <- pad_float_part(
-        parsed$ci_hi_sign,
-        parsed$ci_hi_int,
-        parsed$ci_hi_dec,
-        widths$w_ci_hi_si,
-        widths$w_ci_hi_dec,
-        widths$has_ci_hi_dec
-      )
-      paste0(
-        espct_str,
-        strrep(" ", widths$gap),
-        "(",
-        ci_lo,
-        ", ",
-        ci_hi,
-        ")"
-      )
-    },
-
-    range_pair = {
-      l <- pad_float_part(
-        parsed$l_sign,
-        parsed$l_int,
-        parsed$l_dec,
-        widths$w_l_si,
-        widths$w_l_dec,
-        widths$has_l_dec
-      )
-      r <- pad_float_part(
-        parsed$r_sign,
-        parsed$r_int,
-        parsed$r_dec,
-        widths$w_r_si,
-        widths$w_r_dec,
-        widths$has_r_dec
-      )
-      od <- parsed$open_delim %||% ""
-      cd <- parsed$close_delim %||% ""
-      paste0(od, l, ", ", r, cd)
-    },
-
-    int_range = {
-      padded_l <- stringi::stri_pad_left(parsed$left, widths$w_left)
-      padded_r <- stringi::stri_pad_left(parsed$right, widths$w_right)
-      paste0(padded_l, " ", parsed$sep, " ", padded_r)
-    },
-
-    # Fallback
-    stringi::stri_pad_right(parsed$raw, fw)
-  )
+  result
 }
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 6. Master Column Aligner
+# 5. Master Column Aligner
 # ══════════════════════════════════════════════════════════════════════════════
 
 #' Align all values in a decimal column via pre-formatted padding
 #'
-#' Pipeline: detect types -> find dominant type -> parse all -> compute widths ->
-#' rebuild all. Returns character vector where all strings have the same nchar.
+#' Pipeline: detect types → dominant type selection → parse into component
+#' frame (vectorized) → compute widths (vectorized) → rebuild all (vectorized).
+#' Returns a character vector where all strings have the same `nchar`.
+#'
+#' The rebuild step is fully vectorized: no R function call per value.
+#' A column of n est_ci values: ~12 vectorized stri_pad_*/paste0 calls on
+#' vectors of length n. Previously: n calls to rebuild_stat_aligned().
 #'
 #' @param content_vec Character vector of cell values.
 #' @return Character vector of aligned strings (all same `nchar`).
@@ -2084,23 +1571,18 @@ align_decimal_column <- function(content_vec) {
     return(character(0))
   }
 
-  # Vectorized type detection (one stri_detect_regex per pattern, not per value)
+  # STEP 1: Vectorized type detection (one stri_detect_regex per pattern)
   types <- detect_stat_types(content_vec)
 
-  # Find dominant type via family-aware priority
   non_skip <- types[!types %in% c("missing", "unknown")]
   if (length(non_skip) == 0L) {
     return(rep("", n))
   }
 
+  # STEP 2: Find dominant type via family-aware priority (unchanged logic)
   families <- fr_env$stat_type_family[non_skip]
   fam_counts <- table(families)
 
-  # Decimal-capable families (estimate, float, compound) should dominate over
-
-  # integer-only families (count, range) when both are present. Without this,
-  # a column with "53", "76.4 (8.73)", "78.0", "59, 89" would let range win
-  # (2 range types vs 1 estimate) and lose all decimal geometry.
   decimal_fams <- c("estimate", "float", "compound")
   has_decimal <- any(names(fam_counts) %in% decimal_fams)
   if (has_decimal) {
@@ -2118,19 +1600,16 @@ align_decimal_column <- function(content_vec) {
     family_types
   ])]
 
-  # Parse all values (vectorized per-type batch)
-  parsed_values <- parse_stat_values_batch(content_vec, types)
+  # STEP 3: Parse into column-oriented component frame (vectorized)
+  comps <- parse_stat_components_vec(content_vec, types)
 
-  # Compute column-wide widths from dominant type values
-  widths <- compute_stat_widths(parsed_values, dominant_type)
+  # STEP 4: Compute column-wide max widths (vectorized)
+  widths <- compute_stat_widths_vec(comps, dominant_type, types)
 
-  # Expand integer slot when n_only values are wider than the dominant type's
-
-  # integer width (e.g., "254" wider than "75" in est_spread "75.1 (8.25)").
-  nonly_vals <- parsed_values[types == "n_only"]
-  if (length(nonly_vals) > 0L && dominant_type != "n_only") {
-    max_n_w <- max(vapply(nonly_vals, function(p) nchar(p$n), integer(1L)))
-    # Identify which integer slot the n_only fallback uses
+  # STEP 5: Expand integer slot when n_only values exceed dominant int width
+  nonly_idx <- which(types == "n_only")
+  if (length(nonly_idx) > 0L && dominant_type != "n_only") {
+    max_n_w <- max(nchar(comps$n[nonly_idx]))
     int_slot <- switch(
       dominant_type,
       n_pct = ,
@@ -2160,31 +1639,22 @@ align_decimal_column <- function(content_vec) {
     }
   }
 
-  # Compute subsidiary widths for non-dominant types that need their own
-  # integer alignment (n_pct in estimate-dominant columns, etc.)
-  # These do NOT expand full_width — they align within the dominant frame.
-  npct_vals <- parsed_values[types == "n_pct"]
-  if (length(npct_vals) > 0L) {
-    npct_widths <- compute_stat_widths(npct_vals, "n_pct")
-    widths$w_npct_n <- npct_widths$w_n
-    widths$w_npct_pct_prefix <- npct_widths$w_pct_prefix
-    widths$w_npct_pct_int <- npct_widths$w_pct_int
-    widths$w_npct_pct_dec <- npct_widths$w_pct_dec
-    widths$w_npct_pct_sign <- npct_widths$w_pct_sign
-    widths$has_npct_dec <- npct_widths$has_dec
+  # STEP 6: Compute subsidiary n_pct widths (for n_pct in non-n_pct columns)
+  # Computed directly from component frame — no secondary parse call needed.
+  npct_idx <- which(types == "n_pct")
+  if (length(npct_idx) > 0L && dominant_type != "n_pct") {
+    widths$w_npct_n <- max(0L, nchar(comps$n[npct_idx]))
+    widths$w_npct_pct_prefix <- max(0L, nchar(comps$pct_prefix[npct_idx]))
+    widths$w_npct_pct_int <- max(0L, nchar(comps$pct_int[npct_idx]))
+    widths$w_npct_pct_dec <- max(0L, nchar(comps$pct_dec[npct_idx]))
+    widths$w_npct_pct_sign <- max(0L, nchar(comps$pct_sign[npct_idx]))
+    widths$has_npct_dec <- any(nzchar(comps$pct_dec[npct_idx]))
   }
 
-  # Rebuild all values as fixed-width strings
-  result <- vapply(
-    parsed_values,
-    function(p) {
-      rebuild_stat_aligned(p, widths, dominant_type)
-    },
-    character(1),
-    USE.NAMES = FALSE
-  )
+  # STEP 7: Vectorized rebuild — no R function call per value
+  result <- rebuild_column_aligned_vec(comps, types, widths, dominant_type)
 
-  # Ensure all same nchar (pad any shorter ones on the right)
+  # STEP 8: Ensure uniform nchar (pad any shorter strings on the right)
   max_nc <- max(nchar(result))
   if (max_nc > 0L) {
     result <- stringi::stri_pad_right(result, max_nc)
@@ -2195,7 +1665,7 @@ align_decimal_column <- function(content_vec) {
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 7. Integration with finalize_spec()
+# 6. Integration with finalize_spec()
 # ══════════════════════════════════════════════════════════════════════════════
 
 #' Compute global decimal geometry (single alignment for all values)

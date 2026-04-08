@@ -53,6 +53,83 @@ n_spanner_levels <- function(spans) {
 # format-specific output.
 # ══════════════════════════════════════════════════════════════════════════════
 
+# ── Style Registry ───────────────────────────────────────────────────────────
+# First-principles: most cells share 1–3 unique style combinations.
+# Stores unique style records once; tracks which style applies to each cell via
+# a single integer index. Style application = 1 write per cell instead of 9.
+#
+# new_style_registry()  — create empty registry
+# register_style()      — intern a record, return its integer id (deduplicates)
+# .materialize_style()  — expand style_ids back to per-property columns
+# ─────────────────────────────────────────────────────────────────────────────
+
+new_style_registry <- function() {
+  env <- new.env(parent = emptyenv())
+  env$records <- list()
+  env$n <- 0L
+  env$hash_to_id <- new.env(hash = TRUE, parent = emptyenv())
+  env
+}
+
+register_style <- function(reg, rec) {
+  # Hash: concatenate all field values with a separator unlikely to appear
+  key <- paste(
+    rec$align, rec$valign, rec$bold, rec$italic, rec$underline,
+    rec$color, rec$background %||% "NA", rec$indent, rec$font_size,
+    sep = "\x1f"
+  )
+  existing <- reg$hash_to_id[[key]]
+  if (!is.null(existing)) {
+    return(existing)
+  }
+  id <- reg$n + 1L
+  reg$n <- id
+  reg$records[[id]] <- rec
+  reg$hash_to_id[[key]] <- id
+  id
+}
+
+# ── Border Registry helpers (reuse new_style_registry pattern) ──────────────
+
+.register_border <- function(reg, bs) {
+  key <- paste(bs$width, bs$linestyle, bs$fg, sep = "\x1f")
+  existing <- reg$hash_to_id[[key]]
+  if (!is.null(existing)) return(existing)
+  id <- reg$n + 1L
+  reg$n <- id
+  reg$records[[id]] <- bs
+  reg$hash_to_id[[key]] <- id
+  id
+}
+
+# Materialize an integer border matrix back to list(NULL)/list(spec) format.
+.materialize_border_mat <- function(mat, reg) {
+  result <- matrix(list(NULL), nrow = nrow(mat), ncol = ncol(mat))
+  nonzero <- which(mat != 0L)
+  if (length(nonzero) > 0L) {
+    result[nonzero] <- reg$records[mat[nonzero]]
+  }
+  result
+}
+
+# Expand style_ids + registry back to one column per property.
+# Used as a backward-compat shim so backends need no changes.
+.materialize_style <- function(style_ids, registry) {
+  records <- registry$records[style_ids]
+  list(
+    align = vapply(records, `[[`, character(1), "align"),
+    valign = vapply(records, `[[`, character(1), "valign"),
+    bold = vapply(records, `[[`, logical(1), "bold"),
+    italic = vapply(records, `[[`, logical(1), "italic"),
+    underline = vapply(records, `[[`, logical(1), "underline"),
+    color = vapply(records, `[[`, character(1), "color"),
+    background = vapply(records, `[[`, character(1), "background"),
+    indent = vapply(records, `[[`, numeric(1), "indent"),
+    font_size = vapply(records, `[[`, numeric(1), "font_size")
+  )
+}
+
+
 #' Build a cell grid for the body region
 #'
 #' @param data Data frame (the body data, possibly a page_by subset).
@@ -104,54 +181,75 @@ build_cell_grid <- function(data, columns, cell_styles, page) {
   # Evaluate inline markup ({fr_super()}, {fr_bold()}, etc.) in cell content
   grid$content <- eval_markup_vec(grid$content)
 
-  # Default properties from column spec — vectorize by column, then broadcast
+  # ── Style registry: one integer index per cell instead of 9 property cols ──
+  # Register one default style record per column (alignment differs per column).
+  # All other defaults are page-level constants shared across columns.
   col_aligns <- vapply(columns, function(c) c$align %||% "left", character(1))
-  grid$align <- col_aligns[grid$col_idx]
-  grid$bold <- FALSE
-  grid$italic <- FALSE
-  grid$underline <- FALSE
-  grid$color <- "#000000"
-  grid$background <- NA_character_
-  grid$valign <- "top"
-  grid$indent <- 0
-  grid$font_size <- page$font_size
+  fs <- page$font_size
+
+  reg <- new_style_registry()
+
+  # Pre-register one record per unique column alignment (usually 1-3 unique).
+  # style_ids[k] = ID of the style record currently assigned to cell k.
+  col_default_ids <- vapply(
+    col_aligns,
+    function(al) {
+      register_style(reg, list(
+        align = al, valign = "top", bold = FALSE, italic = FALSE,
+        underline = FALSE, color = "#000000", background = NA_character_,
+        indent = 0, font_size = fs
+      ))
+    },
+    integer(1)
+  )
+  # Broadcast per-column defaults across all rows (column-major order)
+  style_ids <- rep(col_default_ids, each = nr)
 
   # Apply cell_styles in order (later wins) — body + stub regions
+  # Key: each style iteration = 1 vector write on style_ids (not 9 writes on
+  # 9 separate property columns). Fewer copy-on-modify triggers = faster.
   for (style in cell_styles) {
     if (style$region != "body" && style$region != "stub") {
       next
     }
-    affected <- resolve_style_mask(style, grid, col_names)
-    if (!any(affected)) {
+    affected <- which(resolve_style_mask(style, grid, col_names))
+    if (length(affected) == 0L) {
       next
     }
 
-    if (!is.null(style$bold)) {
-      grid$bold[affected] <- style$bold
+    # Batch by current style id: cells with the same current style produce the
+    # same merged record, so we register each merged record only once.
+    curr_ids <- unique(style_ids[affected])
+    for (cid in curr_ids) {
+      cells <- affected[style_ids[affected] == cid]
+      cur <- reg$records[[cid]]
+      new_rec <- list(
+        align = style$align %||% cur$align,
+        valign = style$valign %||% cur$valign,
+        bold = style$bold %||% cur$bold,
+        italic = style$italic %||% cur$italic,
+        underline = style$underline %||% cur$underline,
+        color = style$color %||% cur$color,
+        background = style$background %||% cur$background,
+        indent = style$indent %||% cur$indent,
+        font_size = style$font_size %||% cur$font_size
+      )
+      new_id <- register_style(reg, new_rec)
+      style_ids[cells] <- new_id
     }
-    if (!is.null(style$italic)) {
-      grid$italic[affected] <- style$italic
-    }
-    if (!is.null(style$underline)) {
-      grid$underline[affected] <- style$underline
-    }
-    if (!is.null(style$color)) {
-      grid$color[affected] <- style$color
-    }
-    if (!is.null(style$background)) {
-      grid$background[affected] <- style$background
-    }
-    if (!is.null(style$indent)) {
-      grid$indent[affected] <- style$indent
-    }
-    if (!is.null(style$font_size)) {
-      grid$font_size[affected] <- style$font_size
-    }
-    if (!is.null(style$align)) {
-      grid$align[affected] <- style$align
-    }
-    if (!is.null(style$valign)) grid$valign[affected] <- style$valign
   }
+
+  # Materialize: expand style_ids back to per-property columns for backends
+  props <- .materialize_style(style_ids, reg)
+  grid$align <- props$align
+  grid$valign <- props$valign
+  grid$bold <- props$bold
+  grid$italic <- props$italic
+  grid$underline <- props$underline
+  grid$color <- props$color
+  grid$background <- props$background
+  grid$indent <- props$indent
+  grid$font_size <- props$font_size
 
   grid
 }
@@ -1327,37 +1425,42 @@ build_keep_mask <- function(
 #'   `top`, `bottom`, `left`, `right` matrices.
 #' @noRd
 resolve_borders <- function(rules, nrow_body, ncol, nrow_header = 1L) {
-  # Initialize border matrices: each cell gets NULL or a border spec
-  # Header borders
-  h_top <- matrix(list(NULL), nrow = nrow_header, ncol = ncol)
-  h_bottom <- matrix(list(NULL), nrow = nrow_header, ncol = ncol)
-  h_left <- matrix(list(NULL), nrow = nrow_header, ncol = ncol)
-  h_right <- matrix(list(NULL), nrow = nrow_header, ncol = ncol)
+  # ── Border registry: integer matrices replace 8 x (nrow*ncol) list(NULL) ──
+  # 0L = no border; positive integers index into breg$records.
+  # Eliminates one list allocation per cell (e.g. 50-row × 8-col = 3200 fewer
+  # list(NULL) objects). Materialized back to list matrices before returning.
+  breg <- new_style_registry()
+
+  .bid <- function(bs) .register_border(breg, bs)
+  .mmat <- function(m) .materialize_border_mat(m, breg)
+
+  # Header integer border matrices
+  h_top <- matrix(0L, nrow = nrow_header, ncol = ncol)
+  h_bottom <- matrix(0L, nrow = nrow_header, ncol = ncol)
+  h_left <- matrix(0L, nrow = nrow_header, ncol = ncol)
+  h_right <- matrix(0L, nrow = nrow_header, ncol = ncol)
 
   # Empty table: return header-only borders (no body rows to process)
   if (nrow_body == 0L) {
-    empty_body <- list(
-      top = matrix(list(NULL), nrow = 0L, ncol = ncol),
-      bottom = matrix(list(NULL), nrow = 0L, ncol = ncol),
-      left = matrix(list(NULL), nrow = 0L, ncol = ncol),
-      right = matrix(list(NULL), nrow = 0L, ncol = ncol)
-    )
     return(list(
       header = list(
-        top = h_top,
-        bottom = h_bottom,
-        left = h_left,
-        right = h_right
+        top = .mmat(h_top), bottom = .mmat(h_bottom),
+        left = .mmat(h_left), right = .mmat(h_right)
       ),
-      body = empty_body
+      body = list(
+        top = matrix(list(NULL), nrow = 0L, ncol = ncol),
+        bottom = matrix(list(NULL), nrow = 0L, ncol = ncol),
+        left = matrix(list(NULL), nrow = 0L, ncol = ncol),
+        right = matrix(list(NULL), nrow = 0L, ncol = ncol)
+      )
     ))
   }
 
-  # Body borders
-  b_top <- matrix(list(NULL), nrow = nrow_body, ncol = ncol)
-  b_bottom <- matrix(list(NULL), nrow = nrow_body, ncol = ncol)
-  b_left <- matrix(list(NULL), nrow = nrow_body, ncol = ncol)
-  b_right <- matrix(list(NULL), nrow = nrow_body, ncol = ncol)
+  # Body integer border matrices
+  b_top <- matrix(0L, nrow = nrow_body, ncol = ncol)
+  b_bottom <- matrix(0L, nrow = nrow_body, ncol = ncol)
+  b_left <- matrix(0L, nrow = nrow_body, ncol = ncol)
+  b_right <- matrix(0L, nrow = nrow_body, ncol = ncol)
 
   border_spec <- function(width, linestyle, fg) {
     list(width = width, linestyle = linestyle, fg = fg)
@@ -1371,16 +1474,16 @@ resolve_borders <- function(rules, nrow_body, ncol, nrow_header = 1L) {
       bw <- rule$width %||% fr_env$rtf_box_border_wd
       bls <- rule$linestyle %||% "solid"
       bfg <- rule$fg %||% "#000000"
-      bs <- border_spec(bw, bls, bfg)
+      bs_id <- .bid(border_spec(bw, bls, bfg))
       preset <- rule$preset
       is_fullbox <- inherits(rule, "fr_rule_box") ||
         identical(rule$box_mode, "full")
 
       # Full-box adds top and bottom horizontal borders
       if (is_fullbox) {
-        h_top[1L, ] <- list(bs)
+        h_top[1L, ] <- bs_id
         if (nrow_body > 0L) {
-          b_bottom[nrow_body, ] <- list(bs)
+          b_bottom[nrow_body, ] <- bs_id
         }
       }
 
@@ -1402,18 +1505,18 @@ resolve_borders <- function(rules, nrow_body, ncol, nrow_header = 1L) {
       for (g in gaps) {
         if (g == 0L) {
           # Left edge
-          h_left[h_rows, 1L] <- list(bs)
-          b_left[b_rows, 1L] <- list(bs)
+          h_left[h_rows, 1L] <- bs_id
+          b_left[b_rows, 1L] <- bs_id
         } else if (g == ncol) {
           # Right edge
-          h_right[h_rows, ncol] <- list(bs)
-          b_right[b_rows, ncol] <- list(bs)
+          h_right[h_rows, ncol] <- bs_id
+          b_right[b_rows, ncol] <- bs_id
         } else {
           # Between columns g and g+1
-          h_right[h_rows, g] <- list(bs)
-          h_left[h_rows, g + 1L] <- list(bs)
-          b_right[b_rows, g] <- list(bs)
-          b_left[b_rows, g + 1L] <- list(bs)
+          h_right[h_rows, g] <- bs_id
+          h_left[h_rows, g + 1L] <- bs_id
+          b_right[b_rows, g] <- bs_id
+          b_left[b_rows, g + 1L] <- bs_id
         }
       }
       next
@@ -1426,47 +1529,49 @@ resolve_borders <- function(rules, nrow_body, ncol, nrow_header = 1L) {
       next
     }
 
-    bs <- border_spec(rule$width, rule$linestyle, rule$fg)
+    bs_id <- .bid(border_spec(rule$width, rule$linestyle, rule$fg))
 
     if (rule$region == "header") {
       if (rule$side == "above") {
-        h_top[1L, ] <- list(bs)
+        h_top[1L, ] <- bs_id
       } else {
         # below header = bottom of last header row
-        h_bottom[nrow_header, ] <- list(bs)
+        h_bottom[nrow_header, ] <- bs_id
       }
     } else if (rule$region == "body") {
       if (rule$side == "below") {
         if (nrow_body > 0L) {
           if (is.null(rule$rows)) {
             # Below last body row
-            b_bottom[nrow_body, ] <- list(bs)
+            b_bottom[nrow_body, ] <- bs_id
           } else if (identical(rule$rows, "all")) {
-            b_bottom[seq_len(nrow_body), ] <- list(bs)
+            b_bottom[seq_len(nrow_body), ] <- bs_id
           } else {
             valid_rows <- rule$rows[rule$rows <= nrow_body]
             if (length(valid_rows) > 0L) {
-              b_bottom[valid_rows, ] <- list(bs)
+              b_bottom[valid_rows, ] <- bs_id
             }
           }
         }
       } else {
         # above body = top of first body row
         if (nrow_body > 0L) {
-          b_top[1L, ] <- list(bs)
+          b_top[1L, ] <- bs_id
         }
       }
     }
   }
 
+  # Materialize integer matrices → list-of-NULL/border-spec matrices
   list(
     header = list(
-      top = h_top,
-      bottom = h_bottom,
-      left = h_left,
-      right = h_right
+      top = .mmat(h_top), bottom = .mmat(h_bottom),
+      left = .mmat(h_left), right = .mmat(h_right)
     ),
-    body = list(top = b_top, bottom = b_bottom, left = b_left, right = b_right)
+    body = list(
+      top = .mmat(b_top), bottom = .mmat(b_bottom),
+      left = .mmat(b_left), right = .mmat(b_right)
+    )
   )
 }
 

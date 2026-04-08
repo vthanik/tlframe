@@ -998,23 +998,13 @@ test_that("all-missing column returns all empty strings", {
   expect_true(all(result == ""))
 })
 
-test_that("compute_stat_widths safety net: non-zero width when typed is empty", {
-  parsed <- list(
-    list(type = "n_only", n = "42", raw = "42"),
-    list(
-      type = "n_pct",
-      n = "3",
-      pct_prefix = "",
-      pct_int = "6",
-      pct_dec = "7",
-      pct_sign = "%",
-      raw = "3 (6.7%)"
-    )
-  )
-  # Ask for widths of a type that doesn't exist in parsed_values
-  widths <- compute_stat_widths(parsed, "est_spread")
+test_that("compute_stat_widths_vec safety net: non-zero width when dominant type absent", {
+  vals <- c("42", "3 (6.7%)")
+  types <- c("n_only", "n_pct")
+  comps <- arframe:::parse_stat_components_vec(vals, types)
+  # Ask for widths of a type that doesn't appear in the column (est_spread)
+  widths <- arframe:::compute_stat_widths_vec(comps, "est_spread", types)
   # Should have non-zero full_width from raw values
-
   expect_true(widths$full_width > 0L)
 })
 
