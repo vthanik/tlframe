@@ -28,7 +28,7 @@
 #'
 #' @export
 fr_latex_deps <- function() {
-  fr_env$required_latex_pkgs
+  .arframe_const$required_latex_pkgs
 }
 
 
@@ -80,18 +80,21 @@ fr_install_latex_deps <- function(repository = NULL) {
   has_tlmgr <- nzchar(Sys.which("tlmgr"))
 
   if (!has_xelatex && !has_tinytex_dist) {
-    cli_abort(c(
-      "No LaTeX distribution found.",
-      "i" = "Install TinyTeX (recommended, works on all platforms):",
-      " " = "{.code install.packages(\"tinytex\")}",
-      " " = "{.code tinytex::install_tinytex()}",
-      " " = "{.code arframe::fr_install_latex_deps()}",
-      "i" = "Or use an existing TeX distribution: TeX Live, MiKTeX, or MacTeX."
-    ), call = call)
+    cli_abort(
+      c(
+        "No LaTeX distribution found.",
+        "i" = "Install TinyTeX (recommended, works on all platforms):",
+        " " = "{.code install.packages(\"tinytex\")}",
+        " " = "{.code tinytex::install_tinytex()}",
+        " " = "{.code arframe::fr_install_latex_deps()}",
+        "i" = "Or use an existing TeX distribution: TeX Live, MiKTeX, or MacTeX."
+      ),
+      call = call
+    )
   }
 
   # Find missing packages
-  missing <- find_missing_latex_pkgs(fr_env$required_latex_pkgs)
+  missing <- find_missing_latex_pkgs(.arframe_const$required_latex_pkgs)
   if (length(missing) == 0L) {
     cli_inform(c("v" = "All required LaTeX packages are already installed."))
     return(invisible(NULL))
@@ -104,10 +107,13 @@ fr_install_latex_deps <- function(repository = NULL) {
     tryCatch(
       tinytex::tlmgr_install(missing),
       error = function(e) {
-        cli::cli_warn(c(
-          "!" = "TinyTeX install failed: {conditionMessage(e)}",
-          "i" = "Falling back to system tlmgr."
-        ), call = call)
+        cli::cli_warn(
+          c(
+            "!" = "TinyTeX install failed: {conditionMessage(e)}",
+            "i" = "Falling back to system tlmgr."
+          ),
+          call = call
+        )
       }
     )
     still <- find_missing_latex_pkgs(missing)
@@ -121,7 +127,9 @@ fr_install_latex_deps <- function(repository = NULL) {
   # Tier 2: System tlmgr with repository
   if (has_tlmgr) {
     repo <- repository %||% "https://mirror.ctan.org/systems/texlive/tlnet"
-    cli_inform(c("i" = "Installing via system tlmgr (repository: {.url {repo}})..."))
+    cli_inform(c(
+      "i" = "Installing via system tlmgr (repository: {.url {repo}})..."
+    ))
     result <- system2(
       "tlmgr",
       c("--repository", repo, "install", missing),
@@ -130,11 +138,14 @@ fr_install_latex_deps <- function(repository = NULL) {
     )
     exit_code <- attr(result, "status") %||% 0L
     if (exit_code != 0L) {
-      cli::cli_warn(c(
-        "!" = "System tlmgr returned exit code {exit_code}.",
-        "i" = "Output: {paste(utils::tail(result, 3), collapse = '\\n')}",
-        "i" = "Try manually: {.code tlmgr --repository {repo} install {paste(missing, collapse = ' ')}}"
-      ), call = call)
+      cli::cli_warn(
+        c(
+          "!" = "System tlmgr returned exit code {exit_code}.",
+          "i" = "Output: {paste(utils::tail(result, 3), collapse = '\\n')}",
+          "i" = "Try manually: {.code tlmgr --repository {repo} install {paste(missing, collapse = ' ')}}"
+        ),
+        call = call
+      )
     }
     return(check_and_report(missing, call))
   }
@@ -145,20 +156,26 @@ fr_install_latex_deps <- function(repository = NULL) {
     tryCatch(
       tinytex::tlmgr_install(missing),
       error = function(e) {
-        cli::cli_warn(c(
-          "!" = "tinytex install failed: {conditionMessage(e)}",
-          "i" = "Install packages manually or set up system TeX Live."
-        ), call = call)
+        cli::cli_warn(
+          c(
+            "!" = "tinytex install failed: {conditionMessage(e)}",
+            "i" = "Install packages manually or set up system TeX Live."
+          ),
+          call = call
+        )
       }
     )
     return(check_and_report(missing, call))
   }
 
-  cli_abort(c(
-    "Cannot install LaTeX packages: no package manager available.",
-    "i" = "Install {.pkg tinytex}: {.code install.packages('tinytex')}",
-    "i" = "Then: {.code tinytex::install_tinytex()}"
-  ), call = call)
+  cli_abort(
+    c(
+      "Cannot install LaTeX packages: no package manager available.",
+      "i" = "Install {.pkg tinytex}: {.code install.packages('tinytex')}",
+      "i" = "Then: {.code tinytex::install_tinytex()}"
+    ),
+    call = call
+  )
 }
 
 
@@ -167,10 +184,13 @@ fr_install_latex_deps <- function(repository = NULL) {
 check_and_report <- function(pkgs, call) {
   still_missing <- find_missing_latex_pkgs(pkgs)
   if (length(still_missing) > 0L) {
-    cli::cli_warn(c(
-      "!" = "Still missing after install: {.val {still_missing}}.",
-      "i" = "Try installing manually or check your TeX Live setup."
-    ), call = call)
+    cli::cli_warn(
+      c(
+        "!" = "Still missing after install: {.val {still_missing}}.",
+        "i" = "Try installing manually or check your TeX Live setup."
+      ),
+      call = call
+    )
   } else {
     cli_inform(c("v" = "All packages installed successfully."))
   }
@@ -197,7 +217,9 @@ find_missing_latex_pkgs <- function(pkgs) {
 
   # Fallback: kpsewhich
   kpsewhich <- Sys.which("kpsewhich")
-  if (!nzchar(kpsewhich)) return(pkgs)
+  if (!nzchar(kpsewhich)) {
+    return(pkgs)
+  }
 
   missing <- character(0)
   for (pkg in pkgs) {
@@ -306,13 +328,16 @@ compile_xelatex_doc <- function(tex_path) {
     # Fallback: raw system2()
     xelatex <- find_xelatex()
     if (is.null(xelatex)) {
-      cli_abort(c(
-        "XeLaTeX not found on your system.",
-        "i" = "Install {.pkg tinytex} for automatic LaTeX package management:",
-        " " = "{.code install.packages(\"tinytex\")}",
-        " " = "{.code tinytex::install_tinytex()}",
-        " " = "{.code arframe::fr_install_latex_deps()}"
-      ), call = caller_env())
+      cli_abort(
+        c(
+          "XeLaTeX not found on your system.",
+          "i" = "Install {.pkg tinytex} for automatic LaTeX package management:",
+          " " = "{.code install.packages(\"tinytex\")}",
+          " " = "{.code tinytex::install_tinytex()}",
+          " " = "{.code arframe::fr_install_latex_deps()}"
+        ),
+        call = caller_env()
+      )
     }
 
     args <- c(

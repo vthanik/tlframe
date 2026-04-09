@@ -30,8 +30,8 @@ new_fr_page <- function(
   margins = 1,
   font_family = NULL,
   font_size = 9,
-  orphan_min = fr_env$default_orphan_min,
-  widow_min = fr_env$default_widow_min,
+  orphan_min = .arframe_const$default_orphan_min,
+  widow_min = .arframe_const$default_widow_min,
   continuation = NULL,
   col_gap = 4L,
   tokens = list(),
@@ -534,17 +534,17 @@ fr_col <- function(
     }
   }
   if (!is.null(align)) {
-    align <- match_arg_fr(align, fr_env$valid_aligns)
+    align <- match_arg_fr(align, .arframe_const$valid_aligns)
   }
   if (!is.null(header_align)) {
-    header_align <- match_arg_fr(header_align, fr_env$valid_aligns)
+    header_align <- match_arg_fr(header_align, .arframe_const$valid_aligns)
   }
   if (!is.null(visible)) {
     check_scalar_lgl(visible, arg = "visible")
   }
   check_scalar_lgl(stub, arg = "stub")
   if (!is.null(space_mode)) {
-    space_mode <- match_arg_fr(space_mode, fr_env$valid_space_modes)
+    space_mode <- match_arg_fr(space_mode, .arframe_const$valid_space_modes)
   }
   if (!is.null(n)) {
     n <- check_non_negative_int(n, arg = "n")
@@ -780,7 +780,11 @@ new_fr_rule <- function(
     }
   }
 
-  linestyle <- match_arg_fr(linestyle, fr_env$valid_linestyles, call = call)
+  linestyle <- match_arg_fr(
+    linestyle,
+    .arframe_const$valid_linestyles,
+    call = call
+  )
   width <- resolve_line_width(width, call = call)
 
   if (!is.null(fg)) {
@@ -1105,7 +1109,7 @@ new_fr_spec <- function(
     split = FALSE,
     width_mode = "auto",
     space_mode = "indent",
-    n_format = fr_env$default_n_format
+    n_format = .arframe_const$default_n_format
   ),
   header = new_fr_header(),
   body = new_fr_body(),
@@ -1144,7 +1148,11 @@ new_fr_spec <- function(
   # the need to remap integer indices after each insertion.
   # Guard: paste0 recycling in R 4.5+ returns "r" for paste0("r", integer(0))
   nr <- nrow(data)
-  data[[".__row_id__"]] <- if (nr > 0L) paste0("r", seq_len(nr)) else character(0)
+  data[[".__row_id__"]] <- if (nr > 0L) {
+    paste0("r", seq_len(nr))
+  } else {
+    character(0)
+  }
 
   structure(
     list(

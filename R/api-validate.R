@@ -274,7 +274,7 @@ fr_validate.fr_spec <- function(x, ..., strict = FALSE) {
   font <- spec$page$font_family
   if (!is.null(font)) {
     known <- unlist(
-      lapply(fr_env$fonts, function(f) f$names),
+      lapply(.arframe_const$fonts, function(f) f$names),
       use.names = FALSE
     )
     if (!font %in% known) {

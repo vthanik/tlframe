@@ -28,7 +28,7 @@ Invisible \code{NULL}. Called for its side effect of registering the type.
 \description{
 Adds a custom statistical format type to the decimal alignment engine.
 Use this when your data contains formatted statistics that don't match
-any of the 18 built-in types (see \code{fr_env$stat_type_registry} for the
+any of the 18 built-in types (see \code{.arframe_registry$stat_type_registry} for the
 full list).
 }
 \examples{

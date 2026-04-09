@@ -409,14 +409,14 @@ validate_style_props <- function(props, arg = "style", call = caller_env()) {
   if (!is.null(props$align)) {
     props$align <- match_arg_fr(
       props$align,
-      fr_env$valid_aligns,
+      .arframe_const$valid_aligns,
       call = call
     )
   }
   if (!is.null(props$valign)) {
     props$valign <- match_arg_fr(
       props$valign,
-      fr_env$valid_valigns,
+      .arframe_const$valid_valigns,
       call = call
     )
   }

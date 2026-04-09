@@ -129,8 +129,8 @@ fr_render <- function(spec, path, format = NULL, ...) {
   check_scalar_chr(path, arg = "path", call = call)
 
   # Clear per-render provenance cache (recomputed once per render call)
-  fr_env$cached_source_path <- NULL
-  fr_env$cached_timestamp <- NULL
+  .arframe_state$cached_source_path <- NULL
+  .arframe_state$cached_timestamp <- NULL
 
   format <- format %||% detect_format(path, call = call)
 
@@ -212,12 +212,12 @@ detect_format <- function(path, call = caller_env()) {
 #' @noRd
 build_extension_map <- function() {
   # Return cached map if registry hasn't changed
-  reg <- fr_env$backends
+  reg <- .arframe_registry$backends
   if (
-    !is.null(fr_env$extension_map_cache) &&
-      identical(names(reg), fr_env$extension_map_cache_keys)
+    !is.null(.arframe_state$extension_map_cache) &&
+      identical(names(reg), .arframe_state$extension_map_cache_keys)
   ) {
-    return(fr_env$extension_map_cache)
+    return(.arframe_state$extension_map_cache)
   }
   format_map <- character(0)
   for (fmt in names(reg)) {
@@ -225,8 +225,8 @@ build_extension_map <- function() {
       format_map[e] <- fmt
     }
   }
-  fr_env$extension_map_cache <- format_map
-  fr_env$extension_map_cache_keys <- names(reg)
+  .arframe_state$extension_map_cache <- format_map
+  .arframe_state$extension_map_cache_keys <- names(reg)
   format_map
 }
 
@@ -238,7 +238,7 @@ build_extension_map <- function() {
 #' Get backend render function from registry
 #' @noRd
 get_backend <- function(format, call = caller_env()) {
-  reg <- fr_env$backends
+  reg <- .arframe_registry$backends
   backend <- reg[[format]]
   if (is.null(backend)) {
     available <- names(reg)
@@ -326,14 +326,14 @@ fr_register_backend <- function(
   }
   check_scalar_chr(description, arg = "description", call = call)
 
-  fr_env$backends[[format]] <- list(
+  .arframe_registry$backends[[format]] <- list(
     render = render_fn,
     extensions = extensions,
     description = description
   )
   # Invalidate cached extension map
-  fr_env$extension_map_cache <- NULL
-  fr_env$extension_map_cache_keys <- NULL
+  .arframe_state$extension_map_cache <- NULL
+  .arframe_state$extension_map_cache_keys <- NULL
   invisible(NULL)
 }
 
@@ -360,9 +360,9 @@ fr_register_backend <- function(
 fr_unregister_backend <- function(format) {
   call <- caller_env()
   check_scalar_chr(format, arg = "format", call = call)
-  fr_env$backends[[format]] <- NULL
-  fr_env$extension_map_cache <- NULL
-  fr_env$extension_map_cache_keys <- NULL
+  .arframe_registry$backends[[format]] <- NULL
+  .arframe_state$extension_map_cache <- NULL
+  .arframe_state$extension_map_cache_keys <- NULL
   invisible(NULL)
 }
 
@@ -396,7 +396,7 @@ fr_unregister_backend <- function(format) {
 #' @seealso [fr_register_backend()], [fr_render()]
 #' @export
 fr_backends <- function() {
-  reg <- fr_env$backends
+  reg <- .arframe_registry$backends
   if (length(reg) == 0L) {
     return(vctrs::new_data_frame(list(
       format = character(0),
@@ -463,10 +463,13 @@ pass_validate_continuation <- function(spec) {
       length(spec$body$page_by) == 0L &&
       length(spec$body$group_by) == 0L
   ) {
-    cli::cli_warn(c(
-      "{.arg continuation} label is set but neither {.arg page_by} nor {.arg group_by} is configured.",
-      "i" = "The continuation label only appears on multi-page tables with pagination via {.fn fr_rows}."
-    ), call = caller_env())
+    cli::cli_warn(
+      c(
+        "{.arg continuation} label is set but neither {.arg page_by} nor {.arg group_by} is configured.",
+        "i" = "The continuation label only appears on multi-page tables with pagination via {.fn fr_rows}."
+      ),
+      call = caller_env()
+    )
   }
   spec
 }
@@ -659,11 +662,14 @@ finalize_labels <- function(spec) {
         spec$columns[[nm]]$label <- tryCatch(
           as.character(glue::glue_data(row_data, fmt)),
           error = function(e) {
-            cli_warn(c(
-              "N-count label format failed; using default label.",
-              "x" = "Format: {.val {fmt}}",
-              "i" = "{conditionMessage(e)}"
-            ), call = caller_env())
+            cli_warn(
+              c(
+                "N-count label format failed; using default label.",
+                "x" = "Format: {.val {fmt}}",
+                "i" = "{conditionMessage(e)}"
+              ),
+              call = caller_env()
+            )
             base_label
           }
         )
@@ -919,11 +925,14 @@ resolve_group_labels <- function(spec, group_data, group_label) {
     mask <- tolower(page_vals) == tolower(as.character(group_label))
     group_df <- df[mask, , drop = FALSE]
     if (nrow(group_df) == 0L) {
-      cli_warn(c(
-        "No N-counts found for page group {.val {group_label}}.",
-        "i" = "Available groups in {.arg .n}: {.val {unique(page_vals)}}.",
-        "i" = "Ensure column 1 values match {.arg page_by} group values (case-insensitive)."
-      ), call = caller_env())
+      cli_warn(
+        c(
+          "No N-counts found for page group {.val {group_label}}.",
+          "i" = "Available groups in {.arg .n}: {.val {unique(page_vals)}}.",
+          "i" = "Ensure column 1 values match {.arg page_by} group values (case-insensitive)."
+        ),
+        call = caller_env()
+      )
       return(NULL)
     }
 
@@ -977,7 +986,10 @@ resolve_group_labels <- function(spec, group_data, group_label) {
 # or by calling resolve_group_labels() for specs without page_by.
 resolve_section_overrides <- function(spec, group) {
   if (!is.null(group$label_overrides) || !is.null(group$span_overrides)) {
-    list(label_overrides = group$label_overrides, span_overrides = group$span_overrides)
+    list(
+      label_overrides = group$label_overrides,
+      span_overrides = group$span_overrides
+    )
   } else {
     resolved <- resolve_group_labels(spec, group$data, group$group_label)
     if (is.list(resolved)) {
@@ -1129,11 +1141,14 @@ build_label_overrides <- function(n_counts, fmt, columns) {
     overrides[nm] <- tryCatch(
       as.character(glue::glue_data(row_data, fmt)),
       error = function(e) {
-        cli_warn(c(
-          "Column label format failed; using default label.",
-          "x" = "Format: {.val {fmt}}",
-          "i" = "{conditionMessage(e)}"
-        ), call = caller_env())
+        cli_warn(
+          c(
+            "Column label format failed; using default label.",
+            "x" = "Format: {.val {fmt}}",
+            "i" = "{conditionMessage(e)}"
+          ),
+          call = caller_env()
+        )
         base_label
       }
     )
@@ -1159,11 +1174,14 @@ build_span_label_overrides <- function(n_counts, fmt, spans) {
     overrides[span_label] <- tryCatch(
       as.character(glue::glue_data(row_data, fmt)),
       error = function(e) {
-        cli_warn(c(
-          "Span label format failed; using default label.",
-          "x" = "Format: {.val {fmt}}",
-          "i" = "{conditionMessage(e)}"
-        ), call = caller_env())
+        cli_warn(
+          c(
+            "Span label format failed; using default label.",
+            "x" = "Format: {.val {fmt}}",
+            "i" = "{conditionMessage(e)}"
+          ),
+          call = caller_env()
+        )
         span_label
       }
     )
@@ -1306,7 +1324,10 @@ compute_col_panels <- function(spec) {
   available <- printable - stub_width
 
   if (available <= 0) {
-    cli_abort("Stub columns exceed the printable page width.", call = caller_env())
+    cli_abort(
+      "Stub columns exceed the printable page width.",
+      call = caller_env()
+    )
   }
 
   # Data columns (non-stub)
@@ -1571,7 +1592,7 @@ inject_span_gaps <- function(spec) {
 
   # Gap width: font_size * 0.5 / 72 inches
   fs <- spec$page$font_size %||% 9
-  gap_width <- fs * 0.5 / fr_env$points_per_inch
+  gap_width <- fs * 0.5 / .arframe_const$points_per_inch
 
   # Insert gap columns in reverse order to preserve indices
   gap_positions <- match(gap_after, names(spec$columns))

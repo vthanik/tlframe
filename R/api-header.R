@@ -144,11 +144,11 @@ fr_header <- function(
         call = call
       )
     }
-    align <- match_arg_fr(align, fr_env$valid_aligns, call = call)
+    align <- match_arg_fr(align, .arframe_const$valid_aligns, call = call)
   }
 
   if (!is.null(valign)) {
-    valign <- match_arg_fr(valign, fr_env$valid_valigns, call = call)
+    valign <- match_arg_fr(valign, .arframe_const$valid_valigns, call = call)
   }
   if (!is.null(bold)) {
     check_scalar_lgl(bold, arg = "bold", call = call)

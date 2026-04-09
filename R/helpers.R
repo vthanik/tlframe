@@ -318,7 +318,11 @@ resolve_cols_expr <- function(quo, call = caller_env()) {
 resolve_style_cols <- function(style, data, call = caller_env()) {
   if (is_quosure(style$cols)) {
     data_visible <- data[setdiff(names(data), ".__row_id__")]
-    pos <- tidyselect::eval_select(style$cols, data = data_visible, error_call = call)
+    pos <- tidyselect::eval_select(
+      style$cols,
+      data = data_visible,
+      error_call = call
+    )
     style$cols <- names(pos)
   }
   style
@@ -348,7 +352,7 @@ label_to_plain <- function(label) {
 
 #' Apply fr_theme() study-level defaults to a new fr_spec
 #'
-#' Called by fr_table() immediately after new_fr_spec(). Reads fr_env$theme
+#' Called by fr_table() immediately after new_fr_spec(). Reads .arframe_state$theme
 #' and applies any stored defaults (page, pagehead, pagefoot, hlines, vlines,
 #' footnote_separator) to the spec.
 #'
@@ -356,7 +360,7 @@ label_to_plain <- function(label) {
 #' @return A modified fr_spec.
 #' @noRd
 apply_fr_theme <- function(spec) {
-  setup <- fr_env$theme
+  setup <- .arframe_state$theme
   if (is.null(setup) || length(setup) == 0L) {
     return(spec)
   }

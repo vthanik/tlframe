@@ -582,15 +582,21 @@ has_fr_markup <- function(x) {
 
 #' Markup sentinel markers for render-time resolution
 #' @noRd
-fr_env$sentinel_start <- "\x01"
-fr_env$sentinel_end <- "\x02"
-fr_env$sentinel_pattern <- "\x01([A-Z]+):([^\x02]*)\x02"
+.arframe_const$sentinel_start <- "\x01"
+.arframe_const$sentinel_end <- "\x02"
+.arframe_const$sentinel_pattern <- "\x01([A-Z]+):([^\x02]*)\x02"
 
 
 #' Build a markup sentinel string
 #' @noRd
 markup_sentinel <- function(type, content = "") {
-  paste0(fr_env$sentinel_start, type, ":", content, fr_env$sentinel_end)
+  paste0(
+    .arframe_const$sentinel_start,
+    type,
+    ":",
+    content,
+    .arframe_const$sentinel_end
+  )
 }
 
 
@@ -601,7 +607,7 @@ markup_sentinel <- function(type, content = "") {
 #' Check if a string contains unresolved markup sentinels
 #' @noRd
 has_sentinel <- function(text) {
-  grepl(fr_env$sentinel_start, text, fixed = TRUE)
+  grepl(.arframe_const$sentinel_start, text, fixed = TRUE)
 }
 
 
@@ -615,7 +621,7 @@ resolve_sentinels <- function(text, resolver) {
   if (!has_sentinel(text)) {
     return(text)
   }
-  pattern <- fr_env$sentinel_pattern
+  pattern <- .arframe_const$sentinel_pattern
   m <- gregexpr(pattern, text, perl = TRUE)
   tokens <- regmatches(text, m)[[1]]
   if (length(tokens) == 0L) {

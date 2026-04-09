@@ -99,7 +99,10 @@ normalize_ard_num <- function(col) {
 detect_renamed_arm <- function(df, column, call) {
   # Find non-standard columns (potential group columns)
   computed_cols <- c("arm", "var_level", "stat_val", "stat_chr", "ctx")
-  non_std <- setdiff(names(df), c(fr_env$ard_standard_cols, computed_cols))
+  non_std <- setdiff(
+    names(df),
+    c(.arframe_const$ard_standard_cols, computed_cols)
+  )
 
   # Exclude columns whose name appears in df$variable (hierarchical variable cols)
   if ("variable" %in% names(df)) {
@@ -480,7 +483,9 @@ fr_wide_ard <- function(
       }
     }
     merged <- pct_defaults
-    for (k in names(pct_display)) merged[[k]] <- pct_display[[k]]
+    for (k in names(pct_display)) {
+      merged[[k]] <- pct_display[[k]]
+    }
     pct_display <- merged
   } else {
     pct_display <- pct_defaults
@@ -732,8 +737,8 @@ fr_wide_ard <- function(
   # ── Filter internal rows ────────────────────────────────────────────────
   # Keep ..ard_hierarchical_overall.. (real display row), filter others
   internal_rows <- (grepl("^\\.\\.", df$variable) &
-    !(df$variable %in% fr_env$ard_keep_sentinels)) |
-    (df$ctx %in% fr_env$ard_internal_contexts)
+    !(df$variable %in% .arframe_const$ard_keep_sentinels)) |
+    (df$ctx %in% .arframe_const$ard_internal_contexts)
 
   if (!is.null(column)) {
     internal_rows <- internal_rows | df$variable == column
@@ -802,11 +807,20 @@ fr_wide_ard <- function(
   # ── Handle hierarchical vs flat output ──────────────────────────────────
   if (hierarchy$is_hierarchical) {
     wide <- build_hierarchical_wide(
-      df, statistic, hierarchy, column, call, pct_zero = pct_display$zero
+      df,
+      statistic,
+      hierarchy,
+      column,
+      call,
+      pct_zero = pct_display$zero
     )
   } else {
     wide <- build_flat_wide(
-      df, statistic, extra_group_cols, call, pct_zero = pct_display$zero
+      df,
+      statistic,
+      extra_group_cols,
+      call,
+      pct_zero = pct_display$zero
     )
   }
 
@@ -888,7 +902,9 @@ build_flat_wide <- function(
 
   for (key in key_order) {
     key_df <- df_by_key[[key]]
-    if (is.null(key_df) || nrow(key_df) == 0L) next
+    if (is.null(key_df) || nrow(key_df) == 0L) {
+      next
+    }
 
     var_name <- key_df$variable[1L]
     ctx <- key_df$ctx[1L]
@@ -900,7 +916,9 @@ build_flat_wide <- function(
       validate_format_stats(fs, available, var_name, call)
     }
 
-    eg_values <- lapply(extra_group_cols, function(ec) as.character(key_df[[ec]][1L]))
+    eg_values <- lapply(extra_group_cols, function(ec) {
+      as.character(key_df[[ec]][1L])
+    })
     names(eg_values) <- extra_group_cols
 
     # Helper: append a chunk with var/label/arm/cell + extra group cols
@@ -920,7 +938,12 @@ build_flat_wide <- function(
 
     if (is_multirow_spec(fmt_spec)) {
       for (row_label in names(fmt_spec)) {
-        cells <- interpolate_stats_all(key_df, arm_levels, fmt_spec[[row_label]], pct_zero = pct_zero)
+        cells <- interpolate_stats_all(
+          key_df,
+          arm_levels,
+          fmt_spec[[row_label]],
+          pct_zero = pct_zero
+        )
         add_chunk(var_name, row_label, cells)
       }
     } else {
@@ -928,15 +951,27 @@ build_flat_wide <- function(
       levels <- unique(key_df$var_level)
 
       if (all(is.na(levels))) {
-        cells <- interpolate_stats_all(key_df, arm_levels, fmt_str, pct_zero = pct_zero)
+        cells <- interpolate_stats_all(
+          key_df,
+          arm_levels,
+          fmt_str,
+          pct_zero = pct_zero
+        )
         add_chunk(var_name, var_name, cells)
       } else {
         levels <- levels[!is.na(levels)]
         for (lvl in levels) {
           lvl_df <- key_df[
-            !is.na(key_df$var_level) & key_df$var_level == lvl, , drop = FALSE
+            !is.na(key_df$var_level) & key_df$var_level == lvl,
+            ,
+            drop = FALSE
           ]
-          cells <- interpolate_stats_all(lvl_df, arm_levels, fmt_str, pct_zero = pct_zero)
+          cells <- interpolate_stats_all(
+            lvl_df,
+            arm_levels,
+            fmt_str,
+            pct_zero = pct_zero
+          )
           add_chunk(var_name, lvl, cells)
         }
       }
@@ -969,8 +1004,14 @@ build_flat_wide <- function(
 # ══════════════════════════════════════════════════════════════════════════════
 
 #' @noRd
-build_hierarchical_wide <- function(df, statistic, hierarchy, column, call,
-                                   pct_zero = FALSE) {
+build_hierarchical_wide <- function(
+  df,
+  statistic,
+  hierarchy,
+  column,
+  call,
+  pct_zero = FALSE
+) {
   arm_levels <- unique(df$arm[!is.na(df$arm)])
   hier_vars <- hierarchy$hier_vars
   n_levels <- hierarchy$n_levels
@@ -999,14 +1040,19 @@ build_hierarchical_wide <- function(df, statistic, hierarchy, column, call,
   # overall=TRUE, shifting hierarchy groups left by one position. Per-arm PT
   # rows have group2_level=SOC_val, but overall PT rows have group1_level=SOC_val.
   # Shift _g values right so parent filters work consistently.
-  if (!is.null(column) && gval_col(1L) %in% names(df) && "group1" %in% names(df)) {
+  if (
+    !is.null(column) && gval_col(1L) %in% names(df) && "group1" %in% names(df)
+  ) {
     g1_names <- normalize_ard_chr(df$group1)
-    is_shifted <- !is.na(g1_names) & g1_names != column &
+    is_shifted <- !is.na(g1_names) &
+      g1_names != column &
       g1_names %in% hier_vars
     if (any(is_shifted)) {
       # Pre-create all destination columns
       needed <- gval_col(seq(2L, max_g + 1L))
-      for (nc in setdiff(needed, names(df))) df[[nc]] <- NA_character_
+      for (nc in setdiff(needed, names(df))) {
+        df[[nc]] <- NA_character_
+      }
       # Shift right: _gN → _g(N+1), working right to left
       for (g in seq(max_g, 1L, -1L)) {
         df[[gval_col(g + 1L)]][is_shifted] <- df[[gval_col(g)]][is_shifted]
@@ -1019,9 +1065,13 @@ build_hierarchical_wide <- function(df, statistic, hierarchy, column, call,
   fmt_strs <- list()
   for (hv in hier_vars) {
     hv_df <- df[df$variable == hv, , drop = FALSE]
-    if (nrow(hv_df) == 0L) next
+    if (nrow(hv_df) == 0L) {
+      next
+    }
     fs <- resolve_ard_statistic(hv, "categorical", statistic)
-    if (is_multirow_spec(fs)) fs <- fs[[1L]]
+    if (is_multirow_spec(fs)) {
+      fs <- fs[[1L]]
+    }
     validate_format_stats(fs, unique(hv_df$stat_name), hv, call)
     fmt_strs[[hv]] <- fs
   }
@@ -1069,28 +1119,47 @@ build_hierarchical_wide <- function(df, statistic, hierarchy, column, call,
   overall_df <- df_by_var[["..ard_hierarchical_overall.."]]
   if (!is.null(overall_df) && nrow(overall_df) > 0L) {
     fmt_str <- resolve_ard_statistic(
-      "..ard_hierarchical_overall..", "categorical", statistic
+      "..ard_hierarchical_overall..",
+      "categorical",
+      statistic
     )
-    if (is_multirow_spec(fmt_str)) fmt_str <- fmt_str[[1L]]
+    if (is_multirow_spec(fmt_str)) {
+      fmt_str <- fmt_str[[1L]]
+    }
     validate_format_stats(
-      fmt_str, unique(overall_df$stat_name),
-      "..ard_hierarchical_overall..", call
+      fmt_str,
+      unique(overall_df$stat_name),
+      "..ard_hierarchical_overall..",
+      call
     )
     sentinel <- "..ard_hierarchical_overall.."
-    cells <- interpolate_stats_all(overall_df, arm_levels, fmt_str, pct_zero = pct_zero)
+    cells <- interpolate_stats_all(
+      overall_df,
+      arm_levels,
+      fmt_str,
+      pct_zero = pct_zero
+    )
     append_rows(rep(sentinel, n_levels), "overall", cells)
   }
 
   # ── Process hierarchy levels recursively ──
   process_level <- function(level, parent_filters) {
     hv <- hier_vars[level]
-    if (is.null(fmt_strs[[hv]])) return()
+    if (is.null(fmt_strs[[hv]])) {
+      return()
+    }
     lv_df <- df_by_var[[hv]]
-    if (is.null(lv_df) || nrow(lv_df) == 0L) return()
+    if (is.null(lv_df) || nrow(lv_df) == 0L) {
+      return()
+    }
 
     for (pf in parent_filters) {
       if (pf$col %in% names(lv_df)) {
-        lv_df <- lv_df[!is.na(lv_df[[pf$col]]) & lv_df[[pf$col]] == pf$val, , drop = FALSE]
+        lv_df <- lv_df[
+          !is.na(lv_df[[pf$col]]) & lv_df[[pf$col]] == pf$val,
+          ,
+          drop = FALSE
+        ]
       }
     }
 
@@ -1107,7 +1176,9 @@ build_hierarchical_wide <- function(df, statistic, hierarchy, column, call,
 
     for (lv_val in lv_levels) {
       lv_subset <- lv_df[
-        !is.na(lv_df$var_level) & lv_df$var_level == lv_val, , drop = FALSE
+        !is.na(lv_df$var_level) & lv_df$var_level == lv_val,
+        ,
+        drop = FALSE
       ]
 
       level_vals <- c(ancestors, lv_val)
@@ -1115,13 +1186,22 @@ build_hierarchical_wide <- function(df, statistic, hierarchy, column, call,
         level_vals <- c(level_vals, lv_val)
       }
 
-      cells <- interpolate_stats_all(lv_subset, arm_levels, fmt_strs[[hv]], pct_zero = pct_zero)
+      cells <- interpolate_stats_all(
+        lv_subset,
+        arm_levels,
+        fmt_strs[[hv]],
+        pct_zero = pct_zero
+      )
       append_rows(level_vals, rtype, cells)
 
       if (level < n_levels) {
-        new_filters <- c(parent_filters, list(list(
-          col = gval_col(level + 1L), val = lv_val
-        )))
+        new_filters <- c(
+          parent_filters,
+          list(list(
+            col = gval_col(level + 1L),
+            val = lv_val
+          ))
+        )
         process_level(level + 1L, new_filters)
       }
     }
@@ -1240,22 +1320,28 @@ detect_ard_hierarchy <- function(df) {
 
         # Order by depth: count parent groups per variable
         hier_candidates <- unique(c(all_group_vals, leaf_vars))
-        depth <- vapply(hier_candidates, function(hv) {
-          hv_rows <- df[df$variable == hv, , drop = FALSE]
-          if (nrow(hv_rows) == 0L) return(0L)
-          # Count non-NA group columns (group2, group3, ...) that hold var names
-          n_parents <- 0L
-          for (g in 2:max_group) {
-            gcol <- paste0("group", g)
-            if (gcol %in% names(hv_rows)) {
-              gv <- normalize_ard_chr(hv_rows[[gcol]])
-              if (any(!is.na(gv) & gv %in% hier_candidates)) {
-                n_parents <- n_parents + 1L
+        depth <- vapply(
+          hier_candidates,
+          function(hv) {
+            hv_rows <- df[df$variable == hv, , drop = FALSE]
+            if (nrow(hv_rows) == 0L) {
+              return(0L)
+            }
+            # Count non-NA group columns (group2, group3, ...) that hold var names
+            n_parents <- 0L
+            for (g in 2:max_group) {
+              gcol <- paste0("group", g)
+              if (gcol %in% names(hv_rows)) {
+                gv <- normalize_ard_chr(hv_rows[[gcol]])
+                if (any(!is.na(gv) & gv %in% hier_candidates)) {
+                  n_parents <- n_parents + 1L
+                }
               }
             }
-          }
-          n_parents
-        }, integer(1))
+            n_parents
+          },
+          integer(1)
+        )
 
         all_hier_vars <- hier_candidates[order(depth)]
 
@@ -1316,8 +1402,13 @@ is_multirow_spec <- function(fmt_spec) {
 #'   value instead of interpolating (zero suppression).
 #' @return Character scalar (formatted cell text).
 #' @noRd
-interpolate_single_arm <- function(stat_vec, fmt_str, refs, arm_label,
-                                   pct_zero) {
+interpolate_single_arm <- function(
+  stat_vec,
+  fmt_str,
+  refs,
+  arm_label,
+  pct_zero
+) {
   # Zero suppression: when n=0 and pct_zero=FALSE, return just the n value
   if (!pct_zero && "n" %in% names(stat_vec)) {
     n_num <- suppressWarnings(as.numeric(stat_vec[["n"]]))
@@ -1327,12 +1418,18 @@ interpolate_single_arm <- function(stat_vec, fmt_str, refs, arm_label,
   # Fast path: all referenced stats present — skip tryCatch overhead
   if (all(refs %in% names(stat_list))) {
     as.character(glue::glue_data(
-      stat_list, fmt_str, .open = "{", .close = "}"
+      stat_list,
+      fmt_str,
+      .open = "{",
+      .close = "}"
     ))
   } else {
     tryCatch(
       as.character(glue::glue_data(
-        stat_list, fmt_str, .open = "{", .close = "}"
+        stat_list,
+        fmt_str,
+        .open = "{",
+        .close = "}"
       )),
       error = function(e) {
         cli_warn(c(
@@ -1350,11 +1447,18 @@ interpolate_single_arm <- function(stat_vec, fmt_str, refs, arm_label,
 #' @noRd
 interpolate_stats <- function(var_df, arm_val, fmt_str, pct_zero = FALSE) {
   subset <- var_df[var_df$arm == arm_val, , drop = FALSE]
-  if (nrow(subset) == 0L) return("")
+  if (nrow(subset) == 0L) {
+    return("")
+  }
   stat_vec <- stats::setNames(subset$stat_fmt, subset$stat_name)
   refs <- parse_glue_refs(fmt_str)
-  interpolate_single_arm(stat_vec, fmt_str, refs, arm_label = arm_val,
-                         pct_zero = pct_zero)
+  interpolate_single_arm(
+    stat_vec,
+    fmt_str,
+    refs,
+    arm_label = arm_val,
+    pct_zero = pct_zero
+  )
 }
 
 #' Interpolate stats for ALL arms at once — returns named character vector.
@@ -1362,18 +1466,33 @@ interpolate_stats <- function(var_df, arm_val, fmt_str, pct_zero = FALSE) {
 #' is only a safety net. We skip it when stat names match to avoid the 18%
 #' overhead tryCatch adds in profiling.
 #' @noRd
-interpolate_stats_all <- function(var_df, arm_levels, fmt_str,
-                                  pct_zero = FALSE) {
+interpolate_stats_all <- function(
+  var_df,
+  arm_levels,
+  fmt_str,
+  pct_zero = FALSE
+) {
   by_arm <- split(var_df, var_df$arm)
   # Extract required stat names from format string once
   refs <- parse_glue_refs(fmt_str)
-  vapply(arm_levels, function(a) {
-    subset <- by_arm[[a]]
-    if (is.null(subset) || nrow(subset) == 0L) return("")
-    stat_vec <- stats::setNames(subset$stat_fmt, subset$stat_name)
-    interpolate_single_arm(stat_vec, fmt_str, refs, arm_label = a,
-                           pct_zero = pct_zero)
-  }, character(1L))
+  vapply(
+    arm_levels,
+    function(a) {
+      subset <- by_arm[[a]]
+      if (is.null(subset) || nrow(subset) == 0L) {
+        return("")
+      }
+      stat_vec <- stats::setNames(subset$stat_fmt, subset$stat_name)
+      interpolate_single_arm(
+        stat_vec,
+        fmt_str,
+        refs,
+        arm_label = a,
+        pct_zero = pct_zero
+      )
+    },
+    character(1L)
+  )
 }
 
 
@@ -1498,7 +1617,7 @@ format_ard_stat <- function(
   }
 
   # Logical stats → format as TRUE/FALSE
-  if (stat_name %in% fr_env$ard_logical_stat_names) {
+  if (stat_name %in% .arframe_const$ard_logical_stat_names) {
     if (!is.na(value_chr)) {
       return(value_chr)
     }
@@ -1583,8 +1702,12 @@ format_ard_stat <- function(
 # ── Internal: format with explicit decimal count, respecting p-scale ──────
 
 #' @noRd
-format_stat_with_decimals <- function(value, stat_name, d,
-                                     pct_threshold = TRUE) {
+format_stat_with_decimals <- function(
+  value,
+  stat_name,
+  d,
+  pct_threshold = TRUE
+) {
   is_pct <- stat_name %in% c("p", "p_miss", "p_nonmiss", "p_cum")
   if (is_pct) {
     value <- value * 100
@@ -1595,7 +1718,9 @@ format_stat_with_decimals <- function(value, stat_name, d,
   if (is_pct && pct_threshold) {
     lo <- 10^(-d)
     hi <- 100 - lo
-    if (value > 0 && value < lo) return(paste0("<", sprintf(fmt, lo)))
+    if (value > 0 && value < lo) {
+      return(paste0("<", sprintf(fmt, lo)))
+    }
     if (value > hi && value < 100) return(paste0(">", sprintf(fmt, hi)))
   }
   sprintf(fmt, value)

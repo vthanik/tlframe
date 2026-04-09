@@ -3,15 +3,23 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 # ══════════════════════════════════════════════════════════════════════════════
-# fr_env existence and structure
+# Private environment structure
 # ══════════════════════════════════════════════════════════════════════════════
 
-test_that("fr_env exists and is an environment", {
-  expect_true(is.environment(fr_env))
+test_that(".arframe_const exists and is an environment", {
+  expect_true(is.environment(arframe:::.arframe_const))
 })
 
-test_that("fr_env contains all expected members", {
-  expected <- c(
+test_that(".arframe_state exists and is an environment", {
+  expect_true(is.environment(arframe:::.arframe_state))
+})
+
+test_that(".arframe_registry exists and is an environment", {
+  expect_true(is.environment(arframe:::.arframe_registry))
+})
+
+test_that(".arframe_const contains all expected members", {
+  expected_const <- c(
     "fonts",
     "paper",
     "baseline_ratio",
@@ -34,12 +42,17 @@ test_that("fr_env contains all expected members", {
     "sentinel_end",
     "sentinel_pattern"
   )
-  for (member in expected) {
+  for (member in expected_const) {
     expect_true(
-      exists(member, envir = fr_env),
-      info = paste0("fr_env$", member, " should exist")
+      exists(member, envir = arframe:::.arframe_const),
+      info = paste0(".arframe_const$", member, " should exist")
     )
   }
+})
+
+test_that(".arframe_registry contains stat_type_registry and backends", {
+  expect_true(exists("stat_type_registry", envir = arframe:::.arframe_registry))
+  expect_true(exists("backends", envir = arframe:::.arframe_registry))
 })
 
 
@@ -57,7 +70,7 @@ test_that("os_default_fonts returns a list with mono, sans, serif", {
 })
 
 test_that("get_font_family resolves known fonts to family keys", {
-  # Returns fr_env$fonts keys: "modern", "swiss", "roman"
+  # Returns .arframe_const$fonts keys: "modern", "swiss", "roman"
   expect_equal(get_font_family("Courier New"), "modern")
   expect_equal(get_font_family("Arial"), "swiss")
   expect_equal(get_font_family("Times New Roman"), "roman")
@@ -237,21 +250,21 @@ test_that("baseline_skip_twips uses 1.2 ratio", {
 test_that("valid_linestyles contains all required values", {
   expect_true(all(
     c("solid", "dashed", "dotted", "double", "dashdot") %in%
-      fr_env$valid_linestyles
+      .arframe_const$valid_linestyles
   ))
 })
 
 test_that("linestyle_rtf maps all valid linestyles", {
-  for (style in fr_env$valid_linestyles) {
+  for (style in .arframe_const$valid_linestyles) {
     expect_true(
-      style %in% names(fr_env$linestyle_rtf),
+      style %in% names(.arframe_const$linestyle_rtf),
       info = paste0("linestyle_rtf should contain '", style, "'")
     )
   }
 })
 
 test_that("linestyle_rtf maps dashdot to brdrdashd", {
-  expect_equal(fr_env$linestyle_rtf[["dashdot"]], "\\brdrdashd")
+  expect_equal(.arframe_const$linestyle_rtf[["dashdot"]], "\\brdrdashd")
 })
 
 test_that("hline_presets contain all required preset names", {
@@ -267,41 +280,44 @@ test_that("hline_presets contain all required preset names", {
   )
   for (preset in expected_presets) {
     expect_true(
-      preset %in% names(fr_env$hline_presets),
+      preset %in% names(.arframe_const$hline_presets),
       info = paste0("hline_presets should contain '", preset, "'")
     )
   }
 })
 
 test_that("hline_presets$header has 1 rule (below header)", {
-  p <- fr_env$hline_presets$header
+  p <- .arframe_const$hline_presets$header
   expect_length(p, 1L)
   expect_equal(p[[1]]$region, "header")
   expect_equal(p[[1]]$side, "below")
 })
 
 test_that("hline_presets$open has 2 rules (above + below header)", {
-  p <- fr_env$hline_presets$open
+  p <- .arframe_const$hline_presets$open
   expect_length(p, 2L)
   expect_equal(p[[1]]$side, "above")
   expect_equal(p[[2]]$side, "below")
 })
 
 test_that("hline_presets$void is an empty list", {
-  expect_length(fr_env$hline_presets$void, 0)
+  expect_length(.arframe_const$hline_presets$void, 0)
 })
 
 test_that("hline_presets$booktabs has 3 rules (top, mid, bottom)", {
-  expect_length(fr_env$hline_presets$booktabs, 3)
+  expect_length(.arframe_const$hline_presets$booktabs, 3)
 })
 
 test_that("line_widths contains named sizes as positive numbers", {
-  expect_named(fr_env$line_widths, c("hairline", "thin", "medium", "thick"))
-  expect_true(all(fr_env$line_widths > 0))
-  expect_equal(fr_env$line_widths[["thin"]], 0.50)
-  expect_equal(fr_env$line_widths[["hairline"]], 0.25)
-  expect_equal(fr_env$line_widths[["medium"]], 1.00)
-  expect_equal(fr_env$line_widths[["thick"]], 1.50)
+  expect_named(
+    .arframe_const$line_widths,
+    c("hairline", "thin", "medium", "thick")
+  )
+  expect_true(all(.arframe_const$line_widths > 0))
+  expect_equal(.arframe_const$line_widths[["thin"]], 0.50)
+  expect_equal(.arframe_const$line_widths[["hairline"]], 0.25)
+  expect_equal(.arframe_const$line_widths[["medium"]], 1.00)
+  expect_equal(.arframe_const$line_widths[["thick"]], 1.50)
 })
 
 test_that("resolve_line_width returns 0.5 for NULL", {
@@ -338,25 +354,25 @@ test_that("latex_specials maps all dangerous characters", {
   dangerous <- c("\\", "{", "}", "&", "%", "$", "#", "_", "~", "^")
   for (ch in dangerous) {
     expect_true(
-      ch %in% names(fr_env$latex_specials),
+      ch %in% names(.arframe_const$latex_specials),
       info = paste0("latex_specials should map '", ch, "'")
     )
   }
 })
 
 test_that("rtf_specials maps backslash, braces", {
-  expect_true("\\" %in% names(fr_env$rtf_specials))
-  expect_true("{" %in% names(fr_env$rtf_specials))
-  expect_true("}" %in% names(fr_env$rtf_specials))
+  expect_true("\\" %in% names(.arframe_const$rtf_specials))
+  expect_true("{" %in% names(.arframe_const$rtf_specials))
+  expect_true("}" %in% names(.arframe_const$rtf_specials))
 })
 
 test_that("latex_unicode maps common symbols", {
-  expect_true(length(fr_env$latex_unicode) > 0)
-  expect_true("\u2020" %in% names(fr_env$latex_unicode)) # dagger
+  expect_true(length(.arframe_const$latex_unicode) > 0)
+  expect_true("\u2020" %in% names(.arframe_const$latex_unicode)) # dagger
 })
 
 test_that("rtf_unicode maps common symbols", {
-  expect_true(length(fr_env$rtf_unicode) > 0)
+  expect_true(length(.arframe_const$rtf_unicode) > 0)
 })
 
 
@@ -468,18 +484,21 @@ test_that("resolve_tokens handles custom tokens", {
 # ══════════════════════════════════════════════════════════════════════════════
 
 test_that("valid_aligns contains all expected values", {
-  expect_equal(fr_env$valid_aligns, c("left", "center", "right", "decimal"))
+  expect_equal(
+    .arframe_const$valid_aligns,
+    c("left", "center", "right", "decimal")
+  )
 })
 
 test_that("align_to_rtf maps all valid alignments", {
-  for (a in fr_env$valid_aligns) {
-    expect_true(a %in% names(fr_env$align_to_rtf))
+  for (a in .arframe_const$valid_aligns) {
+    expect_true(a %in% names(.arframe_const$align_to_rtf))
   }
 })
 
 test_that("align_to_latex maps all valid alignments", {
-  for (a in fr_env$valid_aligns) {
-    expect_true(a %in% names(fr_env$align_to_latex))
+  for (a in .arframe_const$valid_aligns) {
+    expect_true(a %in% names(.arframe_const$align_to_latex))
   }
 })
 
@@ -575,7 +594,7 @@ test_that("markup_sentinel produces correct format", {
 
 test_that("markup_sentinel roundtrips via sentinel_pattern", {
   s <- markup_sentinel("BOLD", "hello")
-  m <- regexec(fr_env$sentinel_pattern, s, perl = TRUE)
+  m <- regexec(.arframe_const$sentinel_pattern, s, perl = TRUE)
   parts <- regmatches(s, m)[[1]]
   expect_length(parts, 3)
   expect_equal(parts[[2]], "BOLD")
@@ -588,9 +607,12 @@ test_that("markup_sentinel roundtrips via sentinel_pattern", {
 # ══════════════════════════════════════════════════════════════════════════════
 
 test_that("opensource_fallback maps all font family types", {
-  expect_equal(fr_env$opensource_fallback[["modern"]], "Source Code Pro")
-  expect_equal(fr_env$opensource_fallback[["swiss"]], "Source Sans 3")
-  expect_equal(fr_env$opensource_fallback[["roman"]], "Source Serif 4")
+  expect_equal(
+    .arframe_const$opensource_fallback[["modern"]],
+    "Source Code Pro"
+  )
+  expect_equal(.arframe_const$opensource_fallback[["swiss"]], "Source Sans 3")
+  expect_equal(.arframe_const$opensource_fallback[["roman"]], "Source Serif 4")
 })
 
 
@@ -654,7 +676,7 @@ test_that("resolve_latex_font returns available font as-is", {
 
 test_that("resolve_latex_font falls back to open-source for unavailable fonts", {
   local_mocked_bindings(is_system_font_available = function(font_name) {
-    font_name %in% fr_env$opensource_fallback
+    font_name %in% .arframe_const$opensource_fallback
   })
 
   result <- resolve_latex_font("Courier New")
@@ -663,7 +685,7 @@ test_that("resolve_latex_font falls back to open-source for unavailable fonts", 
 
 test_that("resolve_latex_font maps families correctly in fallback", {
   local_mocked_bindings(is_system_font_available = function(font_name) {
-    font_name %in% fr_env$opensource_fallback
+    font_name %in% .arframe_const$opensource_fallback
   })
 
   mono <- resolve_latex_font("Courier New")
@@ -996,66 +1018,66 @@ test_that("os_default_fonts returns fonts that exist in font tables", {
 # ── Rendering constants ─────────────────────────────────────────────────
 
 test_that("LaTeX rendering constants exist and have expected types", {
-  expect_true(is.numeric(fr_env$latex_leading_factor))
-  expect_true(is.character(fr_env$latex_rowsep))
-  expect_true(is.numeric(fr_env$latex_space_width_em))
-  expect_true(is.numeric(fr_env$latex_fn_sep_width_pt))
-  expect_true(is.numeric(fr_env$points_per_inch))
-  expect_equal(fr_env$points_per_inch, 72)
+  expect_true(is.numeric(.arframe_const$latex_leading_factor))
+  expect_true(is.character(.arframe_const$latex_rowsep))
+  expect_true(is.numeric(.arframe_const$latex_space_width_em))
+  expect_true(is.numeric(.arframe_const$latex_fn_sep_width_pt))
+  expect_true(is.numeric(.arframe_const$points_per_inch))
+  expect_equal(.arframe_const$points_per_inch, 72)
 })
 
 test_that("RTF rendering constants exist and have expected types", {
-  expect_true(is.numeric(fr_env$rtf_leading_factor))
-  expect_true(is.integer(fr_env$rtf_min_headery))
-  expect_true(is.integer(fr_env$rtf_decimal_pad))
-  expect_true(is.numeric(fr_env$rtf_box_border_wd))
-  expect_true(is.integer(fr_env$rtf_spanner_brdrw))
+  expect_true(is.numeric(.arframe_const$rtf_leading_factor))
+  expect_true(is.integer(.arframe_const$rtf_min_headery))
+  expect_true(is.integer(.arframe_const$rtf_decimal_pad))
+  expect_true(is.numeric(.arframe_const$rtf_box_border_wd))
+  expect_true(is.integer(.arframe_const$rtf_spanner_brdrw))
 })
 
 
 # ── Vertical alignment maps ─────────────────────────────────────────────
 
 test_that("valid_valigns contains all expected values", {
-  expect_equal(fr_env$valid_valigns, c("top", "middle", "bottom"))
+  expect_equal(.arframe_const$valid_valigns, c("top", "middle", "bottom"))
 })
 
 test_that("valign_to_rtf maps all valid vertical alignments", {
-  for (v in fr_env$valid_valigns) {
+  for (v in .arframe_const$valid_valigns) {
     expect_true(
-      v %in% names(fr_env$valign_to_rtf),
+      v %in% names(.arframe_const$valign_to_rtf),
       info = paste0("valign_to_rtf should contain '", v, "'")
     )
   }
   # top maps to empty string (default)
-  expect_equal(fr_env$valign_to_rtf[["top"]], "")
-  expect_match(fr_env$valign_to_rtf[["middle"]], "clvertalc")
-  expect_match(fr_env$valign_to_rtf[["bottom"]], "clvertalb")
+  expect_equal(.arframe_const$valign_to_rtf[["top"]], "")
+  expect_match(.arframe_const$valign_to_rtf[["middle"]], "clvertalc")
+  expect_match(.arframe_const$valign_to_rtf[["bottom"]], "clvertalb")
 })
 
 test_that("valign_to_latex maps all valid vertical alignments", {
-  for (v in fr_env$valid_valigns) {
+  for (v in .arframe_const$valid_valigns) {
     expect_true(
-      v %in% names(fr_env$valign_to_latex),
+      v %in% names(.arframe_const$valign_to_latex),
       info = paste0("valign_to_latex should contain '", v, "'")
     )
   }
-  expect_equal(fr_env$valign_to_latex[["top"]], "t")
-  expect_equal(fr_env$valign_to_latex[["middle"]], "m")
-  expect_equal(fr_env$valign_to_latex[["bottom"]], "b")
+  expect_equal(.arframe_const$valign_to_latex[["top"]], "t")
+  expect_equal(.arframe_const$valign_to_latex[["middle"]], "m")
+  expect_equal(.arframe_const$valign_to_latex[["bottom"]], "b")
 })
 
 
 # ── LaTeX linestyle map ──────────────────────────────────────────────────
 
 test_that("linestyle_latex maps all valid linestyles", {
-  for (style in fr_env$valid_linestyles) {
+  for (style in .arframe_const$valid_linestyles) {
     expect_true(
-      style %in% names(fr_env$linestyle_latex),
+      style %in% names(.arframe_const$linestyle_latex),
       info = paste0("linestyle_latex should contain '", style, "'")
     )
   }
-  expect_equal(fr_env$linestyle_latex[["solid"]], "solid")
-  expect_equal(fr_env$linestyle_latex[["dashdot"]], "dashed")
+  expect_equal(.arframe_const$linestyle_latex[["solid"]], "solid")
+  expect_equal(.arframe_const$linestyle_latex[["dashdot"]], "dashed")
 })
 
 
@@ -1063,7 +1085,7 @@ test_that("linestyle_latex maps all valid linestyles", {
 
 test_that("cell_border_rtf maps all four sides", {
   expect_named(
-    fr_env$cell_border_rtf,
+    .arframe_const$cell_border_rtf,
     c("top", "bottom", "left", "right"),
     ignore.order = TRUE
   )
@@ -1071,7 +1093,7 @@ test_that("cell_border_rtf maps all four sides", {
 
 test_that("para_border_rtf maps all four sides", {
   expect_named(
-    fr_env$para_border_rtf,
+    .arframe_const$para_border_rtf,
     c("top", "bottom", "left", "right"),
     ignore.order = TRUE
   )
@@ -1081,11 +1103,11 @@ test_that("para_border_rtf maps all four sides", {
 # ── hline_presets detailed checks ────────────────────────────────────────
 
 test_that("hline_presets$box is the string sentinel 'box'", {
-  expect_equal(fr_env$hline_presets$box, "box")
+  expect_equal(.arframe_const$hline_presets$box, "box")
 })
 
 test_that("hline_presets$hsides has header above + body below", {
-  p <- fr_env$hline_presets$hsides
+  p <- .arframe_const$hline_presets$hsides
   expect_length(p, 2L)
   expect_equal(p[[1]]$region, "header")
   expect_equal(p[[1]]$side, "above")
@@ -1094,21 +1116,21 @@ test_that("hline_presets$hsides has header above + body below", {
 })
 
 test_that("hline_presets$above has single rule above header", {
-  p <- fr_env$hline_presets$above
+  p <- .arframe_const$hline_presets$above
   expect_length(p, 1L)
   expect_equal(p[[1]]$region, "header")
   expect_equal(p[[1]]$side, "above")
 })
 
 test_that("hline_presets$below has single rule below body", {
-  p <- fr_env$hline_presets$below
+  p <- .arframe_const$hline_presets$below
   expect_length(p, 1L)
   expect_equal(p[[1]]$region, "body")
   expect_equal(p[[1]]$side, "below")
 })
 
 test_that("hline_presets$booktabs has correct widths (thick/thin/thick)", {
-  p <- fr_env$hline_presets$booktabs
+  p <- .arframe_const$hline_presets$booktabs
   expect_equal(p[[1]]$width, 1.0) # toprule
   expect_equal(p[[2]]$width, 0.5) # midrule
   expect_equal(p[[3]]$width, 1.0) # bottomrule
@@ -1117,8 +1139,8 @@ test_that("hline_presets$booktabs has correct widths (thick/thin/thick)", {
 
 # ── Backend registry ─────────────────────────────────────────────────────
 
-test_that("fr_env$backends is initialized as a list", {
-  expect_true(is.list(fr_env$backends))
+test_that(".arframe_registry$backends is initialized as a list", {
+  expect_true(is.list(.arframe_registry$backends))
 })
 
 
@@ -1126,7 +1148,7 @@ test_that("fr_env$backends is initialized as a list", {
 
 test_that("builtin_tokens contains all four token names", {
   expect_equal(
-    sort(fr_env$builtin_tokens),
+    sort(.arframe_const$builtin_tokens),
     sort(c("thepage", "total_pages", "program", "datetime"))
   )
 })
@@ -1148,19 +1170,19 @@ test_that("resolve_color errors on malformed hex color", {
 # ══════════════════════════════════════════════════════════════════════════════
 
 test_that("is_system_font_available returns TRUE when font cache has sentinel", {
-  old <- fr_env$system_fonts
-  on.exit(fr_env$system_fonts <- old, add = TRUE)
+  old <- .arframe_state$system_fonts
+  on.exit(.arframe_state$system_fonts <- old, add = TRUE)
 
   # When system_fonts is TRUE (sentinel), any font is "available"
-  fr_env$system_fonts <- TRUE
+  .arframe_state$system_fonts <- TRUE
   expect_true(is_system_font_available("SomeWeirdFont"))
 })
 
 test_that("get_system_font_list returns cached value on second call", {
-  old <- fr_env$system_fonts
-  on.exit(fr_env$system_fonts <- old, add = TRUE)
+  old <- .arframe_state$system_fonts
+  on.exit(.arframe_state$system_fonts <- old, add = TRUE)
 
-  fr_env$system_fonts <- c("Arial", "Helvetica")
+  .arframe_state$system_fonts <- c("Arial", "Helvetica")
   result <- get_system_font_list()
   expect_equal(result, c("Arial", "Helvetica"))
 })

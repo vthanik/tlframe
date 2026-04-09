@@ -474,9 +474,9 @@ test_that("apply_settings_section applies matching parameters via verb", {
 # ══════════════════════════════════════════════════════════════════════════════
 
 test_that("apply_fr_theme returns spec unchanged when no theme is set", {
-  old_theme <- fr_env$theme
-  on.exit(fr_env$theme <- old_theme, add = TRUE)
-  fr_env$theme <- NULL
+  old_theme <- .arframe_state$theme
+  on.exit(.arframe_state$theme <- old_theme, add = TRUE)
+  .arframe_state$theme <- NULL
 
   spec <- new_fr_spec(data.frame(x = 1))
   result <- apply_fr_theme(spec)
@@ -484,9 +484,9 @@ test_that("apply_fr_theme returns spec unchanged when no theme is set", {
 })
 
 test_that("apply_fr_theme returns spec unchanged when theme is empty list", {
-  old_theme <- fr_env$theme
-  on.exit(fr_env$theme <- old_theme, add = TRUE)
-  fr_env$theme <- list()
+  old_theme <- .arframe_state$theme
+  on.exit(.arframe_state$theme <- old_theme, add = TRUE)
+  .arframe_state$theme <- list()
 
   spec <- new_fr_spec(data.frame(x = 1))
   result <- apply_fr_theme(spec)
@@ -494,9 +494,9 @@ test_that("apply_fr_theme returns spec unchanged when theme is empty list", {
 })
 
 test_that("apply_fr_theme applies page orientation from theme", {
-  old_theme <- fr_env$theme
-  on.exit(fr_env$theme <- old_theme, add = TRUE)
-  fr_env$theme <- list(orientation = "portrait")
+  old_theme <- .arframe_state$theme
+  on.exit(.arframe_state$theme <- old_theme, add = TRUE)
+  .arframe_state$theme <- list(orientation = "portrait")
 
   spec <- new_fr_spec(data.frame(x = 1))
   result <- apply_fr_theme(spec)
@@ -504,9 +504,9 @@ test_that("apply_fr_theme applies page orientation from theme", {
 })
 
 test_that("apply_fr_theme applies hlines from theme", {
-  old_theme <- fr_env$theme
-  on.exit(fr_env$theme <- old_theme, add = TRUE)
-  fr_env$theme <- list(hlines = "header")
+  old_theme <- .arframe_state$theme
+  on.exit(.arframe_state$theme <- old_theme, add = TRUE)
+  .arframe_state$theme <- list(hlines = "header")
 
   spec <- new_fr_spec(data.frame(x = 1))
   result <- apply_fr_theme(spec)
@@ -514,9 +514,9 @@ test_that("apply_fr_theme applies hlines from theme", {
 })
 
 test_that("apply_fr_theme applies vlines from theme", {
-  old_theme <- fr_env$theme
-  on.exit(fr_env$theme <- old_theme, add = TRUE)
-  fr_env$theme <- list(vlines = "box")
+  old_theme <- .arframe_state$theme
+  on.exit(.arframe_state$theme <- old_theme, add = TRUE)
+  .arframe_state$theme <- list(vlines = "box")
 
   spec <- new_fr_spec(data.frame(x = 1))
   result <- apply_fr_theme(spec)
@@ -524,9 +524,9 @@ test_that("apply_fr_theme applies vlines from theme", {
 })
 
 test_that("apply_fr_theme applies space_mode from theme", {
-  old_theme <- fr_env$theme
-  on.exit(fr_env$theme <- old_theme, add = TRUE)
-  fr_env$theme <- list(space_mode = "fixed")
+  old_theme <- .arframe_state$theme
+  on.exit(.arframe_state$theme <- old_theme, add = TRUE)
+  .arframe_state$theme <- list(space_mode = "fixed")
 
   spec <- new_fr_spec(data.frame(x = 1))
   result <- apply_fr_theme(spec)
@@ -534,9 +534,9 @@ test_that("apply_fr_theme applies space_mode from theme", {
 })
 
 test_that("apply_fr_theme applies n_format from theme", {
-  old_theme <- fr_env$theme
-  on.exit(fr_env$theme <- old_theme, add = TRUE)
-  fr_env$theme <- list(n_format = "(N={n})")
+  old_theme <- .arframe_state$theme
+  on.exit(.arframe_state$theme <- old_theme, add = TRUE)
+  .arframe_state$theme <- list(n_format = "(N={n})")
 
   spec <- new_fr_spec(data.frame(x = 1))
   result <- apply_fr_theme(spec)
@@ -544,9 +544,9 @@ test_that("apply_fr_theme applies n_format from theme", {
 })
 
 test_that("apply_fr_theme applies split from theme", {
-  old_theme <- fr_env$theme
-  on.exit(fr_env$theme <- old_theme, add = TRUE)
-  fr_env$theme <- list(split = TRUE)
+  old_theme <- .arframe_state$theme
+  on.exit(.arframe_state$theme <- old_theme, add = TRUE)
+  .arframe_state$theme <- list(split = TRUE)
 
   spec <- new_fr_spec(data.frame(x = 1))
   result <- apply_fr_theme(spec)
@@ -554,9 +554,9 @@ test_that("apply_fr_theme applies split from theme", {
 })
 
 test_that("apply_fr_theme applies stub from theme", {
-  old_theme <- fr_env$theme
-  on.exit(fr_env$theme <- old_theme, add = TRUE)
-  fr_env$theme <- list(stub = "param")
+  old_theme <- .arframe_state$theme
+  on.exit(.arframe_state$theme <- old_theme, add = TRUE)
+  .arframe_state$theme <- list(stub = "param")
 
   spec <- new_fr_spec(data.frame(x = 1))
   result <- apply_fr_theme(spec)
@@ -564,9 +564,9 @@ test_that("apply_fr_theme applies stub from theme", {
 })
 
 test_that("apply_fr_theme applies group_keep from theme", {
-  old_theme <- fr_env$theme
-  on.exit(fr_env$theme <- old_theme, add = TRUE)
-  fr_env$theme <- list(group_keep = 3L)
+  old_theme <- .arframe_state$theme
+  on.exit(.arframe_state$theme <- old_theme, add = TRUE)
+  .arframe_state$theme <- list(group_keep = 3L)
 
   spec <- new_fr_spec(data.frame(x = 1))
   result <- apply_fr_theme(spec)
@@ -574,9 +574,9 @@ test_that("apply_fr_theme applies group_keep from theme", {
 })
 
 test_that("apply_fr_theme applies footnote_separator from theme", {
-  old_theme <- fr_env$theme
-  on.exit(fr_env$theme <- old_theme, add = TRUE)
-  fr_env$theme <- list(footnote_separator = "---")
+  old_theme <- .arframe_state$theme
+  on.exit(.arframe_state$theme <- old_theme, add = TRUE)
+  .arframe_state$theme <- list(footnote_separator = "---")
 
   spec <- new_fr_spec(data.frame(x = 1))
   result <- apply_fr_theme(spec)
@@ -584,9 +584,9 @@ test_that("apply_fr_theme applies footnote_separator from theme", {
 })
 
 test_that("apply_fr_theme applies header defaults from theme", {
-  old_theme <- fr_env$theme
-  on.exit(fr_env$theme <- old_theme, add = TRUE)
-  fr_env$theme <- list(header = list(bold = TRUE, align = "center"))
+  old_theme <- .arframe_state$theme
+  on.exit(.arframe_state$theme <- old_theme, add = TRUE)
+  .arframe_state$theme <- list(header = list(bold = TRUE, align = "center"))
 
   spec <- new_fr_spec(data.frame(x = 1))
   result <- apply_fr_theme(spec)
@@ -595,9 +595,9 @@ test_that("apply_fr_theme applies header defaults from theme", {
 })
 
 test_that("apply_fr_theme applies header span_gap from theme", {
-  old_theme <- fr_env$theme
-  on.exit(fr_env$theme <- old_theme, add = TRUE)
-  fr_env$theme <- list(header = list(span_gap = 2L))
+  old_theme <- .arframe_state$theme
+  on.exit(.arframe_state$theme <- old_theme, add = TRUE)
+  .arframe_state$theme <- list(header = list(span_gap = 2L))
 
   spec <- new_fr_spec(data.frame(x = 1))
   result <- apply_fr_theme(spec)
@@ -605,9 +605,11 @@ test_that("apply_fr_theme applies header span_gap from theme", {
 })
 
 test_that("apply_fr_theme applies spacing from theme", {
-  old_theme <- fr_env$theme
-  on.exit(fr_env$theme <- old_theme, add = TRUE)
-  fr_env$theme <- list(spacing = list(titles_after = 2L, footnotes_before = 3L))
+  old_theme <- .arframe_state$theme
+  on.exit(.arframe_state$theme <- old_theme, add = TRUE)
+  .arframe_state$theme <- list(
+    spacing = list(titles_after = 2L, footnotes_before = 3L)
+  )
 
   spec <- new_fr_spec(data.frame(x = 1))
   result <- apply_fr_theme(spec)

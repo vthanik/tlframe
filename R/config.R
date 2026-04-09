@@ -197,9 +197,9 @@ fr_config <- function(file = NULL) {
     cfg <- list()
   }
 
-  fr_env$config <- cfg
-  fr_env$config_file <- file
-  fr_env$config_reset <- FALSE
+  .arframe_state$config <- cfg
+  .arframe_state$config_file <- file
+  .arframe_state$config_reset <- FALSE
   invisible(cfg)
 }
 
@@ -252,10 +252,10 @@ fr_config <- function(file = NULL) {
 #'
 #' @export
 fr_config_get <- function() {
-  if (is.null(fr_env$config)) {
+  if (is.null(.arframe_state$config)) {
     fr_config()
   }
-  as.list(fr_env$config)
+  as.list(.arframe_state$config)
 }
 
 
@@ -287,9 +287,9 @@ fr_config_get <- function() {
 #'
 #' @export
 fr_config_reset <- function() {
-  fr_env$config <- NULL
-  fr_env$config_file <- NULL
-  fr_env$config_reset <- TRUE
+  .arframe_state$config <- NULL
+  .arframe_state$config_file <- NULL
+  .arframe_state$config_reset <- TRUE
   invisible(NULL)
 }
 
@@ -341,10 +341,10 @@ merge_config <- function(base, override) {
 #' @return Modified fr_spec.
 #' @noRd
 apply_config <- function(spec) {
-  if (is.null(fr_env$config) && !isTRUE(fr_env$config_reset)) {
+  if (is.null(.arframe_state$config) && !isTRUE(.arframe_state$config_reset)) {
     fr_config()
   }
-  cfg <- fr_env$config
+  cfg <- .arframe_state$config
   if (is.null(cfg) || length(cfg) == 0L) {
     return(spec)
   }
@@ -381,7 +381,7 @@ apply_config <- function(spec) {
       !is.null(columns_cfg$space_mode) && is.character(columns_cfg$space_mode)
     ) {
       space_mode_val <- tryCatch(
-        match_arg_fr(columns_cfg$space_mode, fr_env$valid_space_modes),
+        match_arg_fr(columns_cfg$space_mode, .arframe_const$valid_space_modes),
         error = function(e) {
           cli_warn(
             "Config {.field columns.space_mode} ignored: {conditionMessage(e)}",

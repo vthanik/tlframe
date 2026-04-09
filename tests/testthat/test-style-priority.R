@@ -5,7 +5,6 @@
 # is correctly enforced by checking rendered HTML output for inline styles.
 # ──────────────────────────────────────────────────────────────────────────────
 
-
 render_html_string <- function(spec) {
   tf <- tempfile(fileext = ".html")
   on.exit(unlink(tf), add = TRUE)
@@ -99,7 +98,9 @@ test_that("group_style has lower precedence than fr_styles", {
   fs_idx <- NULL
   for (i in seq_along(fspec$cell_styles)) {
     s <- fspec$cell_styles[[i]]
-    if (identical(s$background, "#AAAAAA") && isTRUE(s$bold)) gs_idx <- i
+    if (identical(s$background, "#AAAAAA") && isTRUE(s$bold)) {
+      gs_idx <- i
+    }
     if (identical(s$background, "#FFFFFF")) fs_idx <- i
   }
   expect_false(is.null(gs_idx))

@@ -222,14 +222,18 @@ fr_hlines <- function(
   call <- caller_env()
   check_fr_spec(spec, call = call)
 
-  preset <- match_arg_fr(preset, names(fr_env$hline_presets), call = call)
+  preset <- match_arg_fr(
+    preset,
+    names(.arframe_const$hline_presets),
+    call = call
+  )
 
   if (identical(preset, "void")) {
     spec$rules <- keep_vertical_rules(spec$rules, keep_box = TRUE)
     return(spec)
   }
 
-  rule_defs <- fr_env$hline_presets[[preset]]
+  rule_defs <- .arframe_const$hline_presets[[preset]]
 
   resolved_width <- if (!is.null(width)) {
     resolve_line_width(width, call = call)
@@ -242,7 +246,7 @@ fr_hlines <- function(
     NULL
   }
   resolved_linestyle <- if (!is.null(linestyle)) {
-    match_arg_fr(linestyle, fr_env$valid_linestyles, call = call)
+    match_arg_fr(linestyle, .arframe_const$valid_linestyles, call = call)
   } else {
     NULL
   }
@@ -250,7 +254,7 @@ fr_hlines <- function(
   if (identical(rule_defs, "box")) {
     new_rules <- list(new_fr_vline_spec(
       preset = "box",
-      width = resolved_width %||% fr_env$rtf_box_border_wd,
+      width = resolved_width %||% .arframe_const$rtf_box_border_wd,
       linestyle = resolved_linestyle %||% "solid",
       fg = resolved_color %||% "#000000",
       box_mode = "full"
@@ -422,7 +426,7 @@ fr_vlines <- function(
     "#000000"
   }
   resolved_linestyle <- if (!is.null(linestyle)) {
-    match_arg_fr(linestyle, fr_env$valid_linestyles, call = call)
+    match_arg_fr(linestyle, .arframe_const$valid_linestyles, call = call)
   } else {
     "solid"
   }

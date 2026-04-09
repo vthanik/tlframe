@@ -311,10 +311,10 @@ fr_style <- function(
   cols <- resolve_cols_expr(enquo(cols), call = call)
 
   if (!is.null(align)) {
-    align <- match_arg_fr(align, fr_env$valid_aligns, call = call)
+    align <- match_arg_fr(align, .arframe_const$valid_aligns, call = call)
   }
   if (!is.null(valign)) {
-    valign <- match_arg_fr(valign, fr_env$valid_valigns, call = call)
+    valign <- match_arg_fr(valign, .arframe_const$valid_valigns, call = call)
   }
   if (!is.null(font_size)) {
     check_positive_num(font_size, arg = "font_size", call = call)
@@ -476,10 +476,10 @@ fr_row_style <- function(
 ) {
   call <- caller_env()
   if (!is.null(align)) {
-    align <- match_arg_fr(align, fr_env$valid_aligns, call = call)
+    align <- match_arg_fr(align, .arframe_const$valid_aligns, call = call)
   }
   if (!is.null(valign)) {
-    valign <- match_arg_fr(valign, fr_env$valid_valigns, call = call)
+    valign <- match_arg_fr(valign, .arframe_const$valid_valigns, call = call)
   }
   if (!is.null(font_size)) {
     check_positive_num(font_size, arg = "font_size", call = call)
@@ -617,10 +617,10 @@ fr_col_style <- function(
   cols <- resolve_cols_expr(enquo(cols), call = call)
 
   if (!is.null(align)) {
-    align <- match_arg_fr(align, fr_env$valid_aligns, call = call)
+    align <- match_arg_fr(align, .arframe_const$valid_aligns, call = call)
   }
   if (!is.null(valign)) {
-    valign <- match_arg_fr(valign, fr_env$valid_valigns, call = call)
+    valign <- match_arg_fr(valign, .arframe_const$valid_valigns, call = call)
   }
   if (!is.null(font_size)) {
     check_positive_num(font_size, arg = "font_size", call = call)
@@ -986,10 +986,10 @@ fr_style_if <- function(
   apply_to <- match_arg_fr(apply_to, c("cell", "row"), call = call)
 
   if (!is.null(align)) {
-    align <- match_arg_fr(align, fr_env$valid_aligns, call = call)
+    align <- match_arg_fr(align, .arframe_const$valid_aligns, call = call)
   }
   if (!is.null(valign)) {
-    valign <- match_arg_fr(valign, fr_env$valid_valigns, call = call)
+    valign <- match_arg_fr(valign, .arframe_const$valid_valigns, call = call)
   }
 
   structure(

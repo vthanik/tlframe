@@ -12,7 +12,7 @@
 #' @return Character vector of length nrow(data), one composite key per row.
 #' @noRd
 build_group_keys <- function(data, cols) {
-  inject(paste(!!!data[cols], sep = fr_env$group_sep))
+  inject(paste(!!!data[cols], sep = .arframe_const$group_sep))
 }
 
 
@@ -84,8 +84,15 @@ new_style_registry <- function() {
 register_style <- function(reg, rec) {
   # Hash: concatenate all field values with a separator unlikely to appear
   key <- paste(
-    rec$align, rec$valign, rec$bold, rec$italic, rec$underline,
-    rec$color, rec$background %||% "NA", rec$indent, rec$font_size,
+    rec$align,
+    rec$valign,
+    rec$bold,
+    rec$italic,
+    rec$underline,
+    rec$color,
+    rec$background %||% "NA",
+    rec$indent,
+    rec$font_size,
     sep = "\x1f"
   )
   existing <- reg$hash_to_id[[key]]
@@ -114,7 +121,9 @@ register_style <- function(reg, rec) {
 .register_border <- function(reg, bs) {
   key <- paste(bs$width, bs$linestyle, bs$fg, sep = "\x1f")
   existing <- reg$hash_to_id[[key]]
-  if (!is.null(existing)) return(existing)
+  if (!is.null(existing)) {
+    return(existing)
+  }
   id <- reg$n + 1L
   reg$n <- id
   reg$records[[id]] <- bs
@@ -217,11 +226,20 @@ build_cell_grid <- function(data, columns, cell_styles, page) {
   col_default_ids <- vapply(
     col_aligns,
     function(al) {
-      register_style(reg, list(
-        align = al, valign = "top", bold = FALSE, italic = FALSE,
-        underline = FALSE, color = "#000000", background = NA_character_,
-        indent = 0, font_size = fs
-      ))
+      register_style(
+        reg,
+        list(
+          align = al,
+          valign = "top",
+          bold = FALSE,
+          italic = FALSE,
+          underline = FALSE,
+          color = "#000000",
+          background = NA_character_,
+          indent = 0,
+          font_size = fs
+        )
+      )
     },
     integer(1)
   )
@@ -350,7 +368,9 @@ apply_styles_to_grid <- function(
     if (!is.null(header_row_idx)) {
       # Header: row_ids don't apply to header grids (body-only concept).
       # Match against header row index only.
-      if (!is.null(style$row_ids)) next
+      if (!is.null(style$row_ids)) {
+        next
+      }
       if (!is.null(style$rows) && !identical(style$rows, "all")) {
         if (!(header_row_idx %in% style$rows)) next
       }
@@ -557,7 +577,7 @@ inject_group_headers <- function(
   hdr_template <- vctrs::vec_init(data, 1L)
   hdr_template[1L, ] <- ""
 
-  sep <- fr_env$group_label_sep
+  sep <- .arframe_const$group_label_sep
 
   # Columns to copy from source row: group_cols + preserve_cols (e.g. page_by)
   copy_cols <- unique(c(group_cols, intersect(preserve_cols, names(data))))
@@ -612,7 +632,6 @@ inject_group_headers <- function(
 # Integer index remapping is no longer needed after inject_group_headers().
 # Row IDs survive injection: injected header rows get "gh_k" IDs, blank rows
 # get "blank_k" IDs. resolve_style_mask() matches on grid$row_id directly.
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 1d-ii. Group Header Styling Helpers
@@ -877,7 +896,6 @@ insert_blank_after <- function(data, blank_cols, preserve_cols = NULL) {
 # remap_style_indices() — DELETED
 # Styles now reference stable row IDs (.__row_id__). Integer index remapping
 # is no longer needed after insert_blank_after(). Blank rows get "blank_k" IDs.
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 1f. Indent-By Style Injection
@@ -1428,8 +1446,10 @@ resolve_borders <- function(rules, nrow_body, ncol, nrow_header = 1L) {
   if (nrow_body == 0L) {
     return(list(
       header = list(
-        top = .mmat(h_top), bottom = .mmat(h_bottom),
-        left = .mmat(h_left), right = .mmat(h_right)
+        top = .mmat(h_top),
+        bottom = .mmat(h_bottom),
+        left = .mmat(h_left),
+        right = .mmat(h_right)
       ),
       body = list(
         top = matrix(list(NULL), nrow = 0L, ncol = ncol),
@@ -1455,7 +1475,7 @@ resolve_borders <- function(rules, nrow_body, ncol, nrow_header = 1L) {
       # Unified handling for fr_vline_spec and fr_rule_box (which is a
       # subclass of fr_vline_spec). Use rule fields with defaults for
       # backward compat with bare fr_rule_box objects.
-      bw <- rule$width %||% fr_env$rtf_box_border_wd
+      bw <- rule$width %||% .arframe_const$rtf_box_border_wd
       bls <- rule$linestyle %||% "solid"
       bfg <- rule$fg %||% "#000000"
       bs_id <- .bid(border_spec(bw, bls, bfg))
@@ -1548,12 +1568,16 @@ resolve_borders <- function(rules, nrow_body, ncol, nrow_header = 1L) {
   # Materialize integer matrices → list-of-NULL/border-spec matrices
   list(
     header = list(
-      top = .mmat(h_top), bottom = .mmat(h_bottom),
-      left = .mmat(h_left), right = .mmat(h_right)
+      top = .mmat(h_top),
+      bottom = .mmat(h_bottom),
+      left = .mmat(h_left),
+      right = .mmat(h_right)
     ),
     body = list(
-      top = .mmat(b_top), bottom = .mmat(b_bottom),
-      left = .mmat(b_left), right = .mmat(b_right)
+      top = .mmat(b_top),
+      bottom = .mmat(b_bottom),
+      left = .mmat(b_left),
+      right = .mmat(b_right)
     )
   )
 }
@@ -1618,7 +1642,7 @@ latex_sentinel_resolver <- function(type, content) {
 #' @noRd
 latex_encode_unicode_char <- function(char) {
   # Check known LaTeX map first
-  mapped <- fr_env$latex_unicode[char]
+  mapped <- .arframe_const$latex_unicode[char]
   if (!is.na(mapped)) {
     return(mapped)
   }
@@ -1641,7 +1665,7 @@ latex_escape <- function(text) {
     return(character(0))
   }
   # Order matters: backslash first
-  specials <- fr_env$latex_specials
+  specials <- .arframe_const$latex_specials
   text <- stringi::stri_replace_all_fixed(
     text,
     names(specials),
@@ -1662,7 +1686,7 @@ latex_escape <- function(text) {
   # Extract unique non-ASCII chars, build replacement map from known map
   all_chars <- stringi::stri_extract_all_regex(non_ascii_text, "[^\\x00-\\x7F]")
   unique_chars <- unique(unlist(all_chars, use.names = FALSE))
-  replacements <- fr_env$latex_unicode[unique_chars]
+  replacements <- .arframe_const$latex_unicode[unique_chars]
 
   # Only replace chars that have known LaTeX mappings
   known <- !is.na(replacements)
@@ -1694,7 +1718,7 @@ escape_and_resolve <- function(text, escape_fn, resolver_fn) {
     return(escape_fn(text))
   }
 
-  pattern <- fr_env$sentinel_pattern
+  pattern <- .arframe_const$sentinel_pattern
   m <- gregexpr(pattern, text, perl = TRUE)
   sentinels <- regmatches(text, m)[[1L]]
   non_sentinels <- regmatches(text, m, invert = TRUE)[[1L]]
@@ -1746,7 +1770,7 @@ latex_escape_and_resolve <- function(text) {
 #' @noRd
 rtf_encode_unicode_char <- function(char) {
   # Check known RTF shorthand map first
-  shorthand <- fr_env$rtf_unicode[char]
+  shorthand <- .arframe_const$rtf_unicode[char]
   if (!is.na(shorthand)) {
     return(shorthand)
   }

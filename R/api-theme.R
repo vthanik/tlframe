@@ -226,7 +226,7 @@ fr_theme <- function(
   if (!is.null(space_mode)) {
     space_mode <- match_arg_fr(
       space_mode,
-      fr_env$valid_space_modes,
+      .arframe_const$valid_space_modes,
       call = call
     )
   }
@@ -275,7 +275,11 @@ fr_theme <- function(
     )
   }
   if (!is.null(hlines)) {
-    hlines <- match_arg_fr(hlines, names(fr_env$hline_presets), call = call)
+    hlines <- match_arg_fr(
+      hlines,
+      names(.arframe_const$hline_presets),
+      call = call
+    )
   }
   if (!is.null(vlines)) {
     vlines <- match_arg_fr(
@@ -285,7 +289,7 @@ fr_theme <- function(
     )
   }
 
-  current_theme <- fr_env$theme %||% list()
+  current_theme <- .arframe_state$theme %||% list()
 
   new_settings <- list()
   set_if <- function(key, value) {
@@ -326,7 +330,7 @@ fr_theme <- function(
     }
   }
 
-  fr_env$theme <- utils::modifyList(current_theme, new_settings)
+  .arframe_state$theme <- utils::modifyList(current_theme, new_settings)
   invisible(NULL)
 }
 
@@ -390,7 +394,7 @@ fr_theme_set <- fr_theme
 #'
 #' @export
 fr_theme_get <- function() {
-  as.list(fr_env$theme %||% list())
+  as.list(.arframe_state$theme %||% list())
 }
 
 
@@ -431,6 +435,6 @@ fr_theme_get <- function() {
 #'
 #' @export
 fr_theme_reset <- function() {
-  fr_env$theme <- list()
+  .arframe_state$theme <- list()
   invisible(NULL)
 }

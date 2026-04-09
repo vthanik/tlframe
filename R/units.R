@@ -68,7 +68,7 @@ row_height_twips <- function(
   array_stretch = 1.0,
   extra_row_height_pt = 1.0
 ) {
-  baseline_skip_pt <- fr_env$baseline_ratio * font_size_pt
+  baseline_skip_pt <- .arframe_const$baseline_ratio * font_size_pt
   height_pt <- array_stretch * (extra_row_height_pt + baseline_skip_pt)
   pt_to_twips(height_pt)
 }
@@ -77,5 +77,5 @@ row_height_twips <- function(
 #' Calculate baseline skip in twips
 #' @noRd
 baseline_skip_twips <- function(font_size_pt) {
-  pt_to_twips(fr_env$baseline_ratio * font_size_pt)
+  pt_to_twips(.arframe_const$baseline_ratio * font_size_pt)
 }

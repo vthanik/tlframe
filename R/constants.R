@@ -11,9 +11,11 @@
 #      JavaScript's template literals all work: {name} → value.
 #      Literal brace in output: "{{" → "{" (standard glue escaping).
 #
-#   2. PRIVATE ENVIRONMENT: All constants live inside `fr_env`, a private
-#      environment (pattern from ggplot2's `ggplot_global`). Nothing leaks
-#      into the package namespace.
+#   2. THREE PRIVATE ENVIRONMENTS (pattern from ggplot2's `ggplot_global`):
+#      - .arframe_const    — immutable constants set at load time
+#      - .arframe_state    — mutable state (config, theme, caches)
+#      - .arframe_registry — append-only (backends, stat type patterns)
+#      Nothing leaks into the package namespace.
 #
 #   3. rlang: All validation helpers use rlang::caller_arg() and
 #      rlang::caller_env() instead of deparse(substitute()).
@@ -21,13 +23,20 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Private environment — like ggplot2's ggplot_global
+# Private environments — like ggplot2's ggplot_global
 # ══════════════════════════════════════════════════════════════════════════════
 
-#' Private environment for arframe internal constants and state.
-#' Not exported. Other packages should not manipulate this directly.
+#' Immutable constants set at load time (font tables, paper sizes, maps, etc.)
 #' @noRd
-fr_env <- new.env(parent = emptyenv())
+.arframe_const <- new.env(parent = emptyenv())
+
+#' Mutable runtime state (config, theme, per-session caches)
+#' @noRd
+.arframe_state <- new.env(parent = emptyenv())
+
+#' Append-only registry (backends, stat type patterns/handlers)
+#' @noRd
+.arframe_registry <- new.env(parent = emptyenv())
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -44,7 +53,7 @@ fr_env <- new.env(parent = emptyenv())
 # under a family will be recognised and mapped to the correct AFM metrics,
 # RTF family keyword, and LaTeX font command.
 
-fr_env$fonts <- list(
+.arframe_const$fonts <- list(
   modern = list(
     names = c(
       "Courier New",
@@ -108,14 +117,14 @@ fr_env$fonts <- list(
 # These are SIL OFL licensed; users install them via Google Fonts or GitHub.
 # Used when FDA-recommended fonts (Times New Roman, Calibri, Courier New) and
 # ARFRAME_FONT_DIR fonts are not available on the system.
-fr_env$opensource_fallback <- c(
+.arframe_const$opensource_fallback <- c(
   modern = "Source Code Pro",
   swiss = "Source Sans 3",
   roman = "Source Serif 4"
 )
 
 # CTAN packages required by the LaTeX/PDF backend (preamble + tabularray)
-fr_env$required_latex_pkgs <- c(
+.arframe_const$required_latex_pkgs <- c(
   "tabularray",
   "fontspec",
   "geometry",
@@ -190,14 +199,14 @@ is_system_font_available <- function(font_name) {
 #'   is unavailable (callers treat NULL as "assume all fonts available").
 #' @noRd
 get_system_font_list <- function() {
-  if (!is.null(fr_env$system_fonts)) {
-    return(fr_env$system_fonts)
+  if (!is.null(.arframe_state$system_fonts)) {
+    return(.arframe_state$system_fonts)
   }
 
   fc_list <- Sys.which("fc-list")
   if (!nzchar(fc_list)) {
     # Can't check — return sentinel that matches everything
-    fr_env$system_fonts <- TRUE
+    .arframe_state$system_fonts <- TRUE
     return(TRUE)
   }
 
@@ -207,7 +216,7 @@ get_system_font_list <- function() {
   )
 
   if (length(result) == 0L) {
-    fr_env$system_fonts <- TRUE
+    .arframe_state$system_fonts <- TRUE
     return(TRUE)
   }
 
@@ -215,7 +224,7 @@ get_system_font_list <- function() {
   all_families <- unique(trimws(unlist(
     strsplit(result, ",", fixed = TRUE)
   )))
-  fr_env$system_fonts <- all_families
+  .arframe_state$system_fonts <- all_families
   all_families
 }
 
@@ -268,7 +277,7 @@ resolve_font <- function(font_name, fallback_hint) {
 
   # Try Adobe open-source fallback
   fam <- get_font_family(font_name)
-  os_name <- fr_env$opensource_fallback[[fam]]
+  os_name <- .arframe_const$opensource_fallback[[fam]]
 
   if (is_system_font_available(os_name)) {
     cli::cli_inform(c(
@@ -278,11 +287,14 @@ resolve_font <- function(font_name, fallback_hint) {
     return(os_name)
   }
 
-  cli::cli_warn(c(
-    "!" = "Font {.val {font_name}} not found on system.",
-    "i" = "Install {.val {os_name}} (free, SIL OFL) or set {.envvar ARFRAME_FONT_DIR}.",
-    "i" = fallback_hint
-  ), call = caller_env())
+  cli::cli_warn(
+    c(
+      "!" = "Font {.val {font_name}} not found on system.",
+      "i" = "Install {.val {os_name}} (free, SIL OFL) or set {.envvar ARFRAME_FONT_DIR}.",
+      "i" = fallback_hint
+    ),
+    call = caller_env()
+  )
 
   os_name
 }
@@ -327,8 +339,8 @@ os_default_fonts <- function() {
 #' @return Character: "modern", "swiss", or "roman"
 #' @noRd
 get_font_family <- function(font_name) {
-  for (fam in names(fr_env$fonts)) {
-    if (font_name %in% fr_env$fonts[[fam]]$names) return(fam)
+  for (fam in names(.arframe_const$fonts)) {
+    if (font_name %in% .arframe_const$fonts[[fam]]$names) return(fam)
   }
   "modern"
 }
@@ -343,12 +355,12 @@ get_font_family <- function(font_name) {
 #' @return Character. AFM font name (e.g. "Helvetica-Bold").
 #' @noRd
 resolve_afm_name <- function(font_family, bold = FALSE, italic = FALSE) {
-  fam <- if (font_family %in% names(fr_env$fonts)) {
+  fam <- if (font_family %in% names(.arframe_const$fonts)) {
     font_family
   } else {
     get_font_family(font_family)
   }
-  info <- fr_env$fonts[[fam]]
+  info <- .arframe_const$fonts[[fam]]
   if (bold && italic) {
     return(info$afm_bolditalic)
   }
@@ -366,7 +378,7 @@ resolve_afm_name <- function(font_family, bold = FALSE, italic = FALSE) {
 #' @noRd
 get_rtf_font_family <- function(font_name) {
   fam <- get_font_family(font_name)
-  fr_env$fonts[[fam]]$rtf_family
+  .arframe_const$fonts[[fam]]$rtf_family
 }
 
 
@@ -374,7 +386,7 @@ get_rtf_font_family <- function(font_name) {
 #' @noRd
 get_rtf_font_prq <- function(font_name) {
   fam <- get_font_family(font_name)
-  fr_env$fonts[[fam]]$rtf_prq
+  .arframe_const$fonts[[fam]]$rtf_prq
 }
 
 
@@ -382,7 +394,7 @@ get_rtf_font_prq <- function(font_name) {
 #' @noRd
 get_tex_font_cmd <- function(font_name) {
   fam <- get_font_family(font_name)
-  fr_env$fonts[[fam]]$tex_cmd
+  .arframe_const$fonts[[fam]]$tex_cmd
 }
 
 
@@ -390,7 +402,7 @@ get_tex_font_cmd <- function(font_name) {
 # 2. Paper Dimensions (twips; 1 inch = 1440 twips)
 # ══════════════════════════════════════════════════════════════════════════════
 
-fr_env$paper <- list(
+.arframe_const$paper <- list(
   letter = c(width = 12240L, height = 15840L),
   a4 = c(width = 11906L, height = 16838L),
   legal = c(width = 12240L, height = 20163L)
@@ -400,12 +412,12 @@ fr_env$paper <- list(
 #' Get paper dimensions, accounting for orientation
 #' @noRd
 paper_dims_twips <- function(paper = "letter", orientation = "landscape") {
-  dims <- fr_env$paper[[paper]]
+  dims <- .arframe_const$paper[[paper]]
   if (is.null(dims)) {
     cli_abort(
       c(
         "Unknown paper size {.val {paper}}.",
-        "i" = "Valid sizes: {.val {names(fr_env$paper)}}."
+        "i" = "Valid sizes: {.val {names(.arframe_const$paper)}}."
       ),
       call = caller_env()
     )
@@ -438,7 +450,7 @@ paper_dims_twips <- function(paper = "letter", orientation = "landscape") {
 #' Maps arframe linestyle names to RTF border style control words.
 #' Ref: Word 2007 RTF Specification §2.6.6.3.
 #' @noRd
-fr_env$linestyle_rtf <- list(
+.arframe_const$linestyle_rtf <- list(
   solid = "\\brdrs",
   dashed = "\\brdrdash",
   dotted = "\\brdrdot",
@@ -451,14 +463,20 @@ fr_env$linestyle_rtf <- list(
 #' Follows CSS <line-style> vocabulary (MDN / W3C) plus "dashdot" from
 #' SAS ODS BORDERSTYLE. Used in fr_hlines(), fr_vlines(), and new_fr_rule().
 #' @noRd
-fr_env$valid_linestyles <- c("solid", "dashed", "dotted", "double", "dashdot")
+.arframe_const$valid_linestyles <- c(
+  "solid",
+  "dashed",
+  "dotted",
+  "double",
+  "dashdot"
+)
 
 #' Named line width constants (in points)
 #'
 #' Used by resolve_line_width() to translate named widths to numeric pt values.
 #' Pharma convention: thin (0.5pt) is the standard rule weight.
 #' @noRd
-fr_env$line_widths <- c(
+.arframe_const$line_widths <- c(
   hairline = 0.25,
   thin = 0.50,
   medium = 1.00,
@@ -486,12 +504,12 @@ resolve_line_width <- function(wd, arg = caller_arg(wd), call = caller_env()) {
     if (length(wd) != 1L) {
       cli_abort("{.arg {arg}} must be a single string or number.", call = call)
     }
-    w <- unname(fr_env$line_widths[wd])
+    w <- unname(.arframe_const$line_widths[wd])
     if (is.na(w)) {
       cli_abort(
         c(
           "{.arg {arg}} {.val {wd}} is not a recognised width name.",
-          "i" = "Named options: {.val {names(fr_env$line_widths)}}.",
+          "i" = "Named options: {.val {names(.arframe_const$line_widths)}}.",
           "i" = "Or pass a positive number in points, e.g. {.code wd = 0.75}."
         ),
         arg = arg,
@@ -506,14 +524,14 @@ resolve_line_width <- function(wd, arg = caller_arg(wd), call = caller_env()) {
 }
 
 
-fr_env$cell_border_rtf <- list(
+.arframe_const$cell_border_rtf <- list(
   top = "\\clbrdrt",
   bottom = "\\clbrdrb",
   left = "\\clbrdrl",
   right = "\\clbrdrr"
 )
 
-fr_env$para_border_rtf <- list(
+.arframe_const$para_border_rtf <- list(
   top = "\\brdrt",
   bottom = "\\brdrb",
   left = "\\brdrl",
@@ -536,7 +554,7 @@ fr_env$para_border_rtf <- list(
 #' Each rule definition: region, side, width (pt), linestyle, fg (hex)
 #' box is a special sentinel — backends render all four borders separately.
 #' @noRd
-fr_env$hline_presets <- list(
+.arframe_const$hline_presets <- list(
   # header — single thin rule below column header only.
   # The most common style in TFL outputs (ICH E3).
   # No top border, no bottom border; footnotes follow the last body row directly.
@@ -649,7 +667,7 @@ fr_env$hline_presets <- list(
 # 4. LaTeX Special Character Escaping + Unicode Map
 # ══════════════════════════════════════════════════════════════════════════════
 
-fr_env$latex_specials <- c(
+.arframe_const$latex_specials <- c(
   "\\" = "\\textbackslash{}",
   "&" = "\\&",
   "%" = "\\%",
@@ -662,7 +680,7 @@ fr_env$latex_specials <- c(
   "^" = "\\textasciicircum{}"
 )
 
-fr_env$rtf_specials <- c(
+.arframe_const$rtf_specials <- c(
   "\\" = "\\\\",
   "{" = "\\{",
   "}" = "\\}"
@@ -673,7 +691,7 @@ fr_env$rtf_specials <- c(
 #' Each entry: "unicode_char" = "latex_command"
 #' Inline comments show the original character for maintainability.
 #' @noRd
-fr_env$latex_unicode <- c(
+.arframe_const$latex_unicode <- c(
   # ── Math operators & relations ──
   "\u00b1" = "\\ensuremath{\\pm}", # ± plus-minus
   "\u2264" = "\\ensuremath{\\leq}", # ≤ less-than-or-equal
@@ -738,7 +756,7 @@ fr_env$latex_unicode <- c(
 #' RTF handles Unicode via \\uN ? where N = decimal codepoint,
 #' ? = ANSI fallback. Entries below use ANSI shorthand where available.
 #' @noRd
-fr_env$rtf_unicode <- c(
+.arframe_const$rtf_unicode <- c(
   "\u2020" = "\\'86", # † dagger
   "\u2021" = "\\'87", # ‡ double dagger
   "\u2022" = "\\'95", # • bullet
@@ -758,7 +776,7 @@ fr_env$rtf_unicode <- c(
 # Full CSS Color Level 4 named colors (148 colors)
 # Standard across CSS, ggplot2, matplotlib, D3, and all modern dev tools.
 # See: https://www.w3.org/TR/css-color-4/#named-colors
-fr_env$named_colors <- c(
+.arframe_const$named_colors <- c(
   aliceblue = "#F0F8FF",
   antiquewhite = "#FAEBD7",
   aqua = "#00FFFF",
@@ -975,10 +993,10 @@ resolve_color <- function(color, arg = caller_arg(color), call = caller_env()) {
     return(toupper(color))
   }
   key <- tolower(color)
-  named <- fr_env$named_colors[key]
+  named <- .arframe_const$named_colors[key]
   if (is.na(named)) {
     # Suggest closest matches via agrep
-    all_names <- names(fr_env$named_colors)
+    all_names <- names(.arframe_const$named_colors)
     close <- agrep(key, all_names, max.distance = 0.3, value = TRUE)
     hint <- if (length(close) > 0L) {
       paste0(
@@ -1025,7 +1043,12 @@ resolve_color <- function(color, arg = caller_arg(color), call = caller_env()) {
 #
 # ══════════════════════════════════════════════════════════════════════════════
 
-fr_env$builtin_tokens <- c("thepage", "total_pages", "program", "datetime")
+.arframe_const$builtin_tokens <- c(
+  "thepage",
+  "total_pages",
+  "program",
+  "datetime"
+)
 
 
 #' Resolve {token} placeholders in a string
@@ -1104,16 +1127,16 @@ resolve_tokens_single <- function(text, token_map, context) {
 # 7. Alignment Map
 # ══════════════════════════════════════════════════════════════════════════════
 
-fr_env$valid_aligns <- c("left", "center", "right", "decimal")
+.arframe_const$valid_aligns <- c("left", "center", "right", "decimal")
 
-fr_env$align_to_rtf <- c(
+.arframe_const$align_to_rtf <- c(
   left = "\\ql",
   center = "\\qc",
   right = "\\qr",
   decimal = "\\ql"
 )
 
-fr_env$align_to_latex <- c(
+.arframe_const$align_to_latex <- c(
   left = "L",
   center = "C",
   right = "R",
@@ -1123,19 +1146,19 @@ fr_env$align_to_latex <- c(
 # Vertical alignment (cell-level property, orthogonal to horizontal align)
 # RTF: \clvertalt (top, default), \clvertalc (center), \clvertalb (bottom)
 # LaTeX: t (top), m (middle), b (bottom) — tabularray valign key
-fr_env$valid_valigns <- c("top", "middle", "bottom")
+.arframe_const$valid_valigns <- c("top", "middle", "bottom")
 
-fr_env$valid_space_modes <- c("indent", "preserve")
+.arframe_const$valid_space_modes <- c("indent", "preserve")
 
-fr_env$default_n_format <- "{label}\n(N={n})"
+.arframe_const$default_n_format <- "{label}\n(N={n})"
 
-fr_env$valign_to_rtf <- c(
+.arframe_const$valign_to_rtf <- c(
   top = "",
   middle = "\\clvertalc",
   bottom = "\\clvertalb"
 )
 
-fr_env$valign_to_latex <- c(
+.arframe_const$valign_to_latex <- c(
   top = "t",
   middle = "m",
   bottom = "b"
@@ -1151,38 +1174,38 @@ fr_env$valign_to_latex <- c(
 # ── LaTeX spacing constants ──────────────────────────────────────────────
 # Must match RTF row height: row_height = array_stretch * (extra_row_height + baseline_ratio * fs)
 # At 9pt: 1.0 * (1.0 + 1.2*9) = 11.8pt. LaTeX: baselineskip 10.8pt + rowsep 0.5pt*2 = 11.8pt.
-fr_env$latex_leading_factor <- 1.2
-fr_env$latex_rowsep <- "0.5pt"
+.arframe_const$latex_leading_factor <- 1.2
+.arframe_const$latex_rowsep <- "0.5pt"
 
 # ── Group key separator ─────────────────────────────────────────────────
 # Used to build composite group keys when page_by/group_by has multiple columns.
 # Unit separator (U+001F) is safe because it never appears in data content.
-fr_env$group_sep <- "\x1f"
+.arframe_const$group_sep <- "\x1f"
 
 # Display separator for multi-column group_label values (human-readable)
-fr_env$group_label_sep <- " / "
+.arframe_const$group_label_sep <- " / "
 
 # ── Baseline ratio (from LaTeX Companion / Word default) ──────────────────
 # Single spacing = 1.2 * font_size. Used by row_height_twips() in units.R.
-fr_env$baseline_ratio <- 1.2
+.arframe_const$baseline_ratio <- 1.2
 
 # ── RTF rendering constants ────────────────────────────────────────────────
-fr_env$rtf_leading_factor <- 1.4
-fr_env$rtf_min_headery <- 360L
-fr_env$rtf_decimal_pad <- 36L
-fr_env$rtf_box_border_wd <- 0.5
-fr_env$rtf_spanner_brdrw <- 10L
+.arframe_const$rtf_leading_factor <- 1.4
+.arframe_const$rtf_min_headery <- 360L
+.arframe_const$rtf_decimal_pad <- 36L
+.arframe_const$rtf_box_border_wd <- 0.5
+.arframe_const$rtf_spanner_brdrw <- 10L
 
 # ── Page break / keep-together defaults ───────────────────────────────────
-fr_env$default_orphan_min <- 3L
-fr_env$default_widow_min <- 3L
+.arframe_const$default_orphan_min <- 3L
+.arframe_const$default_widow_min <- 3L
 
 # ── LaTeX rendering constants (additional) ────────────────────────────────
-fr_env$latex_space_width_em <- 0.55
-fr_env$latex_fn_sep_width_pt <- 0.4
-fr_env$points_per_inch <- 72
+.arframe_const$latex_space_width_em <- 0.55
+.arframe_const$latex_fn_sep_width_pt <- 0.4
+.arframe_const$points_per_inch <- 72
 
-fr_env$linestyle_latex <- c(
+.arframe_const$linestyle_latex <- c(
   solid = "solid",
   dashed = "dashed",
   dotted = "dotted",
@@ -1200,7 +1223,7 @@ fr_env$linestyle_latex <- c(
 # fr_register_backend().
 # ══════════════════════════════════════════════════════════════════════════════
 
-fr_env$backends <- list()
+.arframe_registry$backends <- list()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1208,13 +1231,13 @@ fr_env$backends <- list()
 # ══════════════════════════════════════════════════════════════════════════════
 
 # Sentinels that represent real display rows — do NOT filter
-fr_env$ard_keep_sentinels <- c("..ard_hierarchical_overall..")
+.arframe_const$ard_keep_sentinels <- c("..ard_hierarchical_overall..")
 
 # Internal context values to filter out
-fr_env$ard_internal_contexts <- c("tabulate", "attributes", "total_n")
+.arframe_const$ard_internal_contexts <- c("tabulate", "attributes", "total_n")
 
 # Stat names that always produce character values (not numeric)
-fr_env$ard_char_stat_names <- c(
+.arframe_const$ard_char_stat_names <- c(
   "method",
   "alternative",
   "label",
@@ -1223,10 +1246,15 @@ fr_env$ard_char_stat_names <- c(
 )
 
 # Stat names that produce logical values
-fr_env$ard_logical_stat_names <- c("paired", "var.equal", "correct", "conf.int")
+.arframe_const$ard_logical_stat_names <- c(
+  "paired",
+  "var.equal",
+  "correct",
+  "conf.int"
+)
 
 # Standard ARD column names — anything else is a renamed group/variable column
-fr_env$ard_standard_cols <- c(
+.arframe_const$ard_standard_cols <- c(
   "variable",
   "variable_level",
   "group1",
@@ -1258,40 +1286,40 @@ fr_env$ard_standard_cols <- c(
 # ══════════════════════════════════════════════════════════════════════════════
 
 # Missing token alternation (reused across CI / pvalue patterns)
-fr_env$missing_token_re <- "NR|NE|NC|NA|ND|INF|-INF|BLQ|-"
+.arframe_const$missing_token_re <- "NR|NE|NC|NA|ND|INF|-INF|BLQ|-"
 
 # Non-capturing numeric-or-token (for detection patterns)
-fr_env$num_or_tok_nc <- paste0(
+.arframe_const$num_or_tok_nc <- paste0(
   "(?:-?\\d+\\.?\\d*|",
-  fr_env$missing_token_re,
+  .arframe_const$missing_token_re,
   ")"
 )
 
 # Capturing numeric-or-token — 4 groups: (sign)(int)(dec)|(token)
-fr_env$num_or_tok_cap <- paste0(
+.arframe_const$num_or_tok_cap <- paste0(
   "(?:(-?)(\\d+)\\.?(\\d*)|(",
-  fr_env$missing_token_re,
+  .arframe_const$missing_token_re,
   "))"
 )
 
 # Capturing pval-or-token — 4 groups: (prefix)(int)(dec)|(token)
-fr_env$pval_or_tok_cap <- paste0(
+.arframe_const$pval_or_tok_cap <- paste0(
   "(?:([<>=]?)(\\d+)\\.(\\d+)|(",
-  fr_env$missing_token_re,
+  .arframe_const$missing_token_re,
   "))"
 )
 
 # Standard compound gap width (spaces between segments)
-fr_env$compound_gap <- 4L
+.arframe_const$compound_gap <- 4L
 
 # Stat type registry — single source of truth for all type metadata.
 # ORDER MATTERS: most specific patterns first to avoid false matches.
-fr_env$stat_type_registry <- list(
+.arframe_registry$stat_type_registry <- list(
   # --- Missing (expanded with BLQ/INF/-INF) ---
   missing = list(
     pattern = paste0(
       "^\\s*$|^[-\u2014\u2013]{1,3}$|^(",
-      fr_env$missing_token_re,
+      .arframe_const$missing_token_re,
       ")$"
     ),
     family = "missing",
@@ -1311,14 +1339,14 @@ fr_env$stat_type_registry <- list(
   est_ci_pval = list(
     pattern = paste0(
       "^\\s*",
-      fr_env$num_or_tok_nc,
+      .arframe_const$num_or_tok_nc,
       "\\s*\\(\\s*",
-      fr_env$num_or_tok_nc,
+      .arframe_const$num_or_tok_nc,
       "\\s*,\\s*",
-      fr_env$num_or_tok_nc,
+      .arframe_const$num_or_tok_nc,
       "\\s*\\)\\s+",
       "(?:[<>=]?\\d+\\.\\d+|",
-      fr_env$missing_token_re,
+      .arframe_const$missing_token_re,
       ")\\s*$"
     ),
     family = "compound",
@@ -1352,11 +1380,11 @@ fr_env$stat_type_registry <- list(
   est_ci = list(
     pattern = paste0(
       "^\\s*",
-      fr_env$num_or_tok_nc,
+      .arframe_const$num_or_tok_nc,
       "\\s*\\(\\s*",
-      fr_env$num_or_tok_nc,
+      .arframe_const$num_or_tok_nc,
       "\\s*,\\s*",
-      fr_env$num_or_tok_nc,
+      .arframe_const$num_or_tok_nc,
       "\\s*\\)\\s*$"
     ),
     family = "estimate",
@@ -1365,11 +1393,11 @@ fr_env$stat_type_registry <- list(
   est_ci_bracket = list(
     pattern = paste0(
       "^\\s*",
-      fr_env$num_or_tok_nc,
+      .arframe_const$num_or_tok_nc,
       "\\s*\\[\\s*",
-      fr_env$num_or_tok_nc,
+      .arframe_const$num_or_tok_nc,
       "\\s*,\\s*",
-      fr_env$num_or_tok_nc,
+      .arframe_const$num_or_tok_nc,
       "\\s*\\]\\s*$"
     ),
     family = "estimate",
@@ -1430,16 +1458,25 @@ fr_env$stat_type_registry <- list(
 # Helper to rebuild derived stat type vectors from the registry.
 # Called at package load and again after each fr_register_stat_type() call.
 rebuild_stat_type_vectors <- function() {
-  fr_env$stat_type_patterns <- vapply(
-    fr_env$stat_type_registry, `[[`, character(1), "pattern"
+  .arframe_registry$stat_type_patterns <- vapply(
+    .arframe_registry$stat_type_registry,
+    `[[`,
+    character(1),
+    "pattern"
   )
   fam <- vapply(
-    fr_env$stat_type_registry, `[[`, character(1), "family"
+    .arframe_registry$stat_type_registry,
+    `[[`,
+    character(1),
+    "family"
   )
   # Exclude types with "missing" family from family vector
-  fr_env$stat_type_family <- fam[!fam %in% "missing"]
-  fr_env$stat_type_richness <- vapply(
-    fr_env$stat_type_registry, `[[`, integer(1), "richness"
+  .arframe_registry$stat_type_family <- fam[!fam %in% "missing"]
+  .arframe_registry$stat_type_richness <- vapply(
+    .arframe_registry$stat_type_registry,
+    `[[`,
+    integer(1),
+    "richness"
   )
 }
 
@@ -1448,10 +1485,10 @@ rebuild_stat_type_vectors()
 
 # Types excluded from cross-group signature comparison (filler rows present in
 # every group — n_only counts, missing/unknown placeholders)
-fr_env$stat_sig_skip <- c("n_only", "missing", "unknown")
+.arframe_const$stat_sig_skip <- c("n_only", "missing", "unknown")
 
 # Tie-breaker priority across families
-fr_env$stat_family_priority <- c(
+.arframe_registry$stat_family_priority <- c(
   compound = 5L,
   estimate = 4L,
   range = 3L,
@@ -1465,7 +1502,7 @@ fr_env$stat_family_priority <- c(
 # ══════════════════════════════════════════════════════════════════════════════
 
 # Zero top/bottom cell padding (eliminates Word's default ~29twips each side)
-fr_env$rtf_zero_cell_padding <- "\\trpaddt0\\trpaddft3\\trpaddb0\\trpaddfb3"
+.arframe_const$rtf_zero_cell_padding <- "\\trpaddt0\\trpaddft3\\trpaddb0\\trpaddfb3"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1476,7 +1513,7 @@ fr_env$rtf_zero_cell_padding <- "\\trpaddt0\\trpaddft3\\trpaddb0\\trpaddfb3"
 #'
 #' Adds a custom statistical format type to the decimal alignment engine.
 #' Use this when your data contains formatted statistics that don't match
-#' any of the 18 built-in types (see `fr_env$stat_type_registry` for the
+#' any of the 18 built-in types (see `.arframe_registry$stat_type_registry` for the
 #' full list).
 #'
 #' @param name Character scalar. Unique name for the type (e.g.,
@@ -1517,7 +1554,7 @@ fr_register_stat_type <- function(
   check_scalar_chr(family, arg = "family", call = call)
 
   # Validate name doesn't conflict
-  existing <- names(fr_env$stat_type_registry)
+  existing <- names(.arframe_registry$stat_type_registry)
   if (name %in% existing) {
     cli_abort(
       c(
@@ -1545,15 +1582,15 @@ fr_register_stat_type <- function(
   )
 
   # Register
-  fr_env$stat_type_registry[[name]] <- list(
+  .arframe_registry$stat_type_registry[[name]] <- list(
     pattern = pattern,
     family = family,
     richness = as.integer(richness)
   )
 
   # Add custom family to priority if new
-  if (!family %in% names(fr_env$stat_family_priority)) {
-    fr_env$stat_family_priority[[family]] <- 3L
+  if (!family %in% names(.arframe_registry$stat_family_priority)) {
+    .arframe_registry$stat_family_priority[[family]] <- 3L
   }
 
   # Rebuild derived vectors

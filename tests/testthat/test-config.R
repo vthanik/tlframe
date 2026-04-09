@@ -293,7 +293,7 @@ test_that("fr_theme applies spacing", {
 test_that("apply_config warns on invalid hlines preset", {
   withr::local_options(list(cli.default_handler = identity))
   fr_config_reset()
-  fr_env$config <- list(rules = list(hlines = "nonexistent_preset"))
+  .arframe_state$config <- list(rules = list(hlines = "nonexistent_preset"))
   expect_warning(
     data.frame(a = 1) |> fr_table(),
     "rules\\.hlines"
@@ -464,7 +464,7 @@ test_that("fr_config_get auto-loads config when none is loaded", {
 
 test_that("apply_config applies header span_gap", {
   fr_config_reset()
-  fr_env$config <- list(header = list(span_gap = FALSE))
+  .arframe_state$config <- list(header = list(span_gap = FALSE))
   spec <- data.frame(a = 1) |> fr_table()
   expect_false(spec$header$span_gap)
   fr_config_reset()
@@ -472,7 +472,7 @@ test_that("apply_config applies header span_gap", {
 
 test_that("apply_config applies header n_format to columns_meta", {
   fr_config_reset()
-  fr_env$config <- list(
+  .arframe_state$config <- list(
     header = list(
       n_format = "{label} [N={n}]"
     )
@@ -484,7 +484,7 @@ test_that("apply_config applies header n_format to columns_meta", {
 
 test_that("apply_config skips header when header config is not a list", {
   fr_config_reset()
-  fr_env$config <- list(header = "not_a_list")
+  .arframe_state$config <- list(header = "not_a_list")
   # Should not error — just skip the header section
   spec <- data.frame(a = 1) |> fr_table()
   expect_s3_class(spec, "fr_spec")
@@ -607,7 +607,7 @@ test_that("apply_config skips vlines when void", {
 
 test_that("apply_config warns on invalid vlines preset", {
   fr_config_reset()
-  fr_env$config <- list(rules = list(vlines = "nonexistent_vline"))
+  .arframe_state$config <- list(rules = list(vlines = "nonexistent_vline"))
   expect_warning(
     data.frame(a = 1) |> fr_table(),
     "rules\\.vlines"
@@ -620,7 +620,7 @@ test_that("apply_config warns on invalid vlines preset", {
 
 test_that("apply_config applies footnotes separator", {
   fr_config_reset()
-  fr_env$config <- list(footnotes = list(separator = TRUE))
+  .arframe_state$config <- list(footnotes = list(separator = TRUE))
   spec <- data.frame(a = 1) |> fr_table()
   expect_true(spec$meta$footnote_separator)
   fr_config_reset()
@@ -628,7 +628,7 @@ test_that("apply_config applies footnotes separator", {
 
 test_that("apply_config applies footnotes placement", {
   fr_config_reset()
-  fr_env$config <- list(footnotes = list(placement = "last"))
+  .arframe_state$config <- list(footnotes = list(placement = "last"))
   spec <- data.frame(a = 1) |> fr_table()
   expect_equal(spec$meta$footnote_placement, "last")
   fr_config_reset()
@@ -636,7 +636,7 @@ test_that("apply_config applies footnotes placement", {
 
 test_that("apply_config skips footnotes when not a list", {
   fr_config_reset()
-  fr_env$config <- list(footnotes = "not_a_list")
+  .arframe_state$config <- list(footnotes = "not_a_list")
   spec <- data.frame(a = 1) |> fr_table()
   expect_s3_class(spec, "fr_spec")
   fr_config_reset()
@@ -647,7 +647,7 @@ test_that("apply_config skips footnotes when not a list", {
 
 test_that("apply_config applies titles config", {
   fr_config_reset()
-  fr_env$config <- list(
+  .arframe_state$config <- list(
     titles = list(
       align = "left",
       bold = TRUE,
@@ -663,7 +663,7 @@ test_that("apply_config applies titles config", {
 
 test_that("apply_config skips titles when not a list", {
   fr_config_reset()
-  fr_env$config <- list(titles = "not_a_list")
+  .arframe_state$config <- list(titles = "not_a_list")
   spec <- data.frame(a = 1) |> fr_table()
   expect_s3_class(spec, "fr_spec")
   fr_config_reset()
@@ -674,7 +674,7 @@ test_that("apply_config skips titles when not a list", {
 
 test_that("apply_config skips tokens when empty", {
   fr_config_reset()
-  fr_env$config <- list(tokens = list())
+  .arframe_state$config <- list(tokens = list())
   spec <- data.frame(a = 1) |> fr_table()
   # No error, tokens should be unchanged from defaults
   expect_s3_class(spec, "fr_spec")
@@ -683,7 +683,7 @@ test_that("apply_config skips tokens when empty", {
 
 test_that("apply_config tokens are low priority (existing tokens win)", {
   fr_config_reset()
-  fr_env$config <- list(tokens = list(company = "Config Corp"))
+  .arframe_state$config <- list(tokens = list(company = "Config Corp"))
   spec <- data.frame(a = 1) |> fr_table()
 
   # Now set a token manually via pagehead (higher priority)
@@ -784,7 +784,7 @@ test_that("apply_config is a no-op when config is NULL", {
 
 test_that("apply_config is a no-op when config is empty list", {
   fr_config_reset()
-  fr_env$config <- list()
+  .arframe_state$config <- list()
   spec <- data.frame(a = 1) |> fr_table()
   expect_equal(spec$page$font_size, 9)
   fr_config_reset()
@@ -893,15 +893,15 @@ test_that("fr_config_reset clears both config and config_file", {
   writeLines("page:\n  font_size: 7", tmp)
 
   fr_config(tmp)
-  expect_false(is.null(fr_env$config))
-  expect_false(is.null(fr_env$config_file))
+  expect_false(is.null(.arframe_state$config))
+  expect_false(is.null(.arframe_state$config_file))
 
   fr_config_reset()
-  expect_null(fr_env$config)
-  expect_null(fr_env$config_file)
+  expect_null(.arframe_state$config)
+  expect_null(.arframe_state$config_file)
 })
 
-test_that("fr_config stores the file path in fr_env$config_file", {
+test_that("fr_config stores the file path in .arframe_state$config_file", {
   fr_config_reset()
   tmp <- tempfile(fileext = ".yml")
   on.exit(
@@ -914,6 +914,6 @@ test_that("fr_config stores the file path in fr_env$config_file", {
   writeLines("page:\n  font_size: 7", tmp)
 
   fr_config(tmp)
-  expect_true(grepl("\\.yml$", fr_env$config_file))
+  expect_true(grepl("\\.yml$", .arframe_state$config_file))
   fr_config_reset()
 })

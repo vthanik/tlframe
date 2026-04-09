@@ -121,7 +121,9 @@ render_latex <- function(spec, page_groups, col_panels, path) {
 #' @noRd
 latex_setmainfont <- function(font_name) {
   resolved <- resolve_latex_font(font_name)
-  if (!is_system_font_available(resolved)) return("")
+  if (!is_system_font_available(resolved)) {
+    return("")
+  }
   paste0("\\setmainfont{", resolved, "}")
 }
 
@@ -131,7 +133,7 @@ latex_setmainfont <- function(font_name) {
 latex_preamble <- function(spec) {
   page <- spec$page
   font_name <- page$font_family
-  lf <- fr_env$latex_leading_factor
+  lf <- .arframe_const$latex_leading_factor
 
   # Paper and orientation
   paper_map <- c(letter = "letterpaper", a4 = "a4paper", legal = "legalpaper")
@@ -187,11 +189,11 @@ latex_preamble <- function(spec) {
   # Expand top margin by headsep so the body (titles) starts just below
   # the original margin line, matching RTF where pagehead bottom = margin.
   # Expand bottom margin by footskip so the pagefoot sits at the margin edge.
-  top_in <- mt + headsep_pt / fr_env$points_per_inch
+  top_in <- mt + headsep_pt / .arframe_const$points_per_inch
   bot_in <- if (!is.null(spec$pagefoot)) {
-    mb + footskip_val / fr_env$points_per_inch
+    mb + footskip_val / .arframe_const$points_per_inch
   } else {
-    mb + min_footskip_pt / fr_env$points_per_inch
+    mb + min_footskip_pt / .arframe_const$points_per_inch
   }
 
   geom_opts <- paste0(
@@ -335,7 +337,7 @@ latex_fancyhdr_setup <- function(spec) {
     txt <- resolve_tokens(escaped, token_map, context)
     # Resolve inline markup sentinels only (not full escape)
     if (has_sentinel(txt)) {
-      pattern <- fr_env$sentinel_pattern
+      pattern <- .arframe_const$sentinel_pattern
       m <- gregexpr(pattern, txt, perl = TRUE)
       sentinels <- regmatches(txt, m)[[1L]]
       for (s in sentinels) {
@@ -388,7 +390,7 @@ latex_fancyhdr_setup <- function(spec) {
           "\\fancyhead[L]{\\fontsize{",
           fs,
           "}{",
-          round(fs * fr_env$latex_leading_factor, 1),
+          round(fs * .arframe_const$latex_leading_factor, 1),
           "}\\selectfont ",
           bold_on,
           txt,
@@ -411,7 +413,7 @@ latex_fancyhdr_setup <- function(spec) {
           "\\fancyhead[C]{\\fontsize{",
           fs,
           "}{",
-          round(fs * fr_env$latex_leading_factor, 1),
+          round(fs * .arframe_const$latex_leading_factor, 1),
           "}\\selectfont ",
           bold_on,
           txt,
@@ -434,7 +436,7 @@ latex_fancyhdr_setup <- function(spec) {
           "\\fancyhead[R]{\\fontsize{",
           fs,
           "}{",
-          round(fs * fr_env$latex_leading_factor, 1),
+          round(fs * .arframe_const$latex_leading_factor, 1),
           "}\\selectfont ",
           bold_on,
           txt,
@@ -468,7 +470,7 @@ latex_fancyhdr_setup <- function(spec) {
           "\\fancyfoot[L]{\\fontsize{",
           fs,
           "}{",
-          round(fs * fr_env$latex_leading_factor, 1),
+          round(fs * .arframe_const$latex_leading_factor, 1),
           "}\\selectfont ",
           bold_on,
           txt,
@@ -491,7 +493,7 @@ latex_fancyhdr_setup <- function(spec) {
           "\\fancyfoot[C]{\\fontsize{",
           fs,
           "}{",
-          round(fs * fr_env$latex_leading_factor, 1),
+          round(fs * .arframe_const$latex_leading_factor, 1),
           "}\\selectfont ",
           bold_on,
           txt,
@@ -514,7 +516,7 @@ latex_fancyhdr_setup <- function(spec) {
           "\\fancyfoot[R]{\\fontsize{",
           fs,
           "}{",
-          round(fs * fr_env$latex_leading_factor, 1),
+          round(fs * .arframe_const$latex_leading_factor, 1),
           "}\\selectfont ",
           bold_on,
           txt,
@@ -539,7 +541,7 @@ latex_title_content <- function(spec, continuation = FALSE) {
   if (length(titles) == 0L) {
     return(character(0))
   }
-  lf <- fr_env$latex_leading_factor
+  lf <- .arframe_const$latex_leading_factor
   cont_text <- spec$page$continuation
 
   lines <- character(0)
@@ -639,7 +641,7 @@ latex_head_template <- function(spec, group_label = NULL, panel_idx = 1L) {
       nzchar(group_label) &&
       isTRUE(spec$body$page_by_visible %||% TRUE)
   ) {
-    lf <- fr_env$latex_leading_factor
+    lf <- .arframe_const$latex_leading_factor
     pb_style <- resolve_page_by_style(spec$page_by_styles %||% list())
     fs <- pb_style$font_size %||% spec$page$font_size
     pb_bold_on <- if (isTRUE(pb_style$bold)) "\\textbf{" else ""
@@ -831,7 +833,7 @@ build_fn_latex_content <- function(
   if (length(entries) == 0L) {
     return(character(0))
   }
-  lf <- fr_env$latex_leading_factor
+  lf <- .arframe_const$latex_leading_factor
 
   # Table width from visible panel columns (matches actual rendered table)
   cols <- vis_columns %||% spec$columns
@@ -858,7 +860,7 @@ build_fn_latex_content <- function(
         fn_lines,
         paste0(
           "\\noindent\\rule{\\linewidth}{",
-          fr_env$latex_fn_sep_width_pt,
+          .arframe_const$latex_fn_sep_width_pt,
           "pt}"
         )
       )
@@ -935,13 +937,13 @@ latex_table <- function(
   # Subtract leftsep + rightsep per column so total rendered width matches
   # the intended table width (tabularray adds colsep outside wd=)
   colsep_pt <- spec$page$col_gap / 2
-  colsep_in <- 2 * colsep_pt / fr_env$points_per_inch
+  colsep_in <- 2 * colsep_pt / .arframe_const$points_per_inch
   gap_col_indices <- integer(0)
   col_spec_parts <- vapply(
     seq_along(col_names),
     function(j) {
       col <- columns[[col_names[j]]]
-      align <- fr_env$align_to_latex[col$align %||% "left"]
+      align <- .arframe_const$align_to_latex[col$align %||% "left"]
       if (isTRUE(col$is_gap)) {
         # Gap columns use exact width, no colsep subtraction (sep zeroed below)
         gap_col_indices[length(gap_col_indices) + 1L] <<- j
@@ -1035,9 +1037,9 @@ latex_table <- function(
       colspec_str,
       "},",
       "\n  row{1-Z}={abovesep=",
-      fr_env$latex_rowsep,
+      .arframe_const$latex_rowsep,
       ",belowsep=",
-      fr_env$latex_rowsep,
+      .arframe_const$latex_rowsep,
       "},",
       "\n  column{1-Z}={leftsep=",
       colsep_pt,
@@ -1072,8 +1074,8 @@ latex_table <- function(
     keep_mask <- build_keep_mask(
       data,
       spec$body$group_by,
-      orphan_min = spec$page$orphan_min %||% fr_env$default_orphan_min,
-      widow_min = spec$page$widow_min %||% fr_env$default_widow_min,
+      orphan_min = spec$page$orphan_min %||% .arframe_const$default_orphan_min,
+      widow_min = spec$page$widow_min %||% .arframe_const$default_widow_min,
       page_rows = page_rows
     )
   } else {
@@ -1117,7 +1119,7 @@ latex_border_specs <- function(borders, nr, nc, nrow_header) {
     for (j in seq_len(nc)) {
       bs <- h$top[i, j][[1L]]
       if (!is.null(bs) && i == 1L && j == 1L) {
-        ls <- fr_env$linestyle_latex[bs$linestyle] %||% "solid"
+        ls <- .arframe_const$linestyle_latex[bs$linestyle] %||% "solid"
         cname <- hex_to_tblr_color(bs$fg)
         wd <- if (!is.null(bs$width)) paste0("wd=", bs$width, "pt, ") else ""
         specs <- c(
@@ -1135,7 +1137,7 @@ latex_border_specs <- function(borders, nr, nc, nrow_header) {
       }
       bs <- h$bottom[i, j][[1L]]
       if (!is.null(bs) && i == nrow_header && j == 1L) {
-        ls <- fr_env$linestyle_latex[bs$linestyle] %||% "solid"
+        ls <- .arframe_const$linestyle_latex[bs$linestyle] %||% "solid"
         cname <- hex_to_tblr_color(bs$fg)
         wd <- if (!is.null(bs$width)) paste0("wd=", bs$width, "pt, ") else ""
         specs <- c(
@@ -1163,7 +1165,7 @@ latex_border_specs <- function(borders, nr, nc, nrow_header) {
       # Check first column for bottom border (representative)
       bs <- b$bottom[i, 1L][[1L]]
       if (!is.null(bs)) {
-        ls <- fr_env$linestyle_latex[bs$linestyle] %||% "solid"
+        ls <- .arframe_const$linestyle_latex[bs$linestyle] %||% "solid"
         cname <- hex_to_tblr_color(bs$fg)
         wd <- if (!is.null(bs$width)) paste0("wd=", bs$width, "pt, ") else ""
         tblr_row <- nrow_header + i + 1L
@@ -1186,7 +1188,7 @@ latex_border_specs <- function(borders, nr, nc, nrow_header) {
       if (i == 1L) {
         bs_top <- b$top[1L, 1L][[1L]]
         if (!is.null(bs_top)) {
-          ls <- fr_env$linestyle_latex[bs_top$linestyle] %||% "solid"
+          ls <- .arframe_const$linestyle_latex[bs_top$linestyle] %||% "solid"
           cname <- hex_to_tblr_color(bs_top$fg)
           wd <- if (!is.null(bs_top$width)) {
             paste0("wd=", bs_top$width, "pt, ")
@@ -1222,14 +1224,14 @@ latex_border_specs <- function(borders, nr, nc, nrow_header) {
     if (j == 1L) {
       bs <- h$left[1L, 1L][[1L]]
       if (!is.null(bs)) {
-        ls <- fr_env$linestyle_latex[bs$linestyle] %||% "solid"
+        ls <- .arframe_const$linestyle_latex[bs$linestyle] %||% "solid"
         specs <- c(specs, paste0("vline{1} = {dash=", ls, "}"))
       }
     }
     # Right border
     bs <- h$right[1L, j][[1L]]
     if (!is.null(bs)) {
-      ls <- fr_env$linestyle_latex[bs$linestyle] %||% "solid"
+      ls <- .arframe_const$linestyle_latex[bs$linestyle] %||% "solid"
       specs <- c(specs, paste0("vline{", j + 1L, "} = {dash=", ls, "}"))
     }
   }
@@ -1321,7 +1323,7 @@ latex_header_style_specs <- function(
     header_align <- col$header_align %||% header_default_align
     body_align <- col$align %||% "left"
     if (!is.null(header_align) && header_align != body_align) {
-      latex_a <- tolower(fr_env$align_to_latex[header_align])
+      latex_a <- tolower(.arframe_const$align_to_latex[header_align])
       parts <- c(parts, paste0("halign=", latex_a))
     }
 
@@ -1568,7 +1570,7 @@ latex_body_rows <- function(
           if (n_lead > 0L) {
             content <- paste0(
               "\\hspace{",
-              round(n_lead * fr_env$latex_space_width_em, 2),
+              round(n_lead * .arframe_const$latex_space_width_em, 2),
               "em}",
               content
             )

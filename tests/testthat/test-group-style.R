@@ -16,8 +16,11 @@ make_label_data <- function() {
 make_leaf_data <- function() {
   data.frame(
     soc = c(
-      "GI disorders", "GI disorders", "GI disorders",
-      "Nervous system", "Nervous system"
+      "GI disorders",
+      "GI disorders",
+      "GI disorders",
+      "Nervous system",
+      "Nervous system"
     ),
     pt = c("Nausea", "Vomiting", "Diarrhoea", "Headache", "Dizziness"),
     total = c("24 (17.8)", "18 (13.3)", "12 (8.9)", "30 (22.2)", "15 (11.1)"),
@@ -110,9 +113,13 @@ test_that("group_style without group_label or leaf is silently ignored", {
   # No group headers to style — should not error
 
   # cell_styles should not contain a group_style-derived entry
-  has_bold_all <- any(vapply(fspec$cell_styles, function(s) {
-    isTRUE(s$bold) && (length(s$rows) > 0L || length(s$row_ids) > 0L)
-  }, logical(1)))
+  has_bold_all <- any(vapply(
+    fspec$cell_styles,
+    function(s) {
+      isTRUE(s$bold) && (length(s$rows) > 0L || length(s$row_ids) > 0L)
+    },
+    logical(1)
+  ))
   expect_false(has_bold_all)
 })
 
@@ -229,7 +236,9 @@ test_that("fr_styles overrides group_style for same property", {
   fs_idx <- NULL
   for (i in seq_along(fspec$cell_styles)) {
     s <- fspec$cell_styles[[i]]
-    if (identical(s$background, "#AAAAAA") && isTRUE(s$bold)) gs_idx <- i
+    if (identical(s$background, "#AAAAAA") && isTRUE(s$bold)) {
+      gs_idx <- i
+    }
     if (identical(s$background, "#FFFFFF")) fs_idx <- i
   }
   expect_false(is.null(gs_idx))
@@ -360,15 +369,20 @@ test_that("fr_register_stat_type adds custom type to registry", {
     family = "compound",
     richness = 4L
   )
-  on.exit({
-    # Clean up: remove custom type
-    fr_env$stat_type_registry[["test_ratio_ci"]] <- NULL
-    rebuild_stat_type_vectors()
-  }, add = TRUE)
+  on.exit(
+    {
+      # Clean up: remove custom type
+      .arframe_registry$stat_type_registry[["test_ratio_ci"]] <- NULL
+      rebuild_stat_type_vectors()
+    },
+    add = TRUE
+  )
 
-  expect_true("test_ratio_ci" %in% names(fr_env$stat_type_registry))
-  expect_equal(fr_env$stat_type_patterns[["test_ratio_ci"]],
-    "^-?\\d+\\.?\\d*\\s*\\(-?\\d+\\.?\\d*,\\s*-?\\d+\\.?\\d*\\)$")
+  expect_true("test_ratio_ci" %in% names(.arframe_registry$stat_type_registry))
+  expect_equal(
+    .arframe_registry$stat_type_patterns[["test_ratio_ci"]],
+    "^-?\\d+\\.?\\d*\\s*\\(-?\\d+\\.?\\d*,\\s*-?\\d+\\.?\\d*\\)$"
+  )
 })
 
 

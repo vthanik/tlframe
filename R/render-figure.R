@@ -67,10 +67,13 @@ save_plot_to_file <- function(
 ) {
   if (inherits(plot, "ggplot")) {
     if (!requireNamespace("ggplot2", quietly = TRUE)) {
-      cli_abort(c(
-        "Package {.pkg ggplot2} is required to render ggplot figures.",
-        "i" = "Install via {.code install.packages(\"ggplot2\")}."
-      ), call = caller_env())
+      cli_abort(
+        c(
+          "Package {.pkg ggplot2} is required to render ggplot figures.",
+          "i" = "Install via {.code install.packages(\"ggplot2\")}."
+        ),
+        call = caller_env()
+      )
     }
     args <- list(
       filename = path,
@@ -173,7 +176,7 @@ render_figure_pdf <- function(spec, path) {
   if (!is.null(spec$pagehead)) {
     ph <- spec$pagehead
     fs <- ph$font_size %||% (page$font_size - 1)
-    leading <- round(fs * fr_env$latex_leading_factor, 1)
+    leading <- round(fs * .arframe_const$latex_leading_factor, 1)
     if (!is.null(ph$left)) {
       txt <- resolve_tokens(
         latex_escape_chrome(ph$left),
@@ -211,7 +214,7 @@ render_figure_pdf <- function(spec, path) {
   if (!is.null(spec$pagefoot)) {
     pf <- spec$pagefoot
     fs <- pf$font_size %||% (page$font_size - 1)
-    leading <- round(fs * fr_env$latex_leading_factor, 1)
+    leading <- round(fs * .arframe_const$latex_leading_factor, 1)
     if (!is.null(pf$left)) {
       txt <- resolve_tokens(
         latex_escape_chrome(pf$left),
@@ -491,7 +494,7 @@ render_figure_rtf <- function(spec, path) {
     for (i in seq_along(titles)) {
       t <- titles[[i]]
       t_fs <- pt_to_half_pt(t$font_size %||% page$font_size)
-      align_rtf <- fr_env$align_to_rtf[[t$align %||% "center"]]
+      align_rtf <- .arframe_const$align_to_rtf[[t$align %||% "center"]]
       bold_on <- if (isTRUE(t$bold)) "\\b " else ""
       bold_off <- if (isTRUE(t$bold)) "\\b0" else ""
       content <- resolve_tokens(
@@ -552,7 +555,7 @@ render_figure_rtf <- function(spec, path) {
       for (i in seq_along(footnotes)) {
         fn <- footnotes[[i]]
         fn_fs <- pt_to_half_pt(fn$font_size %||% page$font_size)
-        align_rtf <- fr_env$align_to_rtf[[fn$align %||% "left"]]
+        align_rtf <- .arframe_const$align_to_rtf[[fn$align %||% "left"]]
         content <- resolve_tokens(
           plain_footnotes[[i]],
           page_token_map,

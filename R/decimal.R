@@ -42,17 +42,17 @@ detect_stat_types <- function(content_vec) {
   result <- rep("unknown", n)
   unassigned <- rep(TRUE, n)
 
-  for (i in seq_along(fr_env$stat_type_patterns)) {
+  for (i in seq_along(.arframe_registry$stat_type_patterns)) {
     if (!any(unassigned)) {
       break
     }
     matches <- stringi::stri_detect_regex(
       content_vec,
-      fr_env$stat_type_patterns[[i]]
+      .arframe_registry$stat_type_patterns[[i]]
     )
     hits <- unassigned & matches
     if (any(hits)) {
-      result[hits] <- names(fr_env$stat_type_patterns)[[i]]
+      result[hits] <- names(.arframe_registry$stat_type_patterns)[[i]]
       unassigned[hits] <- FALSE
     }
   }
@@ -69,11 +69,11 @@ detect_stat_types <- function(content_vec) {
 #' @noRd
 est_ci_parse_re <- paste0(
   "^",
-  fr_env$num_or_tok_cap,
+  .arframe_const$num_or_tok_cap,
   "\\s*\\(\\s*",
-  fr_env$num_or_tok_cap,
+  .arframe_const$num_or_tok_cap,
   "\\s*,\\s*",
-  fr_env$num_or_tok_cap,
+  .arframe_const$num_or_tok_cap,
   "\\s*\\)$"
 )
 
@@ -81,11 +81,11 @@ est_ci_parse_re <- paste0(
 #' @noRd
 est_ci_bracket_parse_re <- paste0(
   "^",
-  fr_env$num_or_tok_cap,
+  .arframe_const$num_or_tok_cap,
   "\\s*\\[\\s*",
-  fr_env$num_or_tok_cap,
+  .arframe_const$num_or_tok_cap,
   "\\s*,\\s*",
-  fr_env$num_or_tok_cap,
+  .arframe_const$num_or_tok_cap,
   "\\s*\\]$"
 )
 
@@ -93,13 +93,13 @@ est_ci_bracket_parse_re <- paste0(
 #' @noRd
 est_ci_pval_parse_re <- paste0(
   "^",
-  fr_env$num_or_tok_cap,
+  .arframe_const$num_or_tok_cap,
   "\\s*\\(\\s*",
-  fr_env$num_or_tok_cap,
+  .arframe_const$num_or_tok_cap,
   "\\s*,\\s*",
-  fr_env$num_or_tok_cap,
+  .arframe_const$num_or_tok_cap,
   "\\s*\\)\\s+",
-  fr_env$pval_or_tok_cap,
+  .arframe_const$pval_or_tok_cap,
   "$"
 )
 
@@ -876,8 +876,8 @@ parse_stat_value <- function(value, type_name) {
         w_pv_pi = w_pv_pi,
         w_pv_dec = w_pv_dec,
         has_pv_dec = has_pv_dec,
-        gap = fr_env$compound_gap,
-        full_width = ci_fw + fr_env$compound_gap + pv_fw
+        gap = .arframe_const$compound_gap,
+        full_width = ci_fw + .arframe_const$compound_gap + pv_fw
       )
     },
     rebuild_dominant = function(j, comps, widths, tp) {
@@ -960,8 +960,8 @@ parse_stat_value <- function(value, type_name) {
         w_ci_hi_dec = w_ci_hi_dec,
         has_ci_lo_dec = has_ci_lo_dec,
         has_ci_hi_dec = has_ci_hi_dec,
-        gap = fr_env$compound_gap,
-        full_width = espct_fw + fr_env$compound_gap + ci_fw
+        gap = .arframe_const$compound_gap,
+        full_width = espct_fw + .arframe_const$compound_gap + ci_fw
       )
     },
     rebuild_dominant = function(j, comps, widths, tp) {
@@ -1071,8 +1071,8 @@ parse_stat_value <- function(value, type_name) {
         w_rate_si = w_rate_si,
         w_rate_dec = w_rate_dec,
         has_rate_dec = has_rate_dec,
-        gap = fr_env$compound_gap,
-        full_width = npct_fw + fr_env$compound_gap + rate_fw
+        gap = .arframe_const$compound_gap,
+        full_width = npct_fw + .arframe_const$compound_gap + rate_fw
       )
     },
     rebuild_dominant = function(j, comps, widths, tp) {
@@ -1622,7 +1622,7 @@ align_decimal_column <- function(content_vec) {
   }
 
   # STEP 2: Find dominant type via family-aware priority (unchanged logic)
-  families <- fr_env$stat_type_family[non_skip]
+  families <- .arframe_registry$stat_type_family[non_skip]
   fam_counts <- table(families)
 
   decimal_fams <- c("estimate", "float", "compound")
@@ -1633,12 +1633,12 @@ align_decimal_column <- function(content_vec) {
 
   max_count <- max(fam_counts)
   tied_fams <- names(fam_counts)[fam_counts == max_count]
-  dominant_family <- tied_fams[which.max(fr_env$stat_family_priority[
+  dominant_family <- tied_fams[which.max(.arframe_registry$stat_family_priority[
     tied_fams
   ])]
 
   family_types <- unique(non_skip[families == dominant_family])
-  dominant_type <- family_types[which.max(fr_env$stat_type_richness[
+  dominant_type <- family_types[which.max(.arframe_registry$stat_type_richness[
     family_types
   ])]
 
@@ -1782,7 +1782,7 @@ compute_all_decimal_geometry <- function(spec) {
         unique_pages,
         function(pg) {
           pg_types <- detect_stat_types(vals[page_labels == pg])
-          sig_types <- setdiff(pg_types, fr_env$stat_sig_skip)
+          sig_types <- setdiff(pg_types, .arframe_const$stat_sig_skip)
           paste(sort(unique(sig_types)), collapse = ",")
         },
         character(1)

@@ -70,7 +70,7 @@ NULL
 
 # ── Package load hook: initialise backend registry ───────────────────────────
 .onLoad <- function(libname, pkgname) {
-  fr_env$backends <- list(
+  .arframe_registry$backends <- list(
     rtf = list(
       render = render_rtf,
       extensions = c("rtf", "doc"),

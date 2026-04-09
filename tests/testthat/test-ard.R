@@ -2759,7 +2759,11 @@ test_that("pct_display validation: non-list errors", {
   )
 
   expect_error(
-    fr_wide_ard(ard, statistic = list(categorical = "{n} ({p}%)"), pct_display = "yes"),
+    fr_wide_ard(
+      ard,
+      statistic = list(categorical = "{n} ({p}%)"),
+      pct_display = "yes"
+    ),
     "named list"
   )
 })

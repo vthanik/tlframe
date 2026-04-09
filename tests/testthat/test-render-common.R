@@ -2664,7 +2664,7 @@ test_that("inject_group_headers with multiple group_cols concatenates labels", {
   # 2 groups (X/a and Y/b) -> 2 headers + 3 data rows = 5
   expect_equal(nrow(result$data), 5L)
   # Header label should be "X / a" (uses group_label_sep)
-  sep <- fr_env$group_label_sep
+  sep <- .arframe_const$group_label_sep
   expected <- paste("X", "a", sep = sep)
   expect_equal(result$data$val[result$header_rows[1]], expected)
 })
@@ -2739,7 +2739,12 @@ test_that("resolve_deferred_group_selectors sets row_ids not rows", {
   positions <- identify_group_header_rows(spec, inj$header_rows)
 
   styles <- list(
-    new_fr_cell_style(region = "body", type = "row", rows = "group_headers", bold = TRUE)
+    new_fr_cell_style(
+      region = "body",
+      type = "row",
+      rows = "group_headers",
+      bold = TRUE
+    )
   )
   result <- resolve_deferred_group_selectors(styles, positions)
   expect_null(result[[1]]$rows)
@@ -2889,11 +2894,11 @@ test_that("resolve_borders handles empty body (nrow_body = 0)", {
 
 test_that("rtf_encode_unicode_char uses known shorthand from fr_env", {
   # Test with a character that's in the rtf_unicode map (e.g., non-breaking space)
-  known_chars <- names(fr_env$rtf_unicode)
+  known_chars <- names(.arframe_const$rtf_unicode)
   if (length(known_chars) > 0L) {
     ch <- known_chars[1]
     result <- rtf_encode_unicode_char(ch)
-    expect_equal(result, fr_env$rtf_unicode[ch])
+    expect_equal(result, .arframe_const$rtf_unicode[ch])
   }
 })
 

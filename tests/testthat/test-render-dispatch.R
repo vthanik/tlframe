@@ -58,7 +58,7 @@ test_that("get_backend errors on unknown format", {
 
 test_that("fr_register_backend registers and fr_backends lists it", {
   # Save original and restore on exit
-  fe <- arframe:::fr_env
+  fe <- arframe:::.arframe_registry
   orig <- fe$backends
   on.exit(fe$backends <- orig, add = TRUE)
 
@@ -85,7 +85,7 @@ test_that("fr_register_backend validates inputs", {
 })
 
 test_that("registered backend is usable via fr_render", {
-  fe <- arframe:::fr_env
+  fe <- arframe:::.arframe_registry
   orig <- fe$backends
   on.exit(
     {
@@ -992,7 +992,7 @@ test_that("page_by + col_split integration produces output", {
 # ══════════════════════════════════════════════════════════════════════════════
 
 test_that("fr_unregister_backend removes a registered backend", {
-  fe <- arframe:::fr_env
+  fe <- arframe:::.arframe_registry
   orig <- fe$backends
   on.exit(fe$backends <- orig, add = TRUE)
 
@@ -1009,7 +1009,7 @@ test_that("fr_unregister_backend removes a registered backend", {
 })
 
 test_that("fr_unregister_backend invalidates extension cache", {
-  fe <- arframe:::fr_env
+  fe <- arframe:::.arframe_registry
   orig <- fe$backends
   on.exit(fe$backends <- orig, add = TRUE)
 
@@ -1020,10 +1020,10 @@ test_that("fr_unregister_backend invalidates extension cache", {
   )
   # Force cache build
   arframe:::build_extension_map()
-  expect_false(is.null(fe$extension_map_cache))
+  expect_false(is.null(arframe:::.arframe_state$extension_map_cache))
 
   fr_unregister_backend("cache_test")
-  expect_null(fe$extension_map_cache)
+  expect_null(arframe:::.arframe_state$extension_map_cache)
 })
 
 
@@ -1032,7 +1032,7 @@ test_that("fr_unregister_backend invalidates extension cache", {
 # ══════════════════════════════════════════════════════════════════════════════
 
 test_that("fr_backends returns empty df when no backends registered", {
-  fe <- arframe:::fr_env
+  fe <- arframe:::.arframe_registry
   orig <- fe$backends
   on.exit(fe$backends <- orig, add = TRUE)
 
@@ -1050,16 +1050,16 @@ test_that("fr_backends returns empty df when no backends registered", {
 # ══════════════════════════════════════════════════════════════════════════════
 
 test_that("build_extension_map returns cached map on second call", {
-  fe <- arframe:::fr_env
+  fs <- arframe:::.arframe_state
   # Clear cache
-  fe$extension_map_cache <- NULL
-  fe$extension_map_cache_keys <- NULL
+  fs$extension_map_cache <- NULL
+  fs$extension_map_cache_keys <- NULL
 
   map1 <- arframe:::build_extension_map()
   map2 <- arframe:::build_extension_map()
   expect_identical(map1, map2)
   # Cache should now be populated
-  expect_false(is.null(fe$extension_map_cache))
+  expect_false(is.null(fs$extension_map_cache))
 })
 
 

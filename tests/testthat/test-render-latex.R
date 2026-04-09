@@ -12,7 +12,7 @@ test_that("latex_setmainfont produces valid \\setmainfont command", {
 
 test_that("latex_setmainfont uses open-source fallback for missing fonts", {
   local_mocked_bindings(is_system_font_available = function(font_name) {
-    font_name %in% fr_env$opensource_fallback
+    font_name %in% .arframe_const$opensource_fallback
   })
   cmd <- latex_setmainfont("Courier New")
   expect_match(cmd, "Source Code Pro")
@@ -654,7 +654,7 @@ test_that("global colsep is zero for flush column layout", {
 # ──────────────────────────────────────────────────────────────────────────────
 
 test_that("align_to_latex maps decimal to L", {
-  expect_equal(unname(fr_env$align_to_latex[["decimal"]]), "L")
+  expect_equal(unname(.arframe_const$align_to_latex[["decimal"]]), "L")
 })
 
 test_that("finalize_spec pre-computes decimal geometry for decimal columns", {
@@ -785,7 +785,7 @@ test_that("latex_body_rows handles n_pct with decimal percentage", {
 
 test_that("latex_setmainfont uses Source Sans 3 for Arial fallback", {
   local_mocked_bindings(is_system_font_available = function(font_name) {
-    font_name %in% fr_env$opensource_fallback
+    font_name %in% .arframe_const$opensource_fallback
   })
   cmd <- latex_setmainfont("Arial")
   expect_equal(cmd, "\\setmainfont{Source Sans 3}")
@@ -793,7 +793,7 @@ test_that("latex_setmainfont uses Source Sans 3 for Arial fallback", {
 
 test_that("latex_setmainfont uses Source Serif 4 for Times New Roman fallback", {
   local_mocked_bindings(is_system_font_available = function(font_name) {
-    font_name %in% fr_env$opensource_fallback
+    font_name %in% .arframe_const$opensource_fallback
   })
   cmd <- latex_setmainfont("Times New Roman")
   expect_equal(cmd, "\\setmainfont{Source Serif 4}")
@@ -816,7 +816,7 @@ test_that("resolve_latex_font returns system font when available", {
 
 test_that("resolve_latex_font falls back to Source Code Pro for Courier New", {
   local_mocked_bindings(is_system_font_available = function(font_name) {
-    font_name %in% fr_env$opensource_fallback
+    font_name %in% .arframe_const$opensource_fallback
   })
   result <- resolve_latex_font("Courier New")
   expect_equal(result, "Source Code Pro")
@@ -824,7 +824,7 @@ test_that("resolve_latex_font falls back to Source Code Pro for Courier New", {
 
 test_that("resolve_latex_font falls back to Source Sans 3 for Arial", {
   local_mocked_bindings(is_system_font_available = function(font_name) {
-    font_name %in% fr_env$opensource_fallback
+    font_name %in% .arframe_const$opensource_fallback
   })
   result <- resolve_latex_font("Arial")
   expect_equal(result, "Source Sans 3")
@@ -832,7 +832,7 @@ test_that("resolve_latex_font falls back to Source Sans 3 for Arial", {
 
 test_that("resolve_latex_font falls back to Source Serif 4 for Times New Roman", {
   local_mocked_bindings(is_system_font_available = function(font_name) {
-    font_name %in% fr_env$opensource_fallback
+    font_name %in% .arframe_const$opensource_fallback
   })
   result <- resolve_latex_font("Times New Roman")
   expect_equal(result, "Source Serif 4")

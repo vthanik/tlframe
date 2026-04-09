@@ -403,7 +403,7 @@ fr_cols <- function(
   if (!is.null(.space_mode)) {
     .space_mode <- match_arg_fr(
       .space_mode,
-      fr_env$valid_space_modes,
+      .arframe_const$valid_space_modes,
       call = call
     )
     spec$columns_meta$space_mode <- .space_mode
@@ -428,7 +428,7 @@ fr_cols <- function(
     width_mode <- "fixed"
   }
   if (!is.null(.align)) {
-    .align <- match_arg_fr(.align, fr_env$valid_aligns, call = call)
+    .align <- match_arg_fr(.align, .arframe_const$valid_aligns, call = call)
   }
 
   # Validate .label_fn

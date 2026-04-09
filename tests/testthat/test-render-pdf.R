@@ -90,7 +90,10 @@ test_that("fr_install_latex_deps succeeds when all packages present", {
 })
 
 test_that("fr_install_latex_deps errors when no TeX found", {
-  skip_if(nzchar(Sys.which("xelatex")), "XeLaTeX available — cannot test no-TeX path")
+  skip_if(
+    nzchar(Sys.which("xelatex")),
+    "XeLaTeX available — cannot test no-TeX path"
+  )
   skip_if(
     requireNamespace("tinytex", quietly = TRUE) && tinytex::is_tinytex(),
     "TinyTeX available — cannot test no-TeX path"

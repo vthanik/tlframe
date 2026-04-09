@@ -541,42 +541,42 @@ test_that("get_source_path knitr fallback does not error when knitr is available
 
 test_that("build_token_map caches source path in fr_env", {
   # Clear any cached value first
-  old_cached_path <- fr_env$cached_source_path
-  old_cached_ts <- fr_env$cached_timestamp
+  old_cached_path <- .arframe_state$cached_source_path
+  old_cached_ts <- .arframe_state$cached_timestamp
   on.exit(
     {
-      fr_env$cached_source_path <- old_cached_path
-      fr_env$cached_timestamp <- old_cached_ts
+      .arframe_state$cached_source_path <- old_cached_path
+      .arframe_state$cached_timestamp <- old_cached_ts
     },
     add = TRUE
   )
 
-  fr_env$cached_source_path <- NULL
-  fr_env$cached_timestamp <- NULL
+  .arframe_state$cached_source_path <- NULL
+  .arframe_state$cached_timestamp <- NULL
 
   spec <- new_fr_spec(data.frame(x = 1))
   build_token_map(page_num = 1, total_pages = 1, spec = spec)
 
   # After first call, cached values should be set
 
-  expect_type(fr_env$cached_source_path, "character")
-  expect_type(fr_env$cached_timestamp, "character")
+  expect_type(.arframe_state$cached_source_path, "character")
+  expect_type(.arframe_state$cached_timestamp, "character")
 })
 
 test_that("build_token_map reuses cached source path on second call", {
-  old_cached_path <- fr_env$cached_source_path
-  old_cached_ts <- fr_env$cached_timestamp
+  old_cached_path <- .arframe_state$cached_source_path
+  old_cached_ts <- .arframe_state$cached_timestamp
   on.exit(
     {
-      fr_env$cached_source_path <- old_cached_path
-      fr_env$cached_timestamp <- old_cached_ts
+      .arframe_state$cached_source_path <- old_cached_path
+      .arframe_state$cached_timestamp <- old_cached_ts
     },
     add = TRUE
   )
 
   # Pre-set a known cached value
-  fr_env$cached_source_path <- "/cached/script.R"
-  fr_env$cached_timestamp <- "01JAN2025 12:00:00"
+  .arframe_state$cached_source_path <- "/cached/script.R"
+  .arframe_state$cached_timestamp <- "01JAN2025 12:00:00"
 
   spec <- new_fr_spec(data.frame(x = 1))
   tm <- build_token_map(page_num = 1, total_pages = 1, spec = spec)
@@ -587,23 +587,23 @@ test_that("build_token_map reuses cached source path on second call", {
 })
 
 test_that("build_token_map stores empty string when get_source_path returns NA", {
-  old_cached_path <- fr_env$cached_source_path
-  old_cached_ts <- fr_env$cached_timestamp
+  old_cached_path <- .arframe_state$cached_source_path
+  old_cached_ts <- .arframe_state$cached_timestamp
   on.exit(
     {
-      fr_env$cached_source_path <- old_cached_path
-      fr_env$cached_timestamp <- old_cached_ts
+      .arframe_state$cached_source_path <- old_cached_path
+      .arframe_state$cached_timestamp <- old_cached_ts
     },
     add = TRUE
   )
 
-  fr_env$cached_source_path <- NULL
-  fr_env$cached_timestamp <- NULL
+  .arframe_state$cached_source_path <- NULL
+  .arframe_state$cached_timestamp <- NULL
 
   spec <- new_fr_spec(data.frame(x = 1))
   build_token_map(page_num = 1, total_pages = 1, spec = spec)
 
   # cached_source_path should be character (either "" or a path)
-  expect_type(fr_env$cached_source_path, "character")
-  expect_true(nchar(fr_env$cached_source_path) >= 0L)
+  expect_type(.arframe_state$cached_source_path, "character")
+  expect_true(nchar(.arframe_state$cached_source_path) >= 0L)
 })

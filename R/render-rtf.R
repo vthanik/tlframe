@@ -61,7 +61,7 @@ rtf_merged_row <- function(content, cellx, row_height_str, trhdr = FALSE) {
 }
 
 
-# fr_env$rtf_zero_cell_padding lives in fr_env (see constants.R, section 12)
+# .arframe_const$rtf_zero_cell_padding lives in fr_env (see constants.R, section 12)
 
 #' Row-level padding string: at-least height + zero top/bottom cell padding
 #'
@@ -75,7 +75,7 @@ rtf_merged_row <- function(content, cellx, row_height_str, trhdr = FALSE) {
 #' @noRd
 rtf_row_height_str <- function(font_size_pt) {
   rh <- row_height_twips(font_size_pt)
-  paste0("\\trrh", rh, fr_env$rtf_zero_cell_padding)
+  paste0("\\trrh", rh, .arframe_const$rtf_zero_cell_padding)
 }
 
 
@@ -434,11 +434,11 @@ rtf_section_def <- function(spec, is_last = FALSE, body_footnotes = FALSE) {
   if (!is.null(spec$pagehead)) {
     chrome_fs <- spec$pagehead$font_size %||% (page$font_size - 1)
     line_twips <- as.integer(round(
-      pt_to_twips(chrome_fs) * fr_env$rtf_leading_factor
+      pt_to_twips(chrome_fs) * .arframe_const$rtf_leading_factor
     ))
     headery_str <- paste0(
       "\\headery",
-      max(as.integer(mt - line_twips), fr_env$rtf_min_headery)
+      max(as.integer(mt - line_twips), .arframe_const$rtf_min_headery)
     )
   }
 
@@ -641,7 +641,7 @@ rtf_footer_group <- function(
     for (idx in seq_along(entries)) {
       fn <- entries[[idx]]
       fs <- pt_to_half_pt(fn$font_size %||% spec$page$font_size)
-      align_rtf <- fr_env$align_to_rtf[[fn$align %||% "left"]]
+      align_rtf <- .arframe_const$align_to_rtf[[fn$align %||% "left"]]
       content <- rtf_escape_and_resolve(fn$content)
 
       parts <- c(
@@ -665,7 +665,9 @@ rtf_footer_group <- function(
     # 1/4 baselineskip gap between footnotes and pagefoot
     gap_twips <- if (has_footnotes) {
       chrome_fs <- spec$pagefoot$font_size %||% (spec$page$font_size - 1)
-      as.integer(round(pt_to_twips(chrome_fs) * fr_env$rtf_leading_factor / 4))
+      as.integer(round(
+        pt_to_twips(chrome_fs) * .arframe_const$rtf_leading_factor / 4
+      ))
     } else {
       0L
     }
@@ -824,7 +826,7 @@ rtf_title_rows <- function(spec, columns, cellx, color_info, panel_idx = 1L) {
     fs <- pt_to_half_pt(
       entry$font_size %||% spec$meta$title_font_size %||% spec$page$font_size
     )
-    align_rtf <- fr_env$align_to_rtf[[
+    align_rtf <- .arframe_const$align_to_rtf[[
       entry$align %||% spec$meta$title_align %||% "center"
     ]]
     entry_bold <- entry$bold %||% spec$meta$title_bold
@@ -888,7 +890,7 @@ rtf_page_by_rows <- function(spec, columns, cellx, group_label) {
   pb_style <- resolve_page_by_style(spec$page_by_styles %||% list())
   pb_fs_pt <- pb_style$font_size %||% spec$page$font_size
   fs <- pt_to_half_pt(pb_fs_pt)
-  pb_align <- fr_env$align_to_rtf[[pb_style$align %||% "left"]]
+  pb_align <- .arframe_const$align_to_rtf[[pb_style$align %||% "left"]]
   pb_bold_on <- if (isTRUE(pb_style$bold)) "\\b " else ""
   pb_bold_off <- if (isTRUE(pb_style$bold)) "\\b0" else ""
   pb_italic_on <- if (isTRUE(pb_style$italic)) "\\i " else ""
@@ -986,7 +988,7 @@ rtf_spanner_rows <- function(
         if (isTRUE(matching_span$hline)) {
           span_border <- paste0(
             "\\clbrdrb\\brdrs\\brdrw",
-            fr_env$rtf_spanner_brdrw,
+            .arframe_const$rtf_spanner_brdrw,
             "\\brdrcf1"
           )
         }
@@ -1119,7 +1121,7 @@ rtf_col_header_row <- function(
     }
 
     # Vertical alignment (per-cell, from grid — respects style overrides)
-    va_str <- fr_env$valign_to_rtf[g$valign]
+    va_str <- .arframe_const$valign_to_rtf[g$valign]
 
     border_str <- rtf_cell_border_string(borders$header, h_row, j, color_info)
     cell_defs[j] <- paste0(
@@ -1145,7 +1147,7 @@ rtf_col_header_row <- function(
     content <- newline_to_rtf_line(content)
 
     fs <- pt_to_half_pt(g$font_size)
-    align_rtf <- fr_env$align_to_rtf[[g$align]]
+    align_rtf <- .arframe_const$align_to_rtf[[g$align]]
 
     # Inline formatting from style overrides
     fmt_on <- ""
@@ -1242,8 +1244,8 @@ rtf_body_rows <- function(
     keep_mask <- build_keep_mask(
       data,
       spec$body$group_by,
-      orphan_min = spec$page$orphan_min %||% fr_env$default_orphan_min,
-      widow_min = spec$page$widow_min %||% fr_env$default_widow_min,
+      orphan_min = spec$page$orphan_min %||% .arframe_const$default_orphan_min,
+      widow_min = spec$page$widow_min %||% .arframe_const$default_widow_min,
       page_rows = page_rows
     )
   } else {
@@ -1271,8 +1273,8 @@ rtf_body_rows <- function(
   cg_font_size <- cell_grid$font_size
 
   # Hoist environment lookups outside the hot loop
-  align_map <- fr_env$align_to_rtf
-  valign_map <- fr_env$valign_to_rtf
+  align_map <- .arframe_const$align_to_rtf
+  valign_map <- .arframe_const$valign_to_rtf
 
   lines <- vector("list", nr)
   for (i in seq_len(nr)) {
@@ -1283,7 +1285,7 @@ rtf_body_rows <- function(
       height_str <- paste0(
         "\\trrh",
         inches_to_twips(row_heights[i]),
-        fr_env$rtf_zero_cell_padding
+        .arframe_const$rtf_zero_cell_padding
       )
     } else {
       height_str <- rh_str
@@ -1616,7 +1618,7 @@ rtf_footnote_rows <- function(spec, columns, cellx, entries, color_info) {
     fs <- pt_to_half_pt(fn_fs_pt)
     fn_entry_rh <- rtf_row_height_str(fn_fs_pt)
     fn_entry_sp <- rtf_cell_spacing_str()
-    align_rtf <- fr_env$align_to_rtf[[fn$align %||% "left"]]
+    align_rtf <- .arframe_const$align_to_rtf[[fn$align %||% "left"]]
     content <- rtf_escape_and_resolve(fn$content)
 
     cell_text <- paste0(
@@ -1673,7 +1675,7 @@ rtf_cell_border_string <- function(
     }
 
     # RTF border: \clbrdr{side}\brdrs\brdrwN\brdrcfN
-    linestyle_rtf <- fr_env$linestyle_rtf[[bs$linestyle]] %||% "\\brdrs"
+    linestyle_rtf <- .arframe_const$linestyle_rtf[[bs$linestyle]] %||% "\\brdrs"
     width_twips <- pt_to_twips(bs$width)
     color_idx <- color_info$index[[bs$fg]] %||% 1L
 
