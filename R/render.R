@@ -424,17 +424,26 @@ fr_backends <- function() {
 
 #' Finalize spec for rendering
 #'
-#' 1. Build columns if empty (auto-generate from data)
-#' 2. Resolve widths
-#' 3. Filter to visible columns only for rendering
+#' Ordered pipeline of pure `fr_spec → fr_spec` pass functions.
+#' Each pass has a single responsibility and is independently testable.
+#' Row IDs (Phase 1) make pass ordering safe: row injection cannot corrupt
+#' style indices.
 #'
 #' @noRd
 finalize_spec <- function(spec) {
-  spec <- finalize_columns(spec)
-  spec <- finalize_labels(spec)
-  spec <- finalize_rows(spec)
+  spec |>
+    finalize_columns() |>
+    finalize_labels() |>
+    finalize_rows() |>
+    pass_footnote_placement() |>
+    pass_validate_continuation() |>
+    pass_decimal_geometry()
+}
 
-  # Apply default footnote placement from config/theme to entries without one
+
+#' Pass: apply default footnote placement to entries without one
+#' @noRd
+pass_footnote_placement <- function(spec) {
   if (!is.null(spec$meta$footnote_placement)) {
     for (i in seq_along(spec$meta$footnotes)) {
       if (is.null(spec$meta$footnotes[[i]]$placement)) {
@@ -442,8 +451,13 @@ finalize_spec <- function(spec) {
       }
     }
   }
+  spec
+}
 
-  # Warn if continuation is set but no pagination is configured
+
+#' Pass: warn if continuation label is set without pagination config
+#' @noRd
+pass_validate_continuation <- function(spec) {
   if (
     !is.null(spec$page$continuation) &&
       length(spec$body$page_by) == 0L &&
@@ -454,10 +468,14 @@ finalize_spec <- function(spec) {
       "i" = "The continuation label only appears on multi-page tables with pagination via {.fn fr_rows}."
     ), call = caller_env())
   }
+  spec
+}
 
-  # Pre-compute decimal alignment geometry (used by both RTF and LaTeX)
+
+#' Pass: pre-compute decimal alignment geometry for all columns
+#' @noRd
+pass_decimal_geometry <- function(spec) {
   spec$decimal_geometry <- compute_all_decimal_geometry(spec)
-
   spec
 }
 
