@@ -77,19 +77,9 @@ render_latex <- function(spec, page_groups, col_panels, path) {
 
       # Per-group header label overrides (pre-computed in prepare_pages,
       # or computed here for single-group specs without page_by)
-      if (!is.null(group$label_overrides) || !is.null(group$span_overrides)) {
-        label_overrides <- group$label_overrides
-        span_overrides <- group$span_overrides
-      } else {
-        resolved <- resolve_group_labels(spec, group$data, group$group_label)
-        if (is.list(resolved)) {
-          label_overrides <- resolved$columns
-          span_overrides <- resolved$spans
-        } else {
-          label_overrides <- resolved
-          span_overrides <- NULL
-        }
-      }
+      ov <- resolve_section_overrides(spec, group)
+      label_overrides <- ov$label_overrides
+      span_overrides <- ov$span_overrides
 
       # Build cell grid
       cell_grid <- build_cell_grid(

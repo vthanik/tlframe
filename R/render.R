@@ -973,6 +973,22 @@ resolve_group_labels <- function(spec, group_data, group_label) {
 }
 
 
+# Helper: resolve per-section label/span overrides from pre-computed group data
+# or by calling resolve_group_labels() for specs without page_by.
+resolve_section_overrides <- function(spec, group) {
+  if (!is.null(group$label_overrides) || !is.null(group$span_overrides)) {
+    list(label_overrides = group$label_overrides, span_overrides = group$span_overrides)
+  } else {
+    resolved <- resolve_group_labels(spec, group$data, group$group_label)
+    if (is.list(resolved)) {
+      list(label_overrides = resolved$columns, span_overrides = resolved$spans)
+    } else {
+      list(label_overrides = resolved, span_overrides = NULL)
+    }
+  }
+}
+
+
 #' Parse an N-count data frame into a standardised internal format
 #'
 #' Converts a 2-col or 3-col data frame to either "global" (2-col) or
