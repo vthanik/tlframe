@@ -31,7 +31,7 @@ test_that("fr_listing creates fr_spec with type = listing", {
 
 test_that("fr_listing stores the input data unchanged", {
   spec <- fr_listing(df_listing)
-  expect_identical(spec$data, df_listing)
+  expect_identical(fr_get_data(spec), df_listing)
 })
 
 test_that("fr_listing has default sub-structures", {

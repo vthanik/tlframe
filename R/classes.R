@@ -840,6 +840,7 @@ new_fr_cell_style <- function(
   type = "cell",
   region = "body",
   rows = NULL,
+  row_ids = NULL,
   cols = NULL,
   bold = NULL,
   italic = NULL,
@@ -860,6 +861,7 @@ new_fr_cell_style <- function(
       type = type,
       region = region,
       rows = rows,
+      row_ids = row_ids,
       cols = cols,
       bold = bold,
       italic = italic,
@@ -1137,6 +1139,13 @@ new_fr_spec <- function(
     )
   }
 
+  # Stamp stable row IDs so styles can reference rows without integer indices.
+  # These IDs survive row injection (group headers, blank rows), eliminating
+  # the need to remap integer indices after each insertion.
+  # Guard: paste0 recycling in R 4.5+ returns "r" for paste0("r", integer(0))
+  nr <- nrow(data)
+  data[[".__row_id__"]] <- if (nr > 0L) paste0("r", seq_len(nr)) else character(0)
+
   structure(
     list(
       data = data,
@@ -1227,7 +1236,7 @@ print.fr_spec <- function(x, ..., compact = FALSE) {
 
   # Data summary (skip for figures)
   nr <- nrow(x$data)
-  nc_data <- ncol(x$data)
+  nc_data <- sum(names(x$data) != ".__row_id__")
   nc_spec <- length(x$columns)
   if (!identical(x$type, "figure")) {
     cli::cli_text("Data: {nr} row{?s} x {nc_data} column{?s}")
@@ -1423,7 +1432,7 @@ print.fr_spec <- function(x, ..., compact = FALSE) {
 #' @export
 format.fr_spec <- function(x, ...) {
   nr <- nrow(x$data)
-  nc <- ncol(x$data)
+  nc <- sum(names(x$data) != ".__row_id__")
   type <- x$type %||% "table"
   n_styles <- length(x$cell_styles)
   n_titles <- length(x$meta$titles)

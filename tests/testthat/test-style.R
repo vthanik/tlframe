@@ -96,9 +96,9 @@ test_that("fr_rows_matches resolves exact value in fr_styles pipeline", {
         bold = TRUE
       )
     )
-  # Selector should be resolved to integer row index
+  # Selector should be resolved to stable row ID
   style <- spec$cell_styles[[1]]
-  expect_equal(style$rows, 4L)
+  expect_equal(style$row_ids, "r4")
   expect_true(style$bold)
 })
 
@@ -112,7 +112,7 @@ test_that("fr_rows_matches resolves pattern in fr_styles pipeline", {
       )
     )
   style <- spec$cell_styles[[1]]
-  expect_equal(sort(style$rows), c(1L, 2L))
+  expect_equal(sort(style$row_ids), c("r1", "r2"))
 })
 
 test_that("fr_rows_matches pattern with ignore.case resolves correctly", {
@@ -129,7 +129,7 @@ test_that("fr_rows_matches pattern with ignore.case resolves correctly", {
       )
     )
   style <- spec$cell_styles[[1]]
-  expect_equal(style$rows, 4L)
+  expect_equal(style$row_ids, "r4")
 })
 
 test_that("fr_rows_matches errors when column not found in data", {
@@ -334,7 +334,7 @@ test_that("fr_styles resolves fr_rows_matches in fr_style (cell type)", {
       )
     )
   style <- spec$cell_styles[[1]]
-  expect_equal(style$rows, 3L)
+  expect_equal(style$row_ids, "r3")
   expect_equal(style$cols, "total")
 })
 
@@ -909,8 +909,8 @@ test_that("multiple fr_rows_matches in one fr_styles call", {
       )
     )
   expect_length(spec$cell_styles, 2L)
-  expect_equal(spec$cell_styles[[1]]$rows, 1L)
-  expect_equal(spec$cell_styles[[2]]$rows, 4L)
+  expect_equal(spec$cell_styles[[1]]$row_ids, "r1")
+  expect_equal(spec$cell_styles[[2]]$row_ids, "r4")
 })
 
 test_that("fr_style_if with numeric column condition", {

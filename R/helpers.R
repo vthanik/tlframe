@@ -317,7 +317,8 @@ resolve_cols_expr <- function(quo, call = caller_env()) {
 #' @noRd
 resolve_style_cols <- function(style, data, call = caller_env()) {
   if (is_quosure(style$cols)) {
-    pos <- tidyselect::eval_select(style$cols, data = data, error_call = call)
+    data_visible <- data[setdiff(names(data), ".__row_id__")]
+    pos <- tidyselect::eval_select(style$cols, data = data_visible, error_call = call)
     style$cols <- names(pos)
   }
   style

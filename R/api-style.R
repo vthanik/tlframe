@@ -794,7 +794,9 @@ fr_styles <- function(spec, ...) {
       page_by_styles <- c(page_by_styles, list(style))
     } else {
       if (inherits(style$rows, "fr_rows_selector")) {
-        style$rows <- resolve_rows_selector(style$rows, spec$data, call = call)
+        matched_idx <- resolve_rows_selector(style$rows, spec$data, call = call)
+        style$row_ids <- spec$data$.__row_id__[matched_idx]
+        style$rows <- NULL
       }
       resolved <- c(resolved, list(style))
     }

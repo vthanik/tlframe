@@ -292,8 +292,9 @@ test_that("finalize_spec inserts blank rows at blank_after boundaries", {
   result <- arframe:::finalize_spec(spec)
   # Should have inserted a blank row between A and B groups
   expect_true(nrow(result$data) > 4L)
-  # Check that one blank row exists (all empty)
-  blank_mask <- rowSums(result$data != "") == 0L
+  # Check that one blank row exists (all empty, excluding internal .__row_id__ column)
+  data_cols <- result$data[setdiff(names(result$data), ".__row_id__")]
+  blank_mask <- rowSums(data_cols != "") == 0L
   expect_true(sum(blank_mask) >= 1L)
 })
 
@@ -1580,7 +1581,7 @@ test_that("finalize_rows injects group headers when group_label is set", {
   expect_true("B" %in% result$data$val)
 })
 
-test_that("finalize_rows remaps cell style indices after group_label injection", {
+test_that("finalize_rows converts integer styles to stable row IDs (no index shifting)", {
   df <- data.frame(
     grp = c("A", "A", "B", "B"),
     val = c("1", "2", "3", "4"),
@@ -1595,18 +1596,16 @@ test_that("finalize_rows remaps cell style indices after group_label injection",
   )
 
   result <- arframe:::finalize_spec(spec)
-  # After injection of 2 group headers, original row 3 shifts to 3+2=5 at minimum.
-  # Check that at least one cell_style has shifted rows
-  found_shifted <- FALSE
+  # With stable row IDs, integer row 3 is converted to row ID "r3" at the
+  # start of finalize_rows — no shifting needed after header injection.
+  found_id <- FALSE
   for (s in result$cell_styles) {
-    if (!is.null(s$rows) && is.numeric(s$rows) && !identical(s$rows, "all")) {
-      if (any(s$rows > 3L)) {
-        found_shifted <- TRUE
-        break
-      }
+    if (!is.null(s$row_ids) && "r3" %in% s$row_ids) {
+      found_id <- TRUE
+      break
     }
   }
-  expect_true(found_shifted)
+  expect_true(found_id)
 })
 
 

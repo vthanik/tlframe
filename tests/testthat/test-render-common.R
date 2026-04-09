@@ -61,7 +61,7 @@ test_that("build_cell_grid produces correct dimensions", {
 
   grid <- build_cell_grid(data, cols, list(), page)
   expect_equal(nrow(grid), 4L) # 2 rows x 2 cols
-  expect_equal(ncol(grid), 13L) # row_idx, col_idx, col_name, content, align, valign, ...
+  expect_equal(ncol(grid), 14L) # row_idx, col_idx, col_name, row_id, content, align, valign, ...
   expect_equal(grid$content, c("x", "y", "1", "2"))
 })
 
@@ -161,8 +161,9 @@ test_that("group_by + blank_after on same column produces single blank rows", {
   spec <- finalize_spec(spec)
   # Should have 4 data rows + 1 blank row (between A and B)
   expect_equal(nrow(spec$data), 5L)
-  # Row 3 should be the blank row (all empty)
-  expect_true(all(spec$data[3L, ] == ""))
+  # Row 3 should be the blank row (all empty, excluding internal .__row_id__ column)
+  data_cols <- setdiff(names(spec$data), ".__row_id__")
+  expect_true(all(spec$data[3L, data_cols] == ""))
 })
 
 test_that("group_by alone does NOT auto-insert blank rows", {
@@ -1713,8 +1714,9 @@ test_that("insert_blank_after inserts blanks at group boundaries", {
   result <- insert_blank_after(data, "grp")
   # 5 data rows + 2 blank rows (A->B, B->C) = 7
   expect_equal(nrow(result$data), 7L)
-  expect_true(all(result$data[3L, ] == ""))
-  expect_true(all(result$data[6L, ] == ""))
+  data_cols <- setdiff(names(result$data), ".__row_id__")
+  expect_true(all(result$data[3L, data_cols] == ""))
+  expect_true(all(result$data[6L, data_cols] == ""))
   # insert_positions are original row indices of boundary rows
   expect_equal(result$insert_positions, c(2L, 4L))
 })
@@ -1752,67 +1754,54 @@ test_that("insert_blank_after returns data unchanged when all keys are same", {
 })
 
 
-# ── remap_style_indices ──────────────────────────────────────────────────────
+# ── row ID stability ──────────────────────────────────────────────────────────
 
-test_that("remap_style_indices shifts numeric row indices", {
-  styles <- list(
-    new_fr_cell_style(
-      region = "body",
-      type = "row",
-      rows = c(1L, 3L),
-      bold = TRUE
-    ),
-    new_fr_cell_style(
-      region = "body",
-      type = "col",
-      rows = c(2L, 4L),
-      cols = "a",
-      italic = TRUE
-    )
-  )
-  # Blank inserted after row 2 in original data
-  result <- remap_style_indices(styles, c(2L))
-  # Row 1 stays 1, row 3 → 4 (shifted +1)
-  expect_equal(result[[1]]$rows, c(1L, 4L))
-  # Row 2 stays 2, row 4 → 5
-  expect_equal(result[[2]]$rows, c(2L, 5L))
+test_that("new_fr_spec stamps .__row_id__ on every row", {
+  spec <- new_fr_spec(data.frame(a = 1:3))
+  expect_equal(spec$data$.__row_id__, c("r1", "r2", "r3"))
 })
 
-test_that("remap_style_indices handles multiple insert positions", {
-  styles <- list(
-    new_fr_cell_style(
-      region = "body",
-      type = "row",
-      rows = c(1L, 2L, 3L, 4L, 5L),
-      bold = TRUE
-    )
+test_that("inject_group_headers assigns gh_k IDs to injected rows", {
+  data <- data.frame(
+    grp = c("A", "A", "B", "B"),
+    label = c("A", "A", "B", "B"),
+    val = c("1", "2", "3", "4"),
+    `.__row_id__` = c("r1", "r2", "r3", "r4"),
+    stringsAsFactors = FALSE,
+    check.names = FALSE
   )
-  # Blanks after rows 2 and 4 in original data
-  result <- remap_style_indices(styles, c(2L, 4L))
-  # Row 1 → 1, 2 → 2, 3 → 4, 4 → 5, 5 → 7
-  expect_equal(result[[1]]$rows, c(1L, 2L, 4L, 5L, 7L))
+  result <- inject_group_headers(data, "grp", "label")
+  ids <- result$data$.__row_id__
+  expect_equal(ids[result$header_rows], c("gh_1", "gh_2"))
 })
 
-test_that("remap_style_indices skips 'all' and NULL rows", {
-  styles <- list(
-    new_fr_cell_style(
-      region = "body",
-      type = "col",
-      rows = "all",
-      cols = "a",
-      bold = TRUE
-    ),
-    new_fr_cell_style(
-      region = "body",
-      type = "col",
-      rows = NULL,
-      cols = "b",
-      italic = TRUE
-    )
+test_that("insert_blank_after assigns blank_k IDs to blank rows", {
+  data <- data.frame(
+    grp = c("A", "A", "B", "B"),
+    val = c("1", "2", "3", "4"),
+    `.__row_id__` = c("r1", "r2", "r3", "r4"),
+    stringsAsFactors = FALSE,
+    check.names = FALSE
   )
-  result <- remap_style_indices(styles, c(2L))
-  expect_equal(result[[1]]$rows, "all")
-  expect_null(result[[2]]$rows)
+  result <- insert_blank_after(data, "grp")
+  blank_idx <- which(result$data$grp == "" & result$data$val == "")
+  expect_equal(result$data$.__row_id__[blank_idx], "blank_1")
+})
+
+test_that("integer row styles survive group header injection without remapping", {
+  df <- data.frame(
+    grp = c("A", "A", "B", "B"),
+    val = c("1", "2", "3", "4"),
+    stringsAsFactors = FALSE
+  )
+  out <- file.path(tempdir(), "row_id_test.html")
+  on.exit(unlink(out))
+  df |>
+    fr_table() |>
+    fr_rows(group_by = "grp") |>
+    fr_styles(fr_row_style(rows = 1L, bold = TRUE)) |>
+    fr_render(out)
+  expect_true(file.exists(out))
 })
 
 
@@ -1846,8 +1835,8 @@ test_that("apply_indent_by with group_by indents only detail rows", {
   spec$cell_styles <- list()
   result <- apply_indent_by(spec)
   expect_length(result$cell_styles, 1L)
-  # Group headers are rows 1 and 3; detail rows are 2 and 4
-  expect_equal(result$cell_styles[[1]]$rows, c(2L, 4L))
+  # Group headers are rows 1 and 3; detail rows are 2 and 4 → IDs "r2", "r4"
+  expect_equal(result$cell_styles[[1]]$row_ids, c("r2", "r4"))
 })
 
 test_that("apply_indent_by skips non-existent indent columns", {
@@ -2713,48 +2702,49 @@ test_that("inject_group_headers preserves page_by columns", {
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Coverage: remap_style_indices_for_injected (L496-516)
+# Coverage: row ID stability through group header + blank row injection
 # ══════════════════════════════════════════════════════════════════════════════
 
-test_that("remap_style_indices_for_injected shifts numeric row indices", {
-  styles <- list(
-    new_fr_cell_style(
-      region = "body",
-      type = "row",
-      rows = c(1L, 2L, 3L),
-      bold = TRUE
-    )
+test_that("identify_group_header_rows returns character IDs not integers", {
+  df <- data.frame(
+    grp = c("A", "A", "B", "B"),
+    label = c("A", "A", "B", "B"),
+    val = c("1", "2", "3", "4"),
+    `.__row_id__` = c("r1", "r2", "r3", "r4"),
+    stringsAsFactors = FALSE,
+    check.names = FALSE
   )
-  # If header rows were injected at positions 1 and 4 in the new data,
-  # orig boundaries are: 1 - 1 + 1 = 1, 4 - 2 + 1 = 3
-  # Row 1 -> 1 + findInterval(1, c(1,3)) = 1 + 1 = 2
-  # Row 2 -> 2 + findInterval(2, c(1,3)) = 2 + 1 = 3
-  # Row 3 -> 3 + findInterval(3, c(1,3)) = 3 + 2 = 5
-  result <- remap_style_indices_for_injected(styles, c(1L, 4L))
-  expect_equal(result[[1]]$rows, c(2L, 3L, 5L))
+  inj <- inject_group_headers(df, "grp", "label")
+  spec <- new_fr_spec(data.frame(a = 1:2))
+  spec$data <- inj$data
+  spec$body <- new_fr_body(group_by = "grp")
+  positions <- identify_group_header_rows(spec, inj$header_rows)
+  expect_type(positions$all, "character")
+  expect_true(all(startsWith(positions$all, "gh_")))
 })
 
-test_that("remap_style_indices_for_injected skips NULL and 'all' rows", {
-  styles <- list(
-    new_fr_cell_style(region = "body", type = "row", rows = NULL, bold = TRUE),
-    new_fr_cell_style(region = "body", type = "row", rows = "all", bold = TRUE)
+test_that("resolve_deferred_group_selectors sets row_ids not rows", {
+  df <- data.frame(
+    grp = c("A", "A", "B"),
+    label = c("A", "A", "B"),
+    val = c("1", "2", "3"),
+    `.__row_id__` = c("r1", "r2", "r3"),
+    stringsAsFactors = FALSE,
+    check.names = FALSE
   )
-  result <- remap_style_indices_for_injected(styles, c(1L))
+  inj <- inject_group_headers(df, "grp", "label")
+  spec <- new_fr_spec(data.frame(a = 1))
+  spec$data <- inj$data
+  spec$body <- new_fr_body(group_by = "grp")
+  positions <- identify_group_header_rows(spec, inj$header_rows)
+
+  styles <- list(
+    new_fr_cell_style(region = "body", type = "row", rows = "group_headers", bold = TRUE)
+  )
+  result <- resolve_deferred_group_selectors(styles, positions)
   expect_null(result[[1]]$rows)
-  expect_equal(result[[2]]$rows, "all")
-})
-
-test_that("remap_style_indices_for_injected returns unchanged when no headers", {
-  styles <- list(
-    new_fr_cell_style(
-      region = "body",
-      type = "row",
-      rows = c(1L, 2L),
-      bold = TRUE
-    )
-  )
-  result <- remap_style_indices_for_injected(styles, integer(0))
-  expect_equal(result[[1]]$rows, c(1L, 2L))
+  expect_type(result[[1]]$row_ids, "character")
+  expect_true(all(startsWith(result[[1]]$row_ids, "gh_")))
 })
 
 

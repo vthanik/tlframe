@@ -168,6 +168,9 @@ build_cell_grid <- function(data, columns, cell_styles, page) {
     col_idx = rep(seq_len(nc), each = nr)
   ))
   grid$col_name <- col_names[grid$col_idx]
+  # Stable row IDs for style targeting (survives row injection)
+  row_ids_src <- data$.__row_id__ %||% paste0("r", seq_len(nr))
+  grid$row_id <- rep(row_ids_src, times = nc)
 
   # Fill content — column-wise vectorization (C-level lapply + unlist)
   grid$content <- unlist(
@@ -263,9 +266,10 @@ build_cell_grid <- function(data, columns, cell_styles, page) {
 #' @return Logical vector (length = nrow(grid)).
 #' @noRd
 resolve_style_mask <- function(style, grid, col_names) {
-  nr_data <- max(grid$row_idx)
-  # Row mask
-  if (is.null(style$rows) || identical(style$rows, "all")) {
+  # Row mask: prefer stable row_ids over integer row indices
+  if (!is.null(style$row_ids) && length(style$row_ids) > 0L) {
+    row_mask <- grid$row_id %in% style$row_ids
+  } else if (is.null(style$rows) || identical(style$rows, "all")) {
     row_mask <- rep(TRUE, vctrs::vec_size(grid))
   } else {
     row_mask <- grid$row_idx %in% style$rows
@@ -324,7 +328,9 @@ apply_styles_to_grid <- function(
 
     # Row mask
     if (!is.null(header_row_idx)) {
-      # Header: match against header row index
+      # Header: row_ids don't apply to header grids (body-only concept).
+      # Match against header row index only.
+      if (!is.null(style$row_ids)) next
       if (!is.null(style$rows) && !identical(style$rows, "all")) {
         if (!(header_row_idx %in% style$rows)) next
       }
@@ -564,6 +570,7 @@ inject_group_headers <- function(
       hdr[[gc]] <- as.character(data[[gc]][row_idx])
     }
 
+    hdr$.__row_id__ <- paste0("gh_", k)
     result[[2L * k - 1L]] <- hdr
     cumulative_rows <- cumulative_rows + 1L
     header_positions[k] <- cumulative_rows
@@ -580,41 +587,11 @@ inject_group_headers <- function(
 }
 
 
-#' Remap style row indices after group header injection
-#'
-#' When `inject_group_headers()` inserts header rows, existing numeric row
-#' indices in `cell_styles` become stale. Each original row i shifts down by
-#' the number of header rows injected at or before position i.
-#'
-#' @param cell_styles List of fr_cell_style objects.
-#' @param header_rows Integer vector — row positions of injected headers
-#'   in the NEW data frame.
-#' @param new_nrow Integer — total rows in the new data frame.
-#' @return Modified list of fr_cell_style objects with shifted row indices.
-#' @noRd
-remap_style_indices_for_injected <- function(cell_styles, header_rows) {
-  n_headers <- length(header_rows)
-  if (n_headers == 0L) {
-    return(cell_styles)
-  }
-
-  sorted_headers <- sort(header_rows)
-  # The j-th header is at new position sorted_headers[j], so the original
-  # boundary it was inserted before = sorted_headers[j] - j + 1
-  orig_boundaries <- sorted_headers - seq_along(sorted_headers) + 1L
-
-  for (i in seq_along(cell_styles)) {
-    rows <- cell_styles[[i]]$rows
-    if (is.null(rows) || identical(rows, "all") || !is.numeric(rows)) {
-      next
-    }
-    # Original row k -> k + number of headers whose boundary <= k
-    cell_styles[[i]]$rows <- as.integer(
-      rows + findInterval(rows, orig_boundaries)
-    )
-  }
-  cell_styles
-}
+# remap_style_indices_for_injected() — DELETED
+# Styles now reference stable row IDs (.__row_id__) stamped at fr_table() time.
+# Integer index remapping is no longer needed after inject_group_headers().
+# Row IDs survive injection: injected header rows get "gh_k" IDs, blank rows
+# get "blank_k" IDs. resolve_style_mask() matches on grid$row_id directly.
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -633,30 +610,30 @@ remap_style_indices_for_injected <- function(cell_styles, header_rows) {
 #' @return List with `all` (integer) and `by_level` (named list of integer).
 #' @noRd
 identify_group_header_rows <- function(spec, gl_header_rows) {
-  all_rows <- integer(0)
+  all_ids <- character(0)
   by_level <- list()
+  row_id_col <- spec$data$.__row_id__
 
   # Path 1: label groups — headers injected by inject_group_headers()
   if (length(gl_header_rows) > 0L) {
-    all_rows <- gl_header_rows
+    all_ids <- row_id_col[gl_header_rows]
   }
 
   # Path 2: leaf hierarchies — identified by __row_level__ column
-
   leaf_col <- spec$body$group_leaf
   if (!is.null(leaf_col) && "__row_level__" %in% names(spec$data)) {
     row_levels <- spec$data[["__row_level__"]]
     non_leaf_mask <- row_levels != leaf_col
-    all_rows <- which(non_leaf_mask)
+    all_ids <- row_id_col[non_leaf_mask]
 
     # Split by level for per-level targeting
     unique_levels <- unique(row_levels[non_leaf_mask])
     for (lvl in unique_levels) {
-      by_level[[lvl]] <- which(row_levels == lvl)
+      by_level[[lvl]] <- row_id_col[row_levels == lvl]
     }
   }
 
-  list(all = all_rows, by_level = by_level)
+  list(all = all_ids, by_level = by_level)
 }
 
 
@@ -702,9 +679,8 @@ build_group_styles <- function(group_style, positions) {
 
 #' Create an fr_cell_style (row type) from a named property list
 #' @noRd
-make_row_style_from_list <- function(props, rows) {
-  new_fr_row_style(
-    rows = rows,
+make_row_style_from_list <- function(props, row_ids) {
+  style <- new_fr_row_style(
     bold = props$bold,
     italic = props$italic,
     underline = props$underline,
@@ -714,6 +690,8 @@ make_row_style_from_list <- function(props, rows) {
     align = props$align,
     valign = props$valign
   )
+  style$row_ids <- row_ids
+  style
 }
 
 
@@ -733,13 +711,14 @@ resolve_deferred_group_selectors <- function(cell_styles, positions) {
       next
     }
 
+    # Store resolved IDs in row_ids; clear the string sentinel from rows
     if (rows == "group_headers") {
-      cell_styles[[i]]$rows <- positions$all
+      cell_styles[[i]]$row_ids <- positions$all
     } else {
-      # Parse "group_headers:<level>"
       level <- sub("^group_headers:", "", rows)
-      cell_styles[[i]]$rows <- positions$by_level[[level]] %||% integer(0)
+      cell_styles[[i]]$row_ids <- positions$by_level[[level]] %||% character(0)
     }
+    cell_styles[[i]]$rows <- NULL
   }
   cell_styles
 }
@@ -862,6 +841,7 @@ insert_blank_after <- function(data, blank_cols, preserve_cols = NULL) {
     for (gc in copy_cols) {
       brow[[gc]] <- as.character(data[[gc]][boundaries[k]])
     }
+    brow$.__row_id__ <- paste0("blank_", k)
     result[[2L * k]] <- brow
     prev <- boundaries[k] + 1L
   }
@@ -874,30 +854,9 @@ insert_blank_after <- function(data, blank_cols, preserve_cols = NULL) {
 }
 
 
-#' Remap style row indices after blank row insertion
-#'
-#' When `insert_blank_after()` inserts blank rows, numeric row indices in
-#' `cell_styles` become stale. This function shifts each style's row indices
-#' to account for the inserted blanks.
-#'
-#' @param cell_styles List of fr_cell_style objects.
-#' @param insert_positions Integer vector — original row indices after which
-#'   blanks were inserted (the boundary rows from `insert_blank_after()`).
-#' @return Modified list of fr_cell_style objects with shifted row indices.
-#' @noRd
-remap_style_indices <- function(cell_styles, insert_positions) {
-  sorted_pos <- sort(insert_positions)
-  for (i in seq_along(cell_styles)) {
-    rows <- cell_styles[[i]]$rows
-    if (is.null(rows) || identical(rows, "all") || !is.numeric(rows)) {
-      next
-    }
-    cell_styles[[i]]$rows <- as.integer(
-      rows + findInterval(rows - 1L, sorted_pos)
-    )
-  }
-  cell_styles
-}
+# remap_style_indices() — DELETED
+# Styles now reference stable row IDs (.__row_id__). Integer index remapping
+# is no longer needed after insert_blank_after(). Blank rows get "blank_k" IDs.
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -969,7 +928,7 @@ apply_indent_by <- function(spec) {
         indent_style <- new_fr_cell_style(
           region = "body",
           type = "col",
-          rows = detail_rows,
+          row_ids = spec$data$.__row_id__[detail_rows],
           cols = indent_cols,
           indent = base_indent
         )
@@ -1025,7 +984,7 @@ apply_indent_by_levels <- function(spec, indent_spec, base_indent) {
       indent_style <- new_fr_cell_style(
         region = "body",
         type = "col",
-        rows = matched_rows,
+        row_ids = spec$data$.__row_id__[matched_rows],
         cols = target_cols,
         indent = base_indent * level_mult
       )
@@ -1154,6 +1113,10 @@ collapse_hierarchy <- function(spec) {
   hdr_block <- vctrs::vec_slice(hdr_template, rep(1L, n_headers))
   hdr_block[["__display__"]] <- hdr_display
   hdr_block[["__row_level__"]] <- hdr_level
+  # Assign stable row IDs to injected hierarchy header rows
+  if (".__row_id__" %in% names(hdr_block)) {
+    hdr_block[[".__row_id__"]] <- paste0("ch_", seq_len(n_headers))
+  }
 
   # Preserve columns on header rows (page_by + hierarchy cols)
   preserve_cols <- unique(c(
@@ -1281,6 +1244,7 @@ apply_leading_indent <- function(spec) {
     # Group rows by indent level, create one cell_style per level
     unique_levels <- sort(unique(n_lead[has_lead]))
     new_styles <- vector("list", length(unique_levels))
+    row_id_col <- spec$data$.__row_id__
     for (k in seq_along(unique_levels)) {
       n <- unique_levels[k]
       rows <- which(n_lead == n)
@@ -1288,7 +1252,7 @@ apply_leading_indent <- function(spec) {
       new_styles[[k]] <- new_fr_cell_style(
         region = "body",
         type = "cell",
-        rows = rows,
+        row_ids = row_id_col[rows],
         cols = nm,
         indent = indent_inches
       )

@@ -479,8 +479,8 @@ finalize_columns <- function(spec) {
     )
   }
 
-  # Ensure all data columns have a column spec
-  for (nm in names(spec$data)) {
+  # Ensure all data columns have a column spec (skip internal .__row_id__ column)
+  for (nm in setdiff(names(spec$data), ".__row_id__")) {
     if (is.null(spec$columns[[nm]])) {
       auto_align <- if (is.numeric(spec$data[[nm]])) "right" else "left"
       col_def <- fr_col(label = nm, align = auto_align)
@@ -731,6 +731,20 @@ finalize_labels <- function(spec) {
 #' Finalize row structure: sort, repeat-suppress, blank rows, indent
 #' @noRd
 finalize_rows <- function(spec) {
+  # Convert integer row indices to stable row IDs before any row injection.
+  # After this point, styles reference IDs not positions — no remapping needed.
+  row_ids_vec <- spec$data$.__row_id__
+  n_orig <- length(row_ids_vec)
+  spec$cell_styles <- lapply(spec$cell_styles, function(style) {
+    rows <- style$rows
+    if (is.numeric(rows) && length(rows) > 0L) {
+      valid <- rows[rows >= 1L & rows <= n_orig]
+      style$row_ids <- row_ids_vec[as.integer(valid)]
+      style$rows <- NULL
+    }
+    style
+  })
+
   # Sort data if sort_by is specified (listings)
   sort_by <- spec$body$sort_by
   if (length(sort_by) > 0L) {
@@ -774,14 +788,6 @@ finalize_rows <- function(spec) {
     )
     spec$data <- gl_result$data
     gl_header_rows <- gl_result$header_rows
-
-    # Remap existing style indices to account for injected header rows
-    if (length(gl_header_rows) > 0L) {
-      spec$cell_styles <- remap_style_indices_for_injected(
-        spec$cell_styles,
-        gl_header_rows
-      )
-    }
   }
 
   # Apply group_style and resolve deferred "group_headers" selectors.
@@ -807,14 +813,6 @@ finalize_rows <- function(spec) {
     preserve_cols = page_by_cols
   )
   spec$data <- blank_result$data
-
-  # Remap style row indices to account for inserted blank rows
-  if (length(blank_result$insert_positions) > 0L) {
-    spec$cell_styles <- remap_style_indices(
-      spec$cell_styles,
-      blank_result$insert_positions
-    )
-  }
 
   # Convert leading spaces to paragraph-level indent (after blank_after so
   # indices are correct, before indent_by so indent_by wins for shared columns)

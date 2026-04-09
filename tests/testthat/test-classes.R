@@ -557,7 +557,7 @@ test_that("new_fr_spec creates fr_spec from data frame", {
   df <- data.frame(a = 1:3, b = c("x", "y", "z"))
   spec <- new_fr_spec(df)
   expect_s3_class(spec, "fr_spec")
-  expect_identical(spec$data, df)
+  expect_identical(fr_get_data(spec), df)
   expect_s3_class(spec$meta, "fr_meta")
   expect_s3_class(spec$page, "fr_page")
   expect_equal(spec$rules, list())

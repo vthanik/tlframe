@@ -42,10 +42,10 @@ test_that("group_style bold applies to label group headers", {
   expect_equal(spec$body$group_style, list(bold = TRUE))
 
   fspec <- finalize_spec(spec)
-  # Header rows should be at positions 1 (Sex) and 4 (Age)
+  # Header rows get stable IDs "gh_1", "gh_2"
   gs <- fspec$cell_styles[[1L]]
   expect_true(gs$bold)
-  expect_equal(gs$rows, c(1L, 4L))
+  expect_equal(gs$row_ids, c("gh_1", "gh_2"))
 })
 
 
@@ -62,9 +62,9 @@ test_that("group_style bold applies to leaf hierarchy non-leaf rows", {
   gs <- fspec$cell_styles[[1L]]
   expect_true(gs$bold)
 
-  # Verify they target SOC rows (row_level == "soc")
+  # Verify they target SOC rows (row_level == "soc") via stable IDs
   soc_rows <- which(fspec$data[["__row_level__"]] == "soc")
-  expect_equal(gs$rows, soc_rows)
+  expect_equal(gs$row_ids, fspec$data[[".__row_id__"]][soc_rows])
 })
 
 
@@ -81,9 +81,9 @@ test_that("group_style per-level applies only to named levels", {
   expect_true(gs$bold)
   expect_equal(gs$background, "#F0F0F0")
 
-  # Only SOC rows — not PT rows
+  # Only SOC rows — not PT rows — via stable IDs
   soc_rows <- which(fspec$data[["__row_level__"]] == "soc")
-  expect_equal(gs$rows, soc_rows)
+  expect_equal(gs$row_ids, fspec$data[[".__row_id__"]][soc_rows])
 })
 
 
@@ -111,7 +111,7 @@ test_that("group_style without group_label or leaf is silently ignored", {
 
   # cell_styles should not contain a group_style-derived entry
   has_bold_all <- any(vapply(fspec$cell_styles, function(s) {
-    isTRUE(s$bold) && length(s$rows) > 0L
+    isTRUE(s$bold) && (length(s$rows) > 0L || length(s$row_ids) > 0L)
   }, logical(1)))
   expect_false(has_bold_all)
 })
@@ -144,7 +144,7 @@ test_that("fr_row_style rows=group_headers targets all group headers", {
   expect_equal(spec$cell_styles[[1L]]$rows, "group_headers")
 
   fspec <- finalize_spec(spec)
-  # After finalize, should be resolved to integer positions
+  # After finalize, should be resolved to stable row IDs
   resolved <- NULL
   for (s in fspec$cell_styles) {
     if (isTRUE(s$bold) && identical(s$background, "#E8E8E8")) {
@@ -153,7 +153,7 @@ test_that("fr_row_style rows=group_headers targets all group headers", {
     }
   }
   expect_false(is.null(resolved))
-  expect_equal(resolved$rows, c(1L, 4L))
+  expect_equal(resolved$row_ids, c("gh_1", "gh_2"))
 })
 
 
@@ -166,10 +166,10 @@ test_that("fr_row_style rows=group_headers:soc targets specific level", {
     )
 
   fspec <- finalize_spec(spec)
-  # Find the resolved style
+  # Find the resolved style (sentinel "group_headers:soc" is cleared after resolution)
   resolved <- NULL
   for (s in fspec$cell_styles) {
-    if (isTRUE(s$bold) && !is.character(s$rows)) {
+    if (isTRUE(s$bold) && !identical(s$rows, "group_headers:soc")) {
       resolved <- s
       break
     }
@@ -177,7 +177,7 @@ test_that("fr_row_style rows=group_headers:soc targets specific level", {
   expect_false(is.null(resolved))
 
   soc_rows <- which(fspec$data[["__row_level__"]] == "soc")
-  expect_equal(resolved$rows, soc_rows)
+  expect_equal(resolved$row_ids, fspec$data[[".__row_id__"]][soc_rows])
 })
 
 
@@ -200,7 +200,7 @@ test_that("fr_style rows=group_headers with cols targets cell intersection", {
     }
   }
   expect_false(is.null(resolved))
-  expect_equal(resolved$rows, c(1L, 4L))
+  expect_equal(resolved$row_ids, c("gh_1", "gh_2"))
   expect_equal(resolved$cols, "value")
 })
 
@@ -253,7 +253,7 @@ test_that("group_style from fr_theme is inherited", {
   fspec <- finalize_spec(spec)
   gs <- fspec$cell_styles[[1L]]
   expect_true(gs$bold)
-  expect_equal(gs$rows, c(1L, 4L))
+  expect_equal(gs$row_ids, c("gh_1", "gh_2"))
 })
 
 

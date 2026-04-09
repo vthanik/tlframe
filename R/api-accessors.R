@@ -34,7 +34,8 @@
 #' @export
 fr_get_data <- function(spec) {
   check_fr_spec(spec, call = caller_env())
-  spec$data
+  d <- spec$data
+  d[setdiff(names(d), ".__row_id__")]
 }
 
 

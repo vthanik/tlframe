@@ -25,7 +25,7 @@ df_ae <- data.frame(
 test_that("fr_table creates fr_spec from data frame", {
   spec <- fr_table(df_simple)
   expect_s3_class(spec, "fr_spec")
-  expect_identical(spec$data, df_simple)
+  expect_identical(fr_get_data(spec), df_simple)
 })
 
 test_that("fr_table spec has default meta, page, body, header", {

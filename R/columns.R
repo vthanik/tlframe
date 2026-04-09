@@ -36,7 +36,7 @@ build_default_columns <- function(
   labels = NULL,
   page = new_fr_page()
 ) {
-  col_names <- names(data)
+  col_names <- setdiff(names(data), ".__row_id__")
   result <- vector("list", length(col_names))
   names(result) <- col_names
 
